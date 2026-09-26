@@ -102,18 +102,36 @@ func _draw() -> void:
 	})
 
 
+## Estilos de mascota (accesorio). Los 4 primeros son los de siempre por
+## lugar (1P–4P); el resto se elige desde el celular.
+const STYLE_NAMES: Array[String] = ["Antena", "Oso", "Gato", "Brote", "Robot", "Diablito", "Conejo"]
+const STYLE_ROBOT := 4
+const STYLE_HORNS := 5
+const STYLE_BUNNY := 6
+const METAL := Color("#C3CADB")   ## Piezas de metal del robot.
+const BLUSH := Color(1.0, 0.45, 0.55, 0.45)
+const TONGUE := Color(1.0, 0.5, 0.55)
+const TEAR := Color(0.45, 0.75, 1.0, 0.9)
+
+
 ## Dibuja la mascota. feet: punto donde apoya. u: unidad de escala (mide ~105u).
+## p_style: estilo (índice de STYLE_NAMES; si se pasa el lugar 0–3, da el
+## accesorio clásico de 1P–4P).
 ## anim (todo opcional):
 ##   t: segundos (parpadeo, brazos, lágrima) · walk: fase de caminata en
 ##   vueltas (≥ 0 camina; negativo, quieta) · look: dirección de la mirada
 ##   (-1..1) · squash: >0 aplastada, <0 estirada · wave: saluda con los brazos.
 ##
+## Concepto: *volumen con luz*. Para que un círculo plano parezca una esfera
+## de juguete se apilan 4 capas: sombra (color oscurecido), volumen (el color,
+## corrido hacia la luz), luz suave y un brillo especular chico y blanco. Es
+## el mismo truco de los personajes "de plástico" de los party games.
+##
 ## Rendimiento: círculos, elipses y polígonos consecutivos van en un
-## UiTheme.ShapeBatch (un comando y un draw call por tramo, no uno por
-## figura). Se hace flush antes de cada rectángulo redondeado, línea, arco y
-## cambio de transform, así el orden de dibujo es exactamente el de siempre y
-## cada tramo queda bajo el transform de squash que le corresponde.
-static func draw_mascot(ci: CanvasItem, feet: Vector2, u: float, col: Color, p_slot: int,
+## UiTheme.ShapeBatch (un draw call por tramo). Antes de cada figura que no va
+## en lote (rectángulos redondeados, líneas, arcos) se hace flush, así el
+## orden de dibujo se respeta.
+static func draw_mascot(ci: CanvasItem, feet: Vector2, u: float, col: Color, p_style: int,
 		p_mood: int = Mood.NORMAL, bob: float = 0.0, lift: float = 0.0, is_empty: bool = false,
 		anim: Dictionary = {}) -> void:
 	var ink := UiTheme.INK
@@ -126,6 +144,11 @@ static func draw_mascot(ci: CanvasItem, feet: Vector2, u: float, col: Color, p_s
 	var sq := clampf(float(anim.get("squash", 0.0)), -0.5, 0.5)
 	var wave := bool(anim.get("wave", false))
 	var walking := walk >= 0.0
+	var style := posmod(p_style, STYLE_NAMES.size())
+	# Colores oscuros (negro, azul noche) necesitan más luz para leerse.
+	var dark := col.get_luminance() < 0.2
+	var shade := col.darkened(0.12 if dark else 0.24)
+	var light := col.lightened(0.5 if dark else 0.35)
 	var batch := UiTheme.ShapeBatch.new()
 
 	# La sombra se achica cuando la mascota está en el aire (queda fija en el piso).
@@ -141,18 +164,25 @@ static func draw_mascot(ci: CanvasItem, feet: Vector2, u: float, col: Color, p_s
 	var r := 34.0 * u
 	var body := Rect2(base.x - 20.0 * u, base.y - 28.0 * u + bob * 0.4, 40.0 * u, 27.0 * u)
 
-	# Pies: se alternan al caminar.
+	# Pies: óvalos brillantes que se alternan al caminar.
 	if not is_empty:
 		for side in [-1.0, 1.0]:
 			var phase: float = sin(walk * TAU) * side if walking else 0.0
 			var foot: Vector2 = base + Vector2(side * 10.0 * u + phase * 3.0 * u, -2.5 * u - maxf(0.0, phase) * 4.0 * u)
-			batch.ellipse(foot, 8.5 * u, 5.0 * u, ink)
-			batch.ellipse(foot, 6.5 * u, 3.4 * u, col.darkened(0.3))
+			batch.ellipse(foot, 9.0 * u, 5.4 * u, ink)
+			batch.ellipse(foot, 7.0 * u, 3.8 * u, shade.darkened(0.15))
+			batch.ellipse(foot + Vector2(-2.0 * u, -1.4 * u), 2.6 * u, 1.2 * u, Color(1, 1, 1, 0.35))
 		batch.flush(ci)
 
-	# Cuerpo
+	# Cuerpo con volumen y botón en la panza.
 	UiTheme.draw_round_rect(ci, body.grow(2.5 * u), ink, 13.0 * u)
-	UiTheme.draw_round_rect(ci, body, col.darkened(0.1), 12.0 * u)
+	UiTheme.draw_round_rect(ci, body, shade, 12.0 * u)
+	if not is_empty:
+		UiTheme.draw_round_rect(ci, Rect2(body.position + Vector2(1.5 * u, 1.0 * u), body.size - Vector2(5.0 * u, 5.0 * u)), col, 11.0 * u)
+		var gem := body.get_center() + Vector2(0, 1.5 * u)
+		batch.circle(gem, 3.9 * u, ink)
+		batch.circle(gem, 2.9 * u, METAL if style == STYLE_ROBOT else light)
+		batch.circle(gem + Vector2(-0.9 * u, -0.9 * u), 1.0 * u, Color.WHITE)
 
 	# Brazos (delante del cuerpo): colgando, balanceándose al caminar o saludando.
 	if not is_empty:
@@ -166,69 +196,98 @@ static func draw_mascot(ci: CanvasItem, feet: Vector2, u: float, col: Color, p_s
 			var hand: Vector2 = shoulder + Vector2(side * sin(angle), cos(angle)) * 15.0 * u
 			batch.flush(ci)
 			ci.draw_line(shoulder, hand, ink, 8.5 * u, true)
-			ci.draw_line(shoulder, hand, col.darkened(0.1), 5.5 * u, true)
-			batch.circle(hand, 4.6 * u, ink)
-			batch.circle(hand, 3.1 * u, col.lightened(0.15))
+			ci.draw_line(shoulder, hand, shade, 5.5 * u, true)
+			batch.circle(hand, 5.2 * u, ink)
+			batch.circle(hand, 3.9 * u, col)
+			batch.circle(hand + Vector2(-1.2 * u, -1.3 * u), 1.3 * u, Color(1, 1, 1, 0.5))
 
-	var accessory := p_slot % 4
 	# Accesorios que van detrás de la cabeza (se mueven un poco con el paso).
-	var sway := sin(walk * TAU) * 0.08 if walking else sin(t * 1.6 + p_slot) * 0.03
-	if accessory == 1:
-		for sx in [-1.0, 1.0]:
-			var ear: Vector2 = head + Vector2(sx * 24.0 * u, -24.0 * u).rotated(sway)
-			batch.circle(ear, 12.5 * u, ink)
-			batch.circle(ear, 10.0 * u, col)
-			if not is_empty:
-				batch.circle(ear, 5.5 * u, col.lightened(0.45))
-	elif accessory == 2:
-		for sx in [-1.0, 1.0]:
-			var tri := PackedVector2Array([
-				head + Vector2(sx * 31.0 * u, -8.0 * u), head + Vector2(sx * 25.0 * u, -46.0 * u).rotated(sway),
-				head + Vector2(sx * 6.0 * u, -30.0 * u)])
-			var big := PackedVector2Array()
-			var c := (tri[0] + tri[1] + tri[2]) / 3.0
-			for p in tri:
-				big.append(c + (p - c) * 1.18)
-			batch.polygon(big, ink)
-			batch.polygon(tri, col)
+	var sway := sin(walk * TAU) * 0.08 if walking else sin(t * 1.6 + p_style) * 0.03
+	match style:
+		1:  # Oso: orejas redondas.
+			for sx in [-1.0, 1.0]:
+				var ear: Vector2 = head + Vector2(sx * 24.0 * u, -24.0 * u).rotated(sway)
+				batch.circle(ear, 12.5 * u, ink)
+				batch.circle(ear, 10.0 * u, shade)
+				batch.circle(ear + Vector2(-0.8 * u, -0.8 * u), 9.0 * u, col)
+				if not is_empty:
+					batch.circle(ear, 5.5 * u, light)
+		2:  # Gato: orejas puntiagudas.
+			for sx in [-1.0, 1.0]:
+				var tri := PackedVector2Array([
+					head + Vector2(sx * 31.0 * u, -8.0 * u), head + Vector2(sx * 25.0 * u, -46.0 * u).rotated(sway),
+					head + Vector2(sx * 6.0 * u, -30.0 * u)])
+				batch.polygon(_grow_poly(tri, 1.18), ink)
+				batch.polygon(tri, col)
+				if not is_empty:
+					batch.polygon(_grow_poly(tri, 0.5), light)
+		STYLE_ROBOT:  # Robot: tornillos laterales tipo auricular.
+			for sx in [-1.0, 1.0]:
+				var bolt: Vector2 = head + Vector2(sx * (r + 1.0 * u), -2.0 * u)
+				batch.ellipse(bolt, 7.5 * u, 11.0 * u, ink)
+				batch.ellipse(bolt, 5.5 * u, 9.0 * u, METAL)
+				batch.ellipse(bolt + Vector2(-1.5 * u, -3.0 * u), 1.8 * u, 3.0 * u, Color(1, 1, 1, 0.7))
+		STYLE_HORNS:  # Diablito: cuernos curvos.
+			for sx in [-1.0, 1.0]:
+				var horn := PackedVector2Array([
+					head + Vector2(sx * 12.0 * u, -28.0 * u), head + Vector2(sx * 28.0 * u, -38.0 * u).rotated(sway),
+					head + Vector2(sx * 33.0 * u, -52.0 * u).rotated(sway), head + Vector2(sx * 26.0 * u, -24.0 * u)])
+				batch.polygon(_grow_poly(horn, 1.22), ink)
+				batch.polygon(horn, col.darkened(0.35))
+		STYLE_BUNNY:  # Conejo: orejas largas.
+			for sx in [-1.0, 1.0]:
+				var ear: Vector2 = head + Vector2(sx * 13.0 * u, -40.0 * u)
+				var rot: float = sx * 0.2 + sway
+				batch.ellipse(ear, 9.0 * u, 22.0 * u, ink, rot)
+				batch.ellipse(ear, 7.0 * u, 20.0 * u, col, rot)
+				if not is_empty:
+					batch.ellipse(ear + Vector2(0, 2.0 * u), 3.5 * u, 14.0 * u, Color("#FFB3C7"), rot)
 
-	# Cabeza y cara
+	# Cabeza: esfera de juguete (sombra, volumen, luz suave).
 	batch.circle(head, r + 2.5 * u, ink)
-	batch.circle(head, r, col)
+	batch.circle(head, r, shade if not is_empty else col)
 	if is_empty:
 		batch.flush(ci)
 		ci.draw_set_transform(Vector2.ZERO)
 		return
+	batch.circle(head + Vector2(-0.05 * r, -0.07 * r), r * 0.92, col)
+	batch.ellipse(head + Vector2(-0.22 * r, -0.36 * r), 0.5 * r, 0.32 * r, Color(light, 0.55), -0.35)
+	# Cara con volumen: una base gris clara y el blanco corrido hacia arriba.
 	var face := head + Vector2(0, 5.0 * u)
-	batch.ellipse(face, 25.0 * u, 21.0 * u, Color.WHITE)
-	batch.ellipse(head + Vector2(-12.0 * u, -16.0 * u), 7.0 * u, 4.0 * u, Color(1, 1, 1, 0.35), -0.5)
+	batch.ellipse(face + Vector2(0, 1.2 * u), 25.0 * u, 21.0 * u, Color("#DDE3EF"))
+	batch.ellipse(face + Vector2(0, -0.6 * u), 24.0 * u, 19.6 * u, Color.WHITE)
+	# Brillo especular del plástico.
+	batch.ellipse(head + Vector2(-0.42 * r, -0.55 * r), 0.16 * r, 0.09 * r, Color(1, 1, 1, 0.9), -0.6)
 	var gaze := look.limit_length(1.0) * Vector2(3.0, 2.0) * u
-	# Parpadeo cada ~3,3 s, desfasado por jugador para que no parpadeen a la vez.
-	var blinking := p_mood == Mood.NORMAL and t > 0.0 and fposmod(t + p_slot * 1.37, 3.3) < 0.12
+	# Parpadeo cada ~3,3 s, desfasado por estilo para que no parpadeen a la vez.
+	var blinking := p_mood == Mood.NORMAL and t > 0.0 and fposmod(t + p_style * 1.37, 3.3) < 0.12
 	for sx in [-1.0, 1.0]:
 		var eye: Vector2 = head + Vector2(sx * 9.0 * u, 4.0 * u) + gaze
 		match p_mood:
 			Mood.HAPPY:
 				batch.flush(ci)
 				ci.draw_arc(eye + Vector2(0, 2.5 * u), 5.0 * u, PI * 1.15, PI * 1.85, 10, ink, 2.8 * u, true)
-				batch.circle(eye + Vector2(sx * 7.0 * u, 8.0 * u) - gaze, 3.5 * u, Color(1.0, 0.45, 0.55, 0.45))
+				batch.circle(eye + Vector2(sx * 7.0 * u, 8.0 * u) - gaze, 3.5 * u, BLUSH)
 			Mood.SAD:
-				batch.ellipse(eye + Vector2(0, 2.0 * u), 3.0 * u, 4.5 * u, ink)
+				batch.ellipse(eye + Vector2(0, 2.0 * u), 3.2 * u, 4.8 * u, ink)
+				batch.circle(eye + Vector2(-0.9 * u, 0.2 * u), 1.1 * u, Color.WHITE)
 				batch.flush(ci)
 				ci.draw_line(eye + Vector2(-sx * 5.0 * u, -8.0 * u), eye + Vector2(sx * 4.0 * u, -5.5 * u), ink, 2.2 * u, true)
 			Mood.SURPRISED:
-				batch.circle(eye, 5.2 * u, ink)
-				batch.circle(eye, 3.4 * u, Color.WHITE)
-				batch.circle(eye, 2.0 * u, ink)
+				batch.circle(eye, 5.4 * u, ink)
+				batch.circle(eye, 3.6 * u, Color.WHITE)
+				batch.circle(eye, 2.1 * u, ink)
 			_:
 				if blinking:
 					batch.flush(ci)
 					ci.draw_line(eye + Vector2(-3.8 * u, 0), eye + Vector2(3.8 * u, 0), ink, 2.4 * u, true)
 				else:
-					batch.ellipse(eye, 3.8 * u, 6.5 * u, ink)
-					batch.circle(eye + Vector2(-1.1 * u, -2.6 * u), 1.4 * u, Color.WHITE)
+					# Ojos brillantes: dos reflejos, como en los personajes de juguete.
+					batch.ellipse(eye, 4.4 * u, 7.2 * u, ink)
+					batch.circle(eye + Vector2(-1.3 * u, -2.9 * u), 1.7 * u, Color.WHITE)
+					batch.circle(eye + Vector2(1.4 * u, 2.4 * u), 0.8 * u, Color(1, 1, 1, 0.8))
 
-	# Boca según el ánimo
+	# Boca según el ánimo (el robot tiene rejilla cuando está tranquilo).
 	var mouth := face + Vector2(0, 11.0 * u) + gaze * 0.5
 	match p_mood:
 		Mood.HAPPY:
@@ -237,32 +296,67 @@ static func draw_mascot(ci: CanvasItem, feet: Vector2, u: float, col: Color, p_s
 				var a := PI * i / 8.0
 				smile.append(mouth + Vector2(cos(a) * 6.0 * u, sin(a) * 5.0 * u - 1.0 * u))
 			batch.polygon(smile, ink)
-			batch.circle(mouth + Vector2(0, 2.2 * u), 2.2 * u, Color(1.0, 0.5, 0.55))
+			batch.circle(mouth + Vector2(0, 2.2 * u), 2.2 * u, TONGUE)
 		Mood.SAD:
 			batch.flush(ci)
 			ci.draw_arc(mouth + Vector2(0, 4.0 * u), 4.5 * u, PI * 1.2, PI * 1.8, 8, ink, 2.2 * u, true)
 			# Lágrima que cae y vuelve a empezar.
 			var drop := fposmod(t * 0.9, 1.0)
 			var tear := head + Vector2(-9.0 * u, 11.0 * u + drop * 12.0 * u) + gaze
-			batch.circle(tear, 2.4 * u * (1.0 - drop * 0.4), Color(0.45, 0.75, 1.0, 0.9 * (1.0 - drop)))
+			batch.circle(tear, 2.4 * u * (1.0 - drop * 0.4), Color(TEAR, TEAR.a * (1.0 - drop)))
 		Mood.SURPRISED:
 			batch.circle(mouth, 3.6 * u, ink)
-			batch.circle(mouth, 2.0 * u, Color(1.0, 0.5, 0.55))
+			batch.circle(mouth, 2.0 * u, TONGUE)
+		_:
+			if style == STYLE_ROBOT:
+				batch.flush(ci)
+				UiTheme.draw_round_rect(ci, Rect2(mouth - Vector2(6.0 * u, 2.2 * u), Vector2(12.0 * u, 4.4 * u)), ink, 2.0 * u)
+				for k in 3:
+					var gx := mouth.x + (k - 1) * 3.6 * u
+					ci.draw_line(Vector2(gx, mouth.y - 1.2 * u), Vector2(gx, mouth.y + 1.2 * u), METAL, 1.2 * u)
 
 	# Accesorios que van delante / arriba
-	if accessory == 0:
-		var tip := head + Vector2(7.0 * u, -r - 16.0 * u).rotated(sway * 2.0)
-		batch.flush(ci)
-		ci.draw_line(head + Vector2(0, -r + 2.0 * u), tip, ink, 2.8 * u, true)
-		batch.circle(tip, 7.0 * u, ink)
-		batch.circle(tip, 5.0 * u, col.lightened(0.4))
-	elif accessory == 3:
-		var stem := head + Vector2(0, -r - 8.0 * u).rotated(sway)
-		batch.flush(ci)
-		ci.draw_line(head + Vector2(0, -r + 1.0 * u), stem, ink, 2.8 * u, true)
-		for sx in [-1.0, 1.0]:
-			var leaf: Vector2 = stem + Vector2(sx * 8.0 * u, -3.0 * u)
-			batch.ellipse(leaf, 10.5 * u, 6.0 * u, ink, sx * -0.5 + sway)
-			batch.ellipse(leaf, 8.5 * u, 4.2 * u, UiTheme.LEAF, sx * -0.5 + sway)
+	match style:
+		0:  # Antena con bolita.
+			var tip := head + Vector2(7.0 * u, -r - 16.0 * u).rotated(sway * 2.0)
+			batch.flush(ci)
+			ci.draw_line(head + Vector2(0, -r + 2.0 * u), tip, ink, 2.8 * u, true)
+			batch.circle(tip, 7.0 * u, ink)
+			batch.circle(tip, 5.0 * u, light)
+			batch.circle(tip + Vector2(-1.5 * u, -1.5 * u), 1.4 * u, Color.WHITE)
+		3:  # Brote.
+			var stem := head + Vector2(0, -r - 8.0 * u).rotated(sway)
+			batch.flush(ci)
+			ci.draw_line(head + Vector2(0, -r + 1.0 * u), stem, ink, 2.8 * u, true)
+			for sx in [-1.0, 1.0]:
+				var leaf: Vector2 = stem + Vector2(sx * 8.0 * u, -3.0 * u)
+				batch.ellipse(leaf, 10.5 * u, 6.0 * u, ink, sx * -0.5 + sway)
+				batch.ellipse(leaf, 8.5 * u, 4.2 * u, UiTheme.LEAF, sx * -0.5 + sway)
+		STYLE_ROBOT:  # Antena gruesa con foco que titila y tornillos en la frente.
+			var top := head + Vector2(0, -r - 14.0 * u).rotated(sway)
+			batch.flush(ci)
+			UiTheme.draw_round_rect(ci, Rect2(head + Vector2(-5.0 * u, -r - 3.0 * u), Vector2(10.0 * u, 6.0 * u)), ink, 2.0 * u)
+			ci.draw_line(head + Vector2(0, -r - 1.0 * u), top, ink, 3.6 * u, true)
+			ci.draw_line(head + Vector2(0, -r - 1.0 * u), top, METAL, 1.8 * u, true)
+			var glow := 0.55 + 0.45 * absf(sin(t * 3.0 + p_style))
+			batch.circle(top, 6.5 * u, ink)
+			batch.circle(top, 5.0 * u, Color(UiTheme.DANGER.lerp(UiTheme.ACCENT, 0.3), glow + 0.2))
+			batch.circle(top + Vector2(-1.4 * u, -1.4 * u), 1.4 * u, Color.WHITE)
+			for sx in [-1.0, 1.0]:
+				var screw: Vector2 = head + Vector2(sx * 17.0 * u, -22.0 * u)
+				batch.circle(screw, 2.6 * u, ink)
+				batch.circle(screw, 1.7 * u, METAL)
 	batch.flush(ci)
 	ci.draw_set_transform(Vector2.ZERO)
+
+
+## Agranda (o achica) un polígono desde su centro: contornos y rellenos internos.
+static func _grow_poly(pts: PackedVector2Array, k: float) -> PackedVector2Array:
+	var c := Vector2.ZERO
+	for p in pts:
+		c += p
+	c /= pts.size()
+	var out := PackedVector2Array()
+	for p in pts:
+		out.append(c + (p - c) * k)
+	return out

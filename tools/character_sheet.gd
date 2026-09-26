@@ -5,9 +5,44 @@ extends SceneTree
 ##
 ##   xvfb-run -a -s "-screen 0 1920x1080x24" godot --path . --rendering-driver opengl3 \
 ##     -s res://tools/character_sheet.gd -- --out=docs/img/mascotas.png
+##
+## Con `--styles` dibuja la otra hoja: todos los estilos (robot, conejo…) en
+## una paleta amplia de colores, negro incluido, para revisar contraste.
 
 const SIZE := Vector2i(1920, 1080)
 const OUT_WIDTH := 1280
+
+
+## Paleta de prueba: los 4 colores de jugador y candidatos extra (negro y
+## blanco son los casos difíciles de contraste).
+const PALETTE: Array[Color] = [
+	Color("#E24B4A"), Color("#378ADD"), Color("#EF9F27"), Color("#1D9E75"),
+	Color("#8B5CF6"), Color("#FF6FB5"), Color("#2EC4D6"), Color("#F5F7FB"),
+	Color("#2B2D3A"), Color("#16171D"),
+]
+
+
+class _Styles:
+	extends Control
+
+	func _draw() -> void:
+		draw_rect(Rect2(Vector2.ZERO, size), UiTheme.SKY_BOTTOM)
+		UiTheme.draw_text(self, "Mascotas · estilos y colores", Vector2(size.x / 2.0, 60), 56, UiTheme.PAPER, 10)
+		var styles := PlayerAvatar.STYLE_NAMES.size()
+		var rows := 3
+		var cell := Vector2((size.x - 120.0) / styles, (size.y - 200.0) / rows)
+		for c in styles:
+			UiTheme.draw_text(self, PlayerAvatar.STYLE_NAMES[c], Vector2(60.0 + cell.x * (c + 0.5), 140), 30, UiTheme.INK)
+		# Cada fila combina estilos con colores distintos: así aparecen los 10
+		# colores y cada estilo se ve con uno claro, uno medio y uno oscuro.
+		var moods := [PlayerAvatar.Mood.HAPPY, PlayerAvatar.Mood.NORMAL, PlayerAvatar.Mood.SURPRISED]
+		for r in rows:
+			for c in styles:
+				var col: Color = PALETTE[(c + r * styles) % PALETTE.size()]
+				if r == rows - 1 and c % 2 == 0:
+					col = PALETTE[PALETTE.size() - 1 - (c / 2) % 2]  # Negro y grafito.
+				var feet := Vector2(60.0 + cell.x * (c + 0.5), 170.0 + cell.y * (r + 1) - 14.0)
+				PlayerAvatar.draw_mascot(self, feet, 1.75, col, c, moods[r], 0.0, 0.0, false, {"t": 1.0 + c * 0.4})
 
 
 class _Sheet:
@@ -51,11 +86,14 @@ func _initialize() -> void:
 
 func _run() -> void:
 	var out := "res://docs/img/mascotas.png"
+	var styles := false
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--out="):
 			out = arg.trim_prefix("--out=")
+		elif arg == "--styles":
+			styles = true
 	root.size = SIZE
-	var sheet := _Sheet.new()
+	var sheet: Control = _Styles.new() if styles else _Sheet.new()
 	sheet.size = Vector2(SIZE)
 	root.add_child(sheet)
 	for i in 3:
