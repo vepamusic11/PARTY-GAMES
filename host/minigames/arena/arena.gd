@@ -55,6 +55,7 @@ func _physics_process(delta: float) -> void:
 	_time_left -= delta
 	for pid: int in _pos:
 		var p: Vector2 = _pos[pid] + (_axis[pid] as Vector2) * SPEED * delta
+		advance_walk(pid, (_axis[pid] as Vector2).length(), delta, 3.0)
 		p.x = clampf(p.x, ARENA.position.x + RADIUS, ARENA.end.x - RADIUS)
 		p.y = clampf(p.y, ARENA.position.y + RADIUS, ARENA.end.y - RADIUS)
 		_pos[pid] = p
@@ -87,8 +88,7 @@ func _draw() -> void:
 	order.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return (_pos[a.id] as Vector2).y < (_pos[b.id] as Vector2).y)
 	for p in order:
 		var pos: Vector2 = _pos[p.id]
-		var moving := (_axis[p.id] as Vector2).length() > 0.1
-		var bob := sin(spin * 14.0) * 3.0 if moving else 0.0
-		PlayerAvatar.draw_mascot(self, pos + Vector2(0, RADIUS), 0.8, p.color, p.slot, PlayerAvatar.Mood.NORMAL, 0.0, absf(bob))
+		PlayerAvatar.draw_mascot(self, pos + Vector2(0, RADIUS), 0.8, p.color, p.slot, PlayerAvatar.Mood.NORMAL,
+			0.0, 0.0, false, mascot_anim(p.id, _axis[p.id]))
 		draw_text_centered(p.name, pos + Vector2(0, RADIUS + 24), 26, UiTheme.PAPER, 6)
 	draw_hud(_score, clock_text(_time_left))

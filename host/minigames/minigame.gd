@@ -17,7 +17,10 @@ signal feedback(player_id: int, kind: String)
 const SCREEN := Vector2(1920, 1080)
 
 var players: Array[Dictionary] = []
+## Reloj solo para animaciones (parpadeo, brazos); lo avanza _process.
+var anim_time := 0.0
 var _finished := false
+var _walk: Dictionary = {}   # player_id -> fase de caminata (vueltas)
 
 
 ## Metadatos del juego. Sobrescribir en cada juego.
@@ -80,6 +83,27 @@ static func result_from_scores(scores: Dictionary, summary: String = "") -> Dict
 		elif s == best:
 			winners.append(pid)
 	return {"winners": winners, "scores": scores.duplicate(), "summary": summary}
+
+
+func _process(delta: float) -> void:
+	anim_time += delta
+
+
+# --- Animación de mascotas -------------------------------------------------------
+
+## Avanza la caminata de un jugador según cuánto se movió (0..1 de su
+## velocidad máxima). Llamar en cada frame donde se mueve a los jugadores.
+func advance_walk(player_id: int, speed01: float, delta: float, steps_per_sec: float = 2.4) -> void:
+	if speed01 < 0.08:
+		_walk.erase(player_id)
+		return
+	_walk[player_id] = float(_walk.get(player_id, 0.0)) + speed01 * steps_per_sec * delta
+
+
+## Parámetros de animación para PlayerAvatar.draw_mascot: camina si se está
+## moviendo, mira en la dirección dada y parpadea con el reloj del juego.
+func mascot_anim(player_id: int, look: Vector2 = Vector2.ZERO) -> Dictionary:
+	return {"t": anim_time + player_id * 0.9, "walk": float(_walk.get(player_id, -1.0)), "look": look}
 
 
 # --- Sonido y vibración ------------------------------------------------------

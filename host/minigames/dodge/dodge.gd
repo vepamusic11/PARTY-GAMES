@@ -143,6 +143,7 @@ func _move_players(delta: float) -> void:
 		if _out_time.has(pid):
 			continue
 		var p: Vector2 = _pos[pid] + (_axis[pid] as Vector2) * SPEED * delta
+		advance_walk(pid, (_axis[pid] as Vector2).length(), delta, 3.0)
 		p.x = clampf(p.x, FIELD.position.x + MOVE_MARGIN_X, FIELD.end.x - MOVE_MARGIN_X)
 		p.y = clampf(p.y, FIELD.position.y + MOVE_MARGIN_TOP, FIELD.end.y - MOVE_MARGIN_BOTTOM)
 		_pos[pid] = p
@@ -271,16 +272,27 @@ func _draw() -> void:
 	order.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return (_pos[a.id] as Vector2).y < (_pos[b.id] as Vector2).y)
 	for p in order:
 		var feet: Vector2 = _pos[p.id]
-		var moving := (_axis[p.id] as Vector2).length() > 0.1
-		var bob := absf(sin(_anim * 14.0) * 3.0) if moving else 0.0
 		var mood := PlayerAvatar.Mood.HAPPY if is_finished() else PlayerAvatar.Mood.NORMAL
-		PlayerAvatar.draw_mascot(self, feet, MASCOT_SCALE, p.color, p.slot, mood, 0.0, bob)
+		# Si un bloque está por caer muy cerca, pone cara de susto.
+		if mood == PlayerAvatar.Mood.NORMAL and _danger_near(feet):
+			mood = PlayerAvatar.Mood.SURPRISED
+		PlayerAvatar.draw_mascot(self, feet, MASCOT_SCALE, p.color, p.slot, mood, 0.0, 0.0, false,
+			mascot_anim(p.id, _axis[p.id]))
 		draw_text_centered(p.name, feet + Vector2(0, NAME_OFFSET), 26, UiTheme.PAPER, 6)
 	draw_hud(_live_scores(), clock_text(DURATION_SEC - _elapsed))
 	if _countdown > 0.0:
 		draw_text_centered("%d" % ceili(_countdown), SCREEN / 2.0, 260, UiTheme.PAPER, 22)
 	elif _countdown > -GO_SEC:
 		draw_text_centered("¡YA!", SCREEN / 2.0, 260, UiTheme.ACCENT, 22)
+
+
+## ¿Hay un bloque a punto de caer (último 40 % de la caída) cerca de estos pies?
+func _danger_near(feet: Vector2) -> bool:
+	for b in _blocks:
+		if b.t < b.fall and b.fall > 0.0 and b.t / b.fall > 0.6:
+			if _ground_rect(b).grow(HIT_RADIUS * 2.0).has_point(feet):
+				return true
+	return false
 
 
 ## Eliminados: mascota triste, quieta y semitransparente (ver _ghosts).

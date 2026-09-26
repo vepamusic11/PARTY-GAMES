@@ -89,9 +89,12 @@ func _draw() -> void:
 			UiTheme.draw_dashed_line(self, Vector2(lanes.position.x, y), Vector2(TRACK_RIGHT, y), Color(UiTheme.INK, 0.25), 4.0, 24.0, 16.0)
 		var progress := float(_taps[p.id]) / TAPS_TO_WIN
 		var x := lerpf(TRACK_LEFT + 20.0, TRACK_RIGHT - 30.0, progress)
-		var hop := absf(sin(float(_taps[p.id]) * PI / 2.0)) * 14.0
+		var hop := absf(sin(float(_taps[p.id]) * PI / 2.0)) * 6.0
 		PlayerAvatar.draw_mascot(self, Vector2(x, y + LANE_HEIGHT - 16), 1.3, p.color, p.slot,
-			PlayerAvatar.Mood.HAPPY if _taps[p.id] >= TAPS_TO_WIN else PlayerAvatar.Mood.NORMAL, 0.0, hop)
+			PlayerAvatar.Mood.HAPPY if _taps[p.id] >= TAPS_TO_WIN else PlayerAvatar.Mood.NORMAL, 0.0, hop, false,
+			# Cada toque es medio paso: la mascota corre al ritmo del dedo.
+			{"t": anim_time + p.slot, "walk": _taps[p.id] * 0.5 if _taps[p.id] > 0 else -1.0,
+				"look": Vector2(1, 0), "wave": _taps[p.id] >= TAPS_TO_WIN})
 		var tag := Rect2(24, y + LANE_HEIGHT / 2.0 - 30, lanes.position.x - 60, 60)
 		UiTheme.draw_round_rect(self, tag.grow(3), UiTheme.INK, 30)
 		UiTheme.draw_round_rect(self, tag, p.color, 28)

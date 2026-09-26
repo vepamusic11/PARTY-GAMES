@@ -275,6 +275,18 @@ func test_parse_feedback() -> void:
 	check(Protocol.parse_feedback({}) == "", "sin tipo")
 
 
+func test_mascot_walk_anim() -> void:
+	var game := MiniGame.new()
+	game.setup(_fake_players(2))
+	check(game.mascot_anim(1).walk < 0.0, "quieta al empezar")
+	game.advance_walk(1, 1.0, 0.5, 2.0)
+	check(is_equal_approx(game.mascot_anim(1).walk, 1.0), "a velocidad máxima da 2 pasos por segundo")
+	game.advance_walk(1, 0.02, 0.5)
+	check(game.mascot_anim(1).walk < 0.0, "si casi no se mueve, deja de caminar")
+	check(game.mascot_anim(2, Vector2(1, 0)).look == Vector2(1, 0), "la mirada sigue la dirección pedida")
+	game.free()
+
+
 func test_tick_countdown() -> void:
 	var game := MiniGame.new()
 	game.setup(_fake_players(3))

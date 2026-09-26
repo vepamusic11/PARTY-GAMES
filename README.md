@@ -8,6 +8,8 @@ Juegos cortos para **1 a 4 jugadores en el sillón**: la **TV es la pantalla** y
 | ![Arena de estrellas](docs/img/arena.png) | ![Podio final](docs/img/final.png) |
 | ![Reloj exacto](docs/img/stop_clock.png) | ![Esquivar](docs/img/dodge.png) |
 
+![Hoja de personajes: las 4 mascotas en todos sus ánimos y poses](docs/img/mascotas.png)
+
 | Celular (control) | |
 |---|---|
 | ![Pantalla para unirse](docs/img/ctrl_join.png) | ![Control con joystick](docs/img/ctrl_joy.png) |

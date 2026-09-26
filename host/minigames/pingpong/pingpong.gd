@@ -139,7 +139,11 @@ func _draw() -> void:
 		UiTheme.draw_round_rect(self, rect, p.color, 11)
 		# Mascota y nombre al costado de su lado de la mesa
 		var side := Vector2(TABLE.end.x + 250, TABLE.position.y + 260 if top else TABLE.end.y - 90)
-		PlayerAvatar.draw_mascot(self, side, 1.6, p.color, p.slot, PlayerAvatar.Mood.HAPPY if _score[pid] > _score[_other(pid)] else PlayerAvatar.Mood.NORMAL)
+		# Siguen la pelota con la mirada.
+		var look := (_ball - (side + Vector2(0, -80))).normalized()
+		PlayerAvatar.draw_mascot(self, side, 1.6, p.color, p.slot,
+			PlayerAvatar.Mood.HAPPY if _score[pid] > _score[_other(pid)] else PlayerAvatar.Mood.NORMAL,
+			0.0, 0.0, false, {"t": anim_time + p.slot, "look": look})
 		draw_text_centered(p.name, side + Vector2(0, 40), 40, UiTheme.PAPER, 8)
 	UiTheme.draw_ellipse(self, _ball + Vector2(6, 10), BALL_RADIUS, BALL_RADIUS * 0.7, Color(0, 0, 0, 0.25))
 	draw_circle(_ball, BALL_RADIUS + 3.0, UiTheme.INK)
