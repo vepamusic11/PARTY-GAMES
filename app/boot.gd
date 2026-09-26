@@ -29,20 +29,15 @@ func _launch(screen: Control) -> void:
 
 
 func _build_selector() -> void:
-	var bg := ColorRect.new()
-	bg.color = Color("#1b1b2f")
-	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	add_child(bg)
+	theme = UiTheme.build()
+	add_child(PartyBackground.new())
 	var box := VBoxContainer.new()
 	box.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	box.alignment = BoxContainer.ALIGNMENT_CENTER
 	box.add_theme_constant_override("separation", 40)
 	add_child(box)
-	var title := Label.new()
-	title.text = "¿Qué es este dispositivo?"
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 64)
-	box.add_child(title)
+	box.add_child(UiTheme.headline("Party Games", 110, UiTheme.ACCENT))
+	box.add_child(UiTheme.headline("¿Qué es este dispositivo?", 56))
 	var tv := _big_button("Pantalla (TV)", func() -> void: _launch(HostMain.new()))
 	box.add_child(tv)
 	box.add_child(_big_button("Control (celular)", func() -> void: _launch(ControllerMain.new())))

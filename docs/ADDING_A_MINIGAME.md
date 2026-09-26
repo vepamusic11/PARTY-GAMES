@@ -11,6 +11,8 @@ extends MiniGame
 
 var _pos: Dictionary = {}
 var _axis: Dictionary = {}
+var _survived: Dictionary = {}   # player_id -> segundos en pie
+var _time_left := 30.0
 
 static func get_info() -> Dictionary:
 	return {
@@ -21,6 +23,8 @@ static func get_info() -> Dictionary:
 		"max_players": 4,
 		"layout": Protocol.LAYOUT_JOYSTICK,   # uno de Protocol.LAYOUTS
 		"layout_data": {},
+		"accent": Color("#9B5DE5"),       # opcional: color de la tarjeta en el lobby
+		"score_label": "segundos",        # opcional: "12 segundos" en el resumen
 	}
 
 func setup(p_players: Array[Dictionary]) -> void:
@@ -38,14 +42,18 @@ func _physics_process(delta: float) -> void:
 		return
 	# ... mover, detectar choques ...
 	# Al terminar, UNA sola vez:
-	# finish(result_from_scores(puntajes, "Último en pie gana"))
+	# finish(result_from_scores(_survived, "Último en pie gana"))
 	queue_redraw()
 
 func _draw() -> void:
-	draw_rect(Rect2(Vector2.ZERO, SCREEN), Color("#1b1b2f"))
+	draw_sky()                                        # fondo común
+	draw_play_field(Rect2(160, 140, 1600, 860))       # piso con marco de bloques
 	for p in players:
-		draw_circle(_pos[p.id], 30, p.color)
+		PlayerAvatar.draw_mascot(self, _pos[p.id], 0.8, p.color, p.slot)
+	draw_hud(_survived, clock_text(_time_left))     # marcador superior [1P 12] [0:28]
 ```
+
+Todo el dibujo sale del sistema visual (`UiTheme`): sin colores sueltos. Ver `.claude/skills/diseno-tv/`.
 
 ## 2. Registrarlo
 
@@ -58,7 +66,13 @@ const GAMES: Array[Script] = [
 ]
 ```
 
-Listo: aparece en el lobby y se habilita cuando hay la cantidad de jugadores correcta.
+Listo: aparece como tarjeta en el lobby, se puede elegir para la competencia y se habilita cuando la cantidad de jugadores elegida está en su rango.
+
+## Cómo entra en la competencia
+
+El juego **solo reporta su puntaje propio** en `finish(...)`. El modo competencia lo convierte en puestos y puntos (1° 100 · 2° 70 · 3° 50 · 4° 30) y arma el resumen de ronda.
+
+*Ejemplo:* `finish(result_from_scores({1: 12, 2: 9, 3: 9}))` → Pablo 1° (+100), Sofi y Tomi 2° (+70). Si el juego es "gana el primero en llegar", pasar `winners` explícitos: ese jugador queda 1° aunque otro tenga más puntaje.
 
 ## 3. Correr los tests
 

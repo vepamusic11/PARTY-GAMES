@@ -28,5 +28,43 @@ jobs:
       - name: Importar proyecto (genera el caché de clases)
         run: godot --headless --path . --import
 
+      - name: Compilar todos los scripts (lint de tipos)
+        run: |
+          fail=0
+          for f in $(git ls-files '*.gd'); do
+            godot --headless --path . --check-only -s "res://$f" >/dev/null 2>&1 || { echo "::error file=$f::no compila"; fail=1; }
+          done
+          exit $fail
+
       - name: Tests
         run: godot --headless --path . -s res://tests/run_tests.gd
+
+  # Prueba de humo visual: recorre una competencia completa con una pantalla
+  # virtual y sube las capturas como artefacto para revisar el diseño en el PR.
+  capturas:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar Godot ${{ env.GODOT_VERSION }} y pantalla virtual
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb libgl1-mesa-dri
+          curl -sSL -o godot.zip "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          unzip -q godot.zip
+          sudo mv "Godot_v${GODOT_VERSION}-stable_linux.x86_64" /usr/local/bin/godot
+
+      - name: Importar proyecto
+        run: godot --headless --path . --import
+
+      - name: Generar capturas
+        run: |
+          xvfb-run -a -s "-screen 0 1920x1080x24" \
+            godot --path . --rendering-driver opengl3 --audio-driver Dummy \
+            -s res://tools/capture_screens.gd -- --out="$RUNNER_TEMP/capturas"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: capturas
+          path: ${{ runner.temp }}/capturas/*.png

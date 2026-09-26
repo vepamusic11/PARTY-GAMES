@@ -7,7 +7,9 @@
 │ Celular 1..4 │ ──── input (30/seg) ──────► │ TV · HostMain                  │
 │ ControllerMain│ ◄─── layout / fase ──────── │  ├─ HostServer  (red, validación)│
 └──────────────┘                              │  ├─ DiscoveryBeacon (anuncio UDP)│
-       ▲                                      │  └─ MiniGame activo (lógica)     │
+       ▲                                      │  ├─ Tournament (puntos, rondas)  │
+       │                                      │  ├─ Pantallas (host/ui/)         │
+       │                                      │  └─ MiniGame activo (lógica)     │
        └──────── anuncio UDP broadcast ────── └───────────────────────────────┘
 ```
 
@@ -25,16 +27,42 @@ El celular no sabe qué juego se está jugando. La TV le dice **qué control mos
 
 *Ejemplo:* al arrancar Ping Pong, la TV envía `{"type":"layout","layout":"slider_h"}` y todos los celulares cambian a un slider.
 
-### Sesión con fases
-`HostMain` es una máquina de estados simple:
+### Sesión con fases (modo competencia)
+`HostMain` es una máquina de estados simple que recorre la lista de juegos elegida:
 
 ```
-LOBBY ──elegir juego──► PLAYING ──juego termina──► RESULTS ──5 seg──► LOBBY
-  ▲                        │
-  └──── botón Atrás ───────┘
+LOBBY ──¡A jugar!──► PLAYING ──juego termina──► RESULTS (resumen de ronda)
+  ▲                    ▲                              │
+  │                    └──── quedan juegos ◄──────────┤ OK o 15 s
+  │                                                   ▼
+  └──── Cambiar juegos ◄──── RESULTS (podio) ◄── no quedan juegos
+                               │
+                               └── Jugar otra vez ──► PLAYING
 ```
 
-Durante `PLAYING` no entran jugadores nuevos, pero **sí** se reconectan los que ya estaban.
+- En el **lobby** se elige cuántos juegan (esa es la capacidad de la sala) y qué minijuegos entran.
+- **Atrás** del control remoto abre un menú de pausa: seguir, saltar el juego (sin puntos) o terminar (ir al podio).
+- Desde el lobby hasta el podio no entran jugadores nuevos, pero **sí** se reconectan los que ya estaban.
+
+### Puntos por posición
+Cada minijuego reporta su puntaje propio y `Tournament` lo traduce a puestos: 1° 100 · 2° 70 · 3° 50 · 4° 30.
+
+*Ejemplo:* en Arena, Pablo junta 12 estrellas y Sofi y Tomi 9. Pablo suma +100 y Sofi y Tomi empatan en 2° (+70 cada uno). Así 40 toques en Carrera no "pesan" más que 5 goles en Ping Pong. Detalle y alternativas en [ADR 0003](adr/0003-modo-competencia.md).
+
+### Capas de la TV
+```
+HostMain (orquesta fases)
+├─ PartyBackground           fondo animado (cielo, nubes, bloques)
+├─ capa de juego             MiniGame activo (Node2D, dibuja su propio fondo)
+├─ LobbyScreen               unirse · cuántos juegan · qué juegos
+├─ RoundSummaryScreen        resumen por jugador tras cada juego
+├─ FinalScreen               podio
+└─ PauseMenu                 encima de todo
+```
+Cada pantalla es un componente independiente que **emite señales** (`start_requested`, `continue_requested`…) y no conoce a las demás. La lógica de puntos no vive en ninguna pantalla: está en `Tournament`, que se testea sola.
+
+### Sistema visual
+Colores, tipografía y funciones de dibujo están en `core/ui/ui_theme.gd` (*design tokens*). Las mascotas, chips y fondos se dibujan por código. Ver [ADR 0004](adr/0004-sistema-visual.md) y la skill `.claude/skills/diseno-tv/`.
 
 ### Reconexión con token
 Al unirse, cada jugador recibe un token aleatorio de 128 bits. Si el celular se bloquea o se corta el Wi-Fi, el cliente reintenta con backoff exponencial (0,5 s, 1 s, 2 s… hasta 5 s) presentando el token, y recupera **el mismo lugar, color e id**. El host reserva el lugar 30 segundos.
@@ -58,6 +86,8 @@ Cada juego hereda de `MiniGame` y se registra en `MiniGameRegistry.GAMES`. El lo
 Registradas en [adr/](adr/):
 - [0001 · Motor: Godot 4](adr/0001-motor-godot.md)
 - [0002 · Red local con WebSocket y host autoritativo](adr/0002-red-local-websocket.md)
+- [0003 · Modo competencia con puntos por posición](adr/0003-modo-competencia.md)
+- [0004 · Sistema visual dibujado por código](adr/0004-sistema-visual.md)
 
 ## Límites conocidos (v0.1)
 

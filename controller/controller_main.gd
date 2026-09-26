@@ -21,6 +21,9 @@ var _join_status: Label
 
 var _play_screen: Control
 var _header: Label
+var _header_avatar: PlayerAvatar
+var _wait_view: Control
+var _wait_avatar: PlayerAvatar
 var _latency: Label
 var _layout_host: Control
 var _active_layout: Control
@@ -34,6 +37,7 @@ var _last_sent_btn := -1
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	theme = UiTheme.build()
 	DisplayServer.screen_set_keep_on(true)
 	add_child(client)
 	add_child(discovery)
@@ -86,7 +90,7 @@ func _on_joined(info: Dictionary) -> void:
 func _on_rejected(reason: String) -> void:
 	var messages := {
 		Protocol.R_BAD_ROOM: "Código incorrecto. Mirá el código en la TV.",
-		Protocol.R_ROOM_FULL: "La sala está llena (máximo 4 jugadores).",
+		Protocol.R_ROOM_FULL: "La sala está llena. Pedile a quien tiene el control de la TV que sume un lugar.",
 		Protocol.R_GAME_IN_PROGRESS: "Hay una partida en curso. Esperá a que termine.",
 		Protocol.R_BAD_NAME: "Elegí un apodo válido.",
 		Protocol.R_BAD_VERSION: "Versión distinta a la de la TV. Actualizá ambas apps.",
@@ -114,9 +118,7 @@ func _on_layout_changed(layout: String, data: Dictionary) -> void:
 			b.color = color
 			b.label = str(data.get("label", "A")).left(12)
 			_active_layout = b
-	for c in _layout_host.get_children():
-		if c != _active_layout and c is Label:
-			c.visible = _active_layout == null
+	_wait_view.visible = _active_layout == null
 	if _active_layout:
 		_active_layout.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		_active_layout.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -128,14 +130,14 @@ func _on_hosts_changed(hosts: Array[Dictionary]) -> void:
 	for c in _hosts_box.get_children():
 		c.queue_free()
 	if hosts.is_empty():
-		_hosts_box.add_child(_label("Buscando TVs en tu Wi-Fi…", 34, Color("#888780")))
+		_hosts_box.add_child(_label("Buscando TVs en tu Wi-Fi…", 32, UiTheme.INK_SOFT))
 		return
 	for h in hosts:
 		var b := Button.new()
 		b.text = "%s  (%s)" % [h.name, h.ip]
 		b.toggle_mode = true
 		b.button_pressed = _selected_host.get("ip") == h.ip
-		b.custom_minimum_size = Vector2(0, 110)
+		b.custom_minimum_size = Vector2(0, 104)
 		b.add_theme_font_size_override("font_size", 36)
 		b.pressed.connect(func() -> void:
 			_selected_host = h
@@ -180,36 +182,44 @@ func _show_join(message: String) -> void:
 
 func _update_header() -> void:
 	var info := client.player_info
-	_header.text = "Jugador %d · %s" % [info.get("id", 0), info.get("name", "")]
-	_header.add_theme_color_override("font_color", info.get("color", Color.WHITE))
+	var slot := int(info.get("id", 1)) - 1
+	var color: Color = info.get("color", Color.WHITE)
+	_header.text = "%s · %s" % [UiTheme.player_tag(slot), info.get("name", "")]
+	for avatar in [_header_avatar, _wait_avatar]:
+		avatar.slot = slot
+		avatar.color = color
 
 
 # --- UI -------------------------------------------------------------------------
 
 func _build_ui() -> void:
-	var bg := ColorRect.new()
-	bg.color = Color("#1b1b2f")
-	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var bg := PartyBackground.new()
+	bg.bricks = false
+	bg.towers = false
+	bg.checker_floor = false
 	add_child(bg)
 
-	# Pantalla para unirse
+	# Pantalla para unirse: una tarjeta centrada, legible en celular apaisado.
 	var margin := MarginContainer.new()
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	for side in ["left", "right", "top", "bottom"]:
-		margin.add_theme_constant_override("margin_" + side, 60)
+		margin.add_theme_constant_override("margin_" + side, 40)
 	add_child(margin)
 	_join_screen = margin
+	var card := PanelContainer.new()
+	card.custom_minimum_size = Vector2(1100, 0)
+	card.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	margin.add_child(card)
 	var scroll := ScrollContainer.new()
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	margin.add_child(scroll)
+	card.add_child(scroll)
 	var col := VBoxContainer.new()
 	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	col.add_theme_constant_override("separation", 24)
+	col.add_theme_constant_override("separation", 20)
 	scroll.add_child(col)
 
-	col.add_child(_label("Party Games · Control", 56))
-	col.add_child(_label("1. Elegí la TV", 36, Color("#B4B2A9"), HORIZONTAL_ALIGNMENT_LEFT))
+	col.add_child(UiTheme.headline("Party Games", 64, UiTheme.ACCENT))
+	col.add_child(_section("1. Elegí la TV"))
 	_hosts_box = VBoxContainer.new()
 	_hosts_box.add_theme_constant_override("separation", 12)
 	col.add_child(_hosts_box)
@@ -217,12 +227,12 @@ func _build_ui() -> void:
 	_ip_edit = _line_edit("…o escribí la IP que muestra la TV", 15)
 	col.add_child(_ip_edit)
 
-	col.add_child(_label("2. Tu apodo", 36, Color("#B4B2A9"), HORIZONTAL_ALIGNMENT_LEFT))
+	col.add_child(_section("2. Tu apodo"))
 	_name_edit = _line_edit("Apodo", Protocol.NAME_MAX_LENGTH)
 	_name_edit.text = _load_name()
 	col.add_child(_name_edit)
 
-	col.add_child(_label("3. Código de la TV", 36, Color("#B4B2A9"), HORIZONTAL_ALIGNMENT_LEFT))
+	col.add_child(_section("3. Código de la TV"))
 	_code_edit = _line_edit("ABCD", Protocol.ROOM_CODE_LENGTH)
 	_code_edit.text_changed.connect(func(t: String) -> void:
 		var caret := _code_edit.caret_column
@@ -232,11 +242,14 @@ func _build_ui() -> void:
 
 	var join := Button.new()
 	join.text = "Unirme"
-	join.custom_minimum_size = Vector2(0, 130)
-	join.add_theme_font_size_override("font_size", 48)
+	join.custom_minimum_size = Vector2(0, 120)
+	join.add_theme_font_size_override("font_size", 46)
+	join.add_theme_stylebox_override("normal", UiTheme.button_style(UiTheme.ACCENT))
+	join.add_theme_stylebox_override("hover", UiTheme.button_style(UiTheme.ACCENT.lightened(0.1)))
+	join.add_theme_stylebox_override("pressed", UiTheme.button_style(UiTheme.ACCENT, true))
 	join.pressed.connect(_on_join_pressed)
 	col.add_child(join)
-	_join_status = _label("", 32, Color("#F09595"))
+	_join_status = _label("", 30, UiTheme.DANGER)
 	_join_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	col.add_child(_join_status)
 
@@ -244,48 +257,65 @@ func _build_ui() -> void:
 	_play_screen = VBoxContainer.new()
 	_play_screen.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(_play_screen)
+	var top_margin := MarginContainer.new()
+	for side in ["left", "right", "top"]:
+		top_margin.add_theme_constant_override("margin_" + side, 24)
+	_play_screen.add_child(top_margin)
 	var top := HBoxContainer.new()
-	top.custom_minimum_size = Vector2(0, 110)
-	_play_screen.add_child(top)
+	top.custom_minimum_size = Vector2(0, 100)
+	top.add_theme_constant_override("separation", 16)
+	top_margin.add_child(top)
 	var leave := Button.new()
 	leave.text = "Salir"
-	leave.custom_minimum_size = Vector2(180, 0)
+	leave.custom_minimum_size = Vector2(170, 0)
 	leave.add_theme_font_size_override("font_size", 30)
 	leave.pressed.connect(_on_leave_pressed)
 	top.add_child(leave)
-	_header = _label("", 40)
+	_header_avatar = PlayerAvatar.new()
+	_header_avatar.custom_minimum_size = Vector2(90, 100)
+	top.add_child(_header_avatar)
+	_header = UiTheme.headline("", 44)
+	_header.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	_header.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	top.add_child(_header)
-	_latency = _label("", 28, Color("#888780"))
+	_latency = UiTheme.label("", 28, UiTheme.INK_SOFT, true)
 	_latency.custom_minimum_size = Vector2(160, 0)
 	top.add_child(_latency)
 	_layout_host = Control.new()
 	_layout_host.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_play_screen.add_child(_layout_host)
-	var wait := _label("Mirá la TV: esperando que empiece un juego", 44, Color("#B4B2A9"))
-	wait.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	wait.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_layout_host.add_child(wait)
+
+	var wait_box := VBoxContainer.new()
+	wait_box.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	wait_box.alignment = BoxContainer.ALIGNMENT_CENTER
+	_layout_host.add_child(wait_box)
+	_wait_view = wait_box
+	_wait_avatar = PlayerAvatar.new()
+	_wait_avatar.mood = PlayerAvatar.Mood.HAPPY
+	_wait_avatar.custom_minimum_size = Vector2(0, 330)
+	wait_box.add_child(_wait_avatar)
+	var wait := UiTheme.headline("¡Mirá la TV!", 64)
+	wait_box.add_child(wait)
+	var wait_sub := UiTheme.label("El juego empieza cuando la TV lo elija", 34, UiTheme.INK, true)
+	wait_sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	wait_box.add_child(wait_sub)
 	_play_screen.visible = false
 
 
-func _label(text: String, size: int, color: Color = Color.WHITE,
+func _section(text: String) -> Label:
+	return UiTheme.label(text, 34, UiTheme.INK, true, HORIZONTAL_ALIGNMENT_LEFT)
+
+
+func _label(text: String, size: int, color: Color = UiTheme.INK,
 		align: HorizontalAlignment = HORIZONTAL_ALIGNMENT_CENTER) -> Label:
-	var l := Label.new()
-	l.text = text
-	l.horizontal_alignment = align
-	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	l.add_theme_font_size_override("font_size", size)
-	l.add_theme_color_override("font_color", color)
-	return l
+	return UiTheme.label(text, size, color, false, align)
 
 
 func _line_edit(placeholder: String, max_len: int) -> LineEdit:
 	var e := LineEdit.new()
 	e.placeholder_text = placeholder
 	e.max_length = max_len
-	e.custom_minimum_size = Vector2(0, 100)
-	e.add_theme_font_size_override("font_size", 40)
+	e.custom_minimum_size = Vector2(0, 96)
 	return e
 
 

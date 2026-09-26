@@ -64,7 +64,7 @@ Seguido del cierre de la conexión con código **4000** y el motivo como razón 
 |---|---|
 | `bad_version` | Versión de protocolo distinta |
 | `bad_room` | Código incorrecto |
-| `room_full` | Ya hay 4 jugadores |
+| `room_full` | La sala alcanzó la capacidad elegida en la TV ("¿Cuántos juegan?", máximo 4) |
 | `bad_name` | Apodo vacío tras limpiarlo |
 | `game_in_progress` | Hay partida en curso (solo reconexiones permitidas) |
 | `malformed` | Mensaje inválido antes de unirse |
@@ -86,7 +86,7 @@ Seguido del cierre de la conexión con código **4000** y el motivo como razón 
 ```json
 {"v":1,"type":"phase","phase":"playing"}
 ```
-Valores: `lobby`, `playing`, `results`.
+Valores: `lobby`, `playing`, `results`. En modo competencia `results` cubre tanto el resumen de cada ronda como el podio final (el celular muestra "Mirá la TV" en ambos casos).
 
 ### `pong`
 ```json

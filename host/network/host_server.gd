@@ -25,6 +25,11 @@ var room_code := ""
 var port := 0
 ## Durante una partida no entran jugadores nuevos (sí reconexiones).
 var accepting_new_players := true
+## Capacidad de la sala (1..MAX_PLAYERS): la elige quien maneja la TV
+## ("¿Cuántos juegan?"). Bajarla no expulsa a nadie: solo frena a los nuevos.
+var max_players := Protocol.MAX_PLAYERS:
+	set(value):
+		max_players = clampi(value, 1, Protocol.MAX_PLAYERS)
 var current_layout := Protocol.LAYOUT_WAIT
 var current_layout_data: Dictionary = {}
 var current_phase := Protocol.PHASE_LOBBY
@@ -242,7 +247,7 @@ func _handle_join(key: int, msg: Dictionary) -> void:
 		_reject(key, Protocol.R_BAD_NAME)
 		return
 	var slot := _free_slot()
-	if slot < 0:
+	if slot < 0 or _players.size() >= max_players:
 		_reject(key, Protocol.R_ROOM_FULL)
 		return
 

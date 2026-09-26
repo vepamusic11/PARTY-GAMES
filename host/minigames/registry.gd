@@ -10,10 +10,17 @@ const GAMES: Array[Script] = [
 ]
 
 
+## Metadatos opcionales y su valor si el juego no los define.
+const OPTIONAL_DEFAULTS := {
+	"accent": Color("#3E7BFA"),   ## Color de la tarjeta en el lobby.
+	"score_label": "puntos",      ## Unidad del puntaje: "12 estrellas".
+}
+
+
 static func all_info() -> Array[Dictionary]:
 	var list: Array[Dictionary] = []
 	for script in GAMES:
-		list.append(script.call("get_info"))
+		list.append(_with_defaults(script.call("get_info")))
 	return list
 
 
@@ -21,7 +28,7 @@ static func info(game_id: String) -> Dictionary:
 	for script in GAMES:
 		var i: Dictionary = script.call("get_info")
 		if i.id == game_id:
-			return i
+			return _with_defaults(i)
 	return {}
 
 
@@ -34,3 +41,9 @@ static func create(game_id: String) -> MiniGame:
 
 static func can_play(info: Dictionary, player_count: int) -> bool:
 	return player_count >= int(info.min_players) and player_count <= int(info.max_players)
+
+
+static func _with_defaults(i: Dictionary) -> Dictionary:
+	var out := i.duplicate()
+	out.merge(OPTIONAL_DEFAULTS)  # merge sin overwrite: lo del juego manda.
+	return out

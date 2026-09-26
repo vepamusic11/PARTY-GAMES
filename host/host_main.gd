@@ -1,49 +1,57 @@
 class_name HostMain
 extends Control
 ## Pantalla principal de la TV. Orquesta la sesión:
-##   LOBBY  -> los jugadores se unen, alguien elige un juego con el control remoto
-##   PLAYING -> corre el minijuego; los inputs de los celulares van al juego
-##   RESULTS -> muestra el ganador unos segundos y vuelve al LOBBY
+##   LOBBY   -> los jugadores se unen; se elige cuántos juegan y qué
+##              minijuegos entran en la competencia
+##   PLAYING -> corre un minijuego de la competencia
+##   RESULTS -> resumen de la ronda (puntos de cada jugador) y, al final,
+##              el podio. Desde el podio se juega otra vez o se vuelve al lobby.
 ##
-## Toda la UI se navega con el D-pad del control remoto (requisito de
-## Google TV y Apple TV), no hace falta mouse ni pantalla táctil.
+## Este script solo coordina: la lógica de puntos vive en Tournament y cada
+## pantalla en host/ui/. Toda la UI se navega con el D-pad del control
+## remoto (requisito de Google TV y Apple TV): no hace falta mouse ni táctil.
 
-const RESULTS_SECONDS := 5.0
+## Puerto y anuncio en la red configurables antes de agregarlo al árbol
+## (los tests usan otro puerto y sin anuncio UDP).
+var server_port := Protocol.WS_PORT
+var announce := true
 
 var server := HostServer.new()
 var beacon := DiscoveryBeacon.new()
 var phase := Protocol.PHASE_LOBBY
+var tournament: Tournament
 
 var _game: MiniGame
-var _lobby: Control
-var _results: Control
-var _results_label: Label
-var _code_label: Label
-var _address_label: Label
-var _status_label: Label
-var _slot_labels: Array[Label] = []
-var _game_buttons: Dictionary = {}  # game_id -> Button
+var _background: PartyBackground
+var _game_layer: Control
+var _lobby: LobbyScreen
+var _summary: RoundSummaryScreen
+var _final: FinalScreen
+var _pause: PauseMenu
 
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	theme = UiTheme.build()
 	add_child(server)
 	add_child(beacon)
 	server.player_joined.connect(func(_p: Dictionary) -> void: _refresh_lobby())
 	server.player_reconnected.connect(func(_p: Dictionary) -> void: _refresh_lobby())
-	server.player_disconnected.connect(_on_player_disconnected)
-	server.player_left.connect(_on_player_left)
+	server.player_disconnected.connect(_on_player_gone)
+	server.player_left.connect(_on_player_gone)
 	server.input_received.connect(_on_input)
 
 	_build_ui()
-	var err := server.start()
+	var err := server.start(server_port)
 	if err != OK:
-		_status_label.text = "No se pudo abrir el puerto %d (error %d). ¿Otra instancia abierta?" % [Protocol.WS_PORT, err]
+		_lobby.set_status("No se pudo abrir el puerto %d (error %d). ¿Hay otra instancia abierta?" % [server_port, err])
 		return
-	beacon.start(server.port, _device_name())
-	_code_label.text = server.room_code
-	_address_label.text = "IP: %s   ·   puerto %d" % [", ".join(_local_ipv4()), server.port]
+	if announce:
+		beacon.start(server.port, _device_name())
+	_lobby.set_room(server.room_code, "%s  ·  puerto %d" % [", ".join(_local_ipv4()), server.port])
+	server.max_players = _lobby.player_count
 	_refresh_lobby()
+	_lobby.focus_default()
 
 
 func _exit_tree() -> void:
@@ -51,173 +59,192 @@ func _exit_tree() -> void:
 	server.stop()
 
 
-# --- Flujo de la sesión -------------------------------------------------------
+# --- Flujo de la competencia ------------------------------------------------------
 
-func start_game(game_id: String) -> void:
+## Arranca una competencia con los juegos elegidos. Devuelve false si no se
+## puede (fase incorrecta, sin jugadores o sin juegos válidos).
+func start_tournament(game_ids: Array[String], shuffle: bool = false) -> bool:
 	if phase != Protocol.PHASE_LOBBY:
-		return
+		return false
 	var players := server.get_players()
-	var info := MiniGameRegistry.info(game_id)
-	if info.is_empty() or not MiniGameRegistry.can_play(info, players.size()):
-		return
-	_game = MiniGameRegistry.create(game_id)
-	_game.finished.connect(_on_game_finished)
-	add_child(_game)
-	_game.setup(players)
-	_lobby.visible = false
-	phase = Protocol.PHASE_PLAYING
+	if players.is_empty():
+		return false
+	var t := Tournament.new(game_ids, players, shuffle)
+	if t.game_ids.is_empty():
+		return false
+	tournament = t
 	server.accepting_new_players = false
+	_lobby.visible = false
+	_play_next()
+	return true
+
+
+func _play_next() -> void:
+	_summary.hide_summary()
+	var id := tournament.advance(server.get_players().size())
+	if id.is_empty():
+		_show_final()
+		return
+	var info := MiniGameRegistry.info(id)
+	_game = MiniGameRegistry.create(id)
+	_game.finished.connect(_on_game_finished)
+	_game_layer.add_child(_game)
+	_game.setup(server.get_players())
+	_background.visible = false  # El juego dibuja su propio fondo.
+	phase = Protocol.PHASE_PLAYING
 	server.set_phase(phase)
 	server.set_layout(info.layout, info.layout_data)
 
 
 func _on_game_finished(result: Dictionary) -> void:
+	if not is_instance_valid(_game) or tournament == null:
+		return
+	var summary := tournament.record(result, _game.players)
+	_end_game()
+	_enter_results()
+	var next_id := tournament.peek_next(server.get_players().size())
+	_summary.show_summary(summary, tournament.standings(), str(MiniGameRegistry.info(next_id).get("title", "")))
+
+
+func _show_final() -> void:
+	_end_game()
+	_summary.hide_summary()
+	_enter_results()
+	var titles: Array[String] = []
+	for round_summary in tournament.history:
+		titles.append(str(round_summary.title))
+	_final.show_final(tournament.standings(), titles)
+
+
+func _enter_results() -> void:
+	_background.visible = true
 	phase = Protocol.PHASE_RESULTS
 	server.set_phase(phase)
 	server.set_layout(Protocol.LAYOUT_WAIT)
-	var names: Array[String] = []
-	for pid: int in result.get("winners", []):
-		for p in server.get_players():
-			if p.id == pid:
-				names.append(p.name)
-	_results_label.text = "¡Ganó %s!\n%s" % [" y ".join(names) if not names.is_empty() else "nadie", result.get("summary", "")]
-	_results.visible = true
-	await get_tree().create_timer(RESULTS_SECONDS).timeout
-	_back_to_lobby()
 
 
-func _back_to_lobby() -> void:
+func _end_game() -> void:
+	_pause.close()
 	if is_instance_valid(_game):
 		_game.queue_free()
 	_game = null
-	_results.visible = false
+
+
+func _back_to_lobby() -> void:
+	_end_game()
+	tournament = null
+	_summary.hide_summary()
+	_final.hide_final()
+	_background.visible = true
 	_lobby.visible = true
 	phase = Protocol.PHASE_LOBBY
 	server.accepting_new_players = true
 	server.set_phase(phase)
 	server.set_layout(Protocol.LAYOUT_WAIT)
 	_refresh_lobby()
+	_lobby.focus_default()
 
+
+func _play_again() -> void:
+	_back_to_lobby()
+	if _lobby.can_start():
+		start_tournament(_lobby.selected_game_ids(), _lobby.shuffle)
+
+
+# --- Pausa ------------------------------------------------------------------------
+
+func _unhandled_input(event: InputEvent) -> void:
+	if not event.is_action_pressed("ui_cancel"):
+		return
+	if _pause.visible:
+		_resume()
+	elif phase == Protocol.PHASE_PLAYING and is_instance_valid(_game):
+		_game.process_mode = Node.PROCESS_MODE_DISABLED
+		_pause.open(str(MiniGameRegistry.info(tournament.current_game_id).get("title", "")), true)
+	elif phase == Protocol.PHASE_RESULTS and _summary.visible:
+		_summary.paused = true
+		_pause.open("Resumen de la ronda", false)
+	else:
+		return
+	get_viewport().set_input_as_handled()
+
+
+func _resume() -> void:
+	_pause.close()
+	if is_instance_valid(_game):
+		_game.process_mode = Node.PROCESS_MODE_INHERIT
+	if _summary.visible:
+		_summary.paused = false
+		_summary.focus_continue()
+
+
+func _skip_game() -> void:
+	if phase != Protocol.PHASE_PLAYING or tournament == null:
+		return
+	tournament.skip_current()
+	_end_game()
+	_background.visible = true
+	_play_next()
+
+
+func _quit_tournament() -> void:
+	if tournament == null or tournament.history.is_empty():
+		_back_to_lobby()
+		return
+	tournament.skip_current()
+	_show_final()
+
+
+# --- Red --------------------------------------------------------------------------
 
 func _on_input(player_id: int, input: Dictionary) -> void:
-	if phase == Protocol.PHASE_PLAYING and is_instance_valid(_game):
+	if phase == Protocol.PHASE_PLAYING and is_instance_valid(_game) and not _pause.visible:
 		_game.on_input(player_id, input)
 
 
-func _on_player_disconnected(player_id: int) -> void:
+## Desconexión temporal o salida definitiva: el juego recibe input neutro.
+## Si no queda nadie, se vuelve al lobby.
+func _on_player_gone(player_id: int) -> void:
 	if phase == Protocol.PHASE_PLAYING and is_instance_valid(_game):
 		_game.on_player_disconnected(player_id)
-	_refresh_lobby()
-
-
-func _on_player_left(player_id: int) -> void:
-	if phase == Protocol.PHASE_PLAYING and is_instance_valid(_game):
-		_game.on_player_disconnected(player_id)
-	_refresh_lobby()
-
-
-func _unhandled_input(event: InputEvent) -> void:
-	# "Atrás" del control remoto durante una partida: volver al lobby.
-	if event.is_action_pressed("ui_cancel") and phase == Protocol.PHASE_PLAYING:
+	if phase != Protocol.PHASE_LOBBY and server.get_players().is_empty():
 		_back_to_lobby()
-		get_viewport().set_input_as_handled()
-
-
-# --- UI -----------------------------------------------------------------------
-
-func _build_ui() -> void:
-	var bg := ColorRect.new()
-	bg.color = Color("#1b1b2f")
-	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	add_child(bg)
-
-	_lobby = VBoxContainer.new()
-	_lobby.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	_lobby.add_theme_constant_override("separation", 28)
-	_lobby.alignment = BoxContainer.ALIGNMENT_CENTER
-	add_child(_lobby)
-
-	_lobby.add_child(_label("Party Games", 72))
-	_lobby.add_child(_label("Abrí la app en tu celular, elegí esta TV e ingresá el código", 32, Color("#B4B2A9")))
-	_code_label = _label("····", 160, Color("#FAC775"))
-	_lobby.add_child(_code_label)
-	_address_label = _label("", 26, Color("#888780"))
-	_lobby.add_child(_address_label)
-
-	var slots := HBoxContainer.new()
-	slots.alignment = BoxContainer.ALIGNMENT_CENTER
-	slots.add_theme_constant_override("separation", 40)
-	_lobby.add_child(slots)
-	for i in Protocol.MAX_PLAYERS:
-		var l := _label("", 36)
-		l.custom_minimum_size = Vector2(360, 90)
-		slots.add_child(l)
-		_slot_labels.append(l)
-
-	var games := HBoxContainer.new()
-	games.alignment = BoxContainer.ALIGNMENT_CENTER
-	games.add_theme_constant_override("separation", 30)
-	_lobby.add_child(games)
-	for info in MiniGameRegistry.all_info():
-		var b := Button.new()
-		b.custom_minimum_size = Vector2(420, 120)
-		b.add_theme_font_size_override("font_size", 34)
-		b.pressed.connect(start_game.bind(info.id))
-		games.add_child(b)
-		_game_buttons[info.id] = b
-
-	_status_label = _label("", 28, Color("#F09595"))
-	_lobby.add_child(_status_label)
-
-	_results = CenterContainer.new()
-	_results.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	_results.visible = false
-	_results.z_index = 10
-	var panel := PanelContainer.new()
-	_results.add_child(panel)
-	_results_label = _label("", 80)
-	panel.add_child(_results_label)
-	add_child(_results)
+	_refresh_lobby()
 
 
 func _refresh_lobby() -> void:
-	var players := server.get_players()
-	for i in _slot_labels.size():
-		var l := _slot_labels[i]
-		var p: Dictionary = {}
-		for candidate in players:
-			if candidate.slot == i:
-				p = candidate
-		if p.is_empty():
-			l.text = "Jugador %d\n(libre)" % (i + 1)
-			l.add_theme_color_override("font_color", Color("#5F5E5A"))
-		else:
-			l.text = "%s%s" % [p.name, "" if p.connected else "\n(reconectando…)"]
-			l.add_theme_color_override("font_color", p.color)
-
-	var first_enabled: Button = null
-	for info in MiniGameRegistry.all_info():
-		var b: Button = _game_buttons[info.id]
-		var ok := MiniGameRegistry.can_play(info, players.size())
-		b.disabled = not ok
-		var range_text := "%d" % info.min_players if info.min_players == info.max_players \
-			else "%d–%d" % [info.min_players, info.max_players]
-		b.text = "%s\n%s jugadores" % [info.title, range_text]
-		if ok and first_enabled == null:
-			first_enabled = b
-	var focused := get_viewport().gui_get_focus_owner()
-	if first_enabled and (focused == null or (focused is Button and (focused as Button).disabled)):
-		first_enabled.grab_focus()
+	_lobby.refresh(server.get_players())
 
 
-func _label(text: String, size: int, color: Color = Color.WHITE) -> Label:
-	var l := Label.new()
-	l.text = text
-	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	l.add_theme_font_size_override("font_size", size)
-	l.add_theme_color_override("font_color", color)
-	return l
+# --- UI ---------------------------------------------------------------------------
+
+func _build_ui() -> void:
+	_background = PartyBackground.new()
+	add_child(_background)
+	_game_layer = Control.new()
+	_game_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_game_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_game_layer)
+
+	_lobby = LobbyScreen.new()
+	_lobby.start_requested.connect(start_tournament)
+	_lobby.capacity_changed.connect(func(n: int) -> void: server.max_players = n)
+	add_child(_lobby)
+
+	_summary = RoundSummaryScreen.new()
+	_summary.continue_requested.connect(_play_next)
+	add_child(_summary)
+
+	_final = FinalScreen.new()
+	_final.play_again_requested.connect(_play_again)
+	_final.lobby_requested.connect(_back_to_lobby)
+	add_child(_final)
+
+	_pause = PauseMenu.new()
+	_pause.resume_requested.connect(_resume)
+	_pause.skip_requested.connect(_skip_game)
+	_pause.quit_requested.connect(_quit_tournament)
+	add_child(_pause)
 
 
 static func _local_ipv4() -> Array[String]:

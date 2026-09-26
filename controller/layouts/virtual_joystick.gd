@@ -51,11 +51,13 @@ func _release() -> void:
 
 
 func _draw() -> void:
-	if _touch_index == -1:
-		var c := size / 2.0
-		draw_arc(c, radius, 0, TAU, 64, Color(color, 0.35), 4.0)
-		draw_circle(c, radius * 0.4, Color(color, 0.35))
-		return
-	draw_circle(_origin, radius, Color(color, 0.15))
-	draw_arc(_origin, radius, 0, TAU, 64, Color(color, 0.6), 4.0)
-	draw_circle(_knob, radius * 0.4, color)
+	var active := _touch_index != -1
+	var c := _origin if active else size / 2.0
+	var knob := _knob if active else c
+	draw_circle(c, radius + 5.0, Color(UiTheme.INK, 0.8 if active else 0.35))
+	draw_circle(c, radius, Color(1, 1, 1, 0.55 if active else 0.3))
+	draw_circle(knob, radius * 0.42 + 5.0, UiTheme.INK)
+	draw_circle(knob, radius * 0.42, color if active else Color(color, 0.7))
+	draw_circle(knob + Vector2(-radius * 0.12, -radius * 0.12), radius * 0.14, Color(1, 1, 1, 0.45))
+	if not active:
+		UiTheme.draw_text(self, "Arrastrá en cualquier lugar", Vector2(size.x / 2.0, size.y - 40), 34, UiTheme.INK, 8, UiTheme.PAPER)

@@ -37,6 +37,11 @@ func _set_from(pos: Vector2) -> void:
 func _draw() -> void:
 	var margin := size.x * 0.08
 	var y := size.y / 2.0
-	draw_line(Vector2(margin, y), Vector2(size.x - margin, y), Color(color, 0.4), 10.0)
+	var track := Rect2(margin - 20, y - 16, size.x - margin * 2.0 + 40, 32)
+	UiTheme.draw_round_rect(self, track.grow(5), UiTheme.INK, 21)
+	UiTheme.draw_round_rect(self, track, Color(1, 1, 1, 0.8), 16)
 	var x := lerpf(margin, size.x - margin, (value.x + 1.0) / 2.0)
-	draw_rect(Rect2(x - 90, y - 40, 180, 80), color)
+	var knob := Rect2(x - 90, y - 44, 180, 88)
+	UiTheme.draw_round_rect(self, knob.grow(5), UiTheme.INK, 30)
+	UiTheme.draw_round_rect(self, knob, color, 26)
+	UiTheme.draw_text(self, "Deslizá el dedo de lado a lado", Vector2(size.x / 2.0, size.y - 60), 34, UiTheme.INK, 8, UiTheme.PAPER)

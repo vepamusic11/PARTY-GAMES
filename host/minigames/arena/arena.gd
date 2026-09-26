@@ -26,6 +26,8 @@ static func get_info() -> Dictionary:
 		"max_players": 4,
 		"layout": Protocol.LAYOUT_JOYSTICK,
 		"layout_data": {},
+		"accent": Color("#3E7BFA"),
+		"score_label": "estrellas",
 	}
 
 
@@ -73,16 +75,18 @@ func _random_star() -> Vector2:
 
 
 func _draw() -> void:
-	draw_rect(Rect2(Vector2.ZERO, SCREEN), Color("#1b1b2f"))
-	draw_rect(ARENA, Color("#26264a"))
-	draw_rect(ARENA, Color("#5a5a9a"), false, 4.0)
-	draw_text_centered("%d" % ceili(maxf(_time_left, 0.0)), Vector2(ARENA.end.x - 40, 70), 64, Color("#FAC775"))
-	for s in _stars:
-		draw_circle(s, STAR_RADIUS, Color("#FAC775"))
-	var hud_x := 200.0
-	for p in players:
-		var col: Color = p.color
-		draw_circle(_pos[p.id], RADIUS, col)
-		draw_string(ThemeDB.fallback_font, Vector2(hud_x, 80), "%s: %d" % [p.name, _score[p.id]],
-			HORIZONTAL_ALIGNMENT_LEFT, -1, 32, col)
-		hud_x += 360.0
+	draw_sky()
+	draw_play_field(ARENA)
+	var spin := Time.get_ticks_msec() / 1000.0
+	for i in _stars.size():
+		UiTheme.draw_star(self, _stars[i], STAR_RADIUS + 6.0, UiTheme.GOLD, sin(spin * 2.0 + i) * 0.25)
+	# Se dibuja de arriba hacia abajo: el que está más abajo queda "adelante".
+	var order := players.duplicate()
+	order.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return (_pos[a.id] as Vector2).y < (_pos[b.id] as Vector2).y)
+	for p in order:
+		var pos: Vector2 = _pos[p.id]
+		var moving := (_axis[p.id] as Vector2).length() > 0.1
+		var bob := sin(spin * 14.0) * 3.0 if moving else 0.0
+		PlayerAvatar.draw_mascot(self, pos + Vector2(0, RADIUS), 0.8, p.color, p.slot, PlayerAvatar.Mood.NORMAL, 0.0, absf(bob))
+		draw_text_centered(p.name, pos + Vector2(0, RADIUS + 24), 26, UiTheme.PAPER, 6)
+	draw_hud(_score, clock_text(_time_left))

@@ -37,9 +37,13 @@ func _update() -> void:
 
 
 func _draw() -> void:
-	var r := minf(size.x, size.y) * (0.36 if pressed else 0.4)
-	draw_circle(size / 2.0, r, color if pressed else Color(color, 0.75))
-	var font := ThemeDB.fallback_font
-	var fs := int(r * 0.35)
-	var w := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
-	draw_string(font, size / 2.0 + Vector2(-w / 2.0, fs / 3.0), label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color.BLACK)
+	# Botón de arcade: base oscura fija y tapa de color que "baja" al apretar.
+	var r := minf(size.x, size.y) * 0.38
+	var c := size / 2.0
+	var depth := r * (0.04 if pressed else 0.14)
+	draw_circle(c + Vector2(0, r * 0.14), r + 8.0, UiTheme.INK)
+	draw_circle(c + Vector2(0, r * 0.14), r, color.darkened(0.35))
+	draw_circle(c + Vector2(0, r * 0.14 - depth), r + 8.0, UiTheme.INK)
+	draw_circle(c + Vector2(0, r * 0.14 - depth), r, color)
+	draw_circle(c + Vector2(-r * 0.3, r * 0.14 - depth - r * 0.3), r * 0.22, Color(1, 1, 1, 0.3))
+	UiTheme.draw_text(self, label, c + Vector2(0, r * 0.14 - depth), int(r * 0.34), UiTheme.PAPER, maxi(6, int(r * 0.05)), UiTheme.INK)

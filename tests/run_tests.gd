@@ -137,6 +137,106 @@ func test_result_from_scores() -> void:
 	check(r.winners == [2, 3], "empate devuelve ambos ganadores")
 
 
+func test_registry_optional_defaults() -> void:
+	for info in MiniGameRegistry.all_info():
+		check(typeof(info.get("accent")) == TYPE_COLOR, "%s: accent es un color" % info.id)
+		check(typeof(info.get("score_label")) == TYPE_STRING and not str(info.score_label).is_empty(),
+			"%s: score_label es un texto" % info.id)
+	check(MiniGameRegistry.info("arena").score_label == "estrellas", "el juego puede sobrescribir los valores por defecto")
+
+
+# --- Competencia ------------------------------------------------------------------
+
+func test_tournament_rank() -> void:
+	var places := Tournament.rank([
+		{"id": 1, "score": 12.0, "winner": false},
+		{"id": 2, "score": 9.0, "winner": false},
+		{"id": 3, "score": 9.0, "winner": false},
+		{"id": 4, "score": 2.0, "winner": false},
+	] as Array[Dictionary])
+	check(places == {1: 1, 2: 2, 3: 2, 4: 4}, "empates comparten puesto y el siguiente se saltea (%s)" % places)
+	places = Tournament.rank([
+		{"id": 1, "score": 50.0, "winner": false},
+		{"id": 2, "score": 10.0, "winner": true},
+	] as Array[Dictionary])
+	check(places[2] == 1 and places[1] == 2, "el ganador declarado por el juego va primero")
+	check(Tournament.points_for_place(1) == 100 and Tournament.points_for_place(4) == 30, "puntos por puesto")
+	check(Tournament.points_for_place(9) == 30 and Tournament.points_for_place(0) == 100, "puestos fuera de rango se recortan")
+
+
+func test_tournament_flow() -> void:
+	var players := _fake_players(3)
+	var t := Tournament.new(["arena", "pingpong", "no-existe", "arena", "tap_race"] as Array[String], players)
+	check(t.game_ids == (["arena", "pingpong", "tap_race"] as Array[String]), "descarta ids desconocidos y repetidos")
+	check(t.advance(3) == "arena", "empieza por el primero")
+	check(t.round_number() == 1, "ronda 1 en curso")
+	var s := t.record({"winners": [1], "scores": {1: 12, 2: 9, 3: 9}}, players)
+	check(s.round == 1 and s.title == "Arena de estrellas" and s.score_label == "estrellas", "resumen con metadatos del juego")
+	check(s.rows.size() == 3 and s.rows[0].slot == 0, "una fila por jugador, ordenadas por lugar")
+	check(s.rows[0].points == 100 and s.rows[1].points == 70 and s.rows[2].points == 70, "puntos de la ronda")
+	check(s.rows[1].total_before == 0 and s.rows[1].total == 70, "total antes y después")
+	check(t.peek_next(3) == "tap_race", "peek saltea juegos que no admiten 3 jugadores")
+	check(t.advance(3) == "tap_race" and t.skipped == (["pingpong"] as Array[String]), "Ping Pong (2 jugadores) se saltea")
+	check(t.total_rounds() == 2, "las rondas salteadas no cuentan")
+	t.record({"winners": [3], "scores": {1: 20, 2: 30, 3: 40}}, players)
+	check(t.advance(3) == "" and t.is_over(), "termina cuando no quedan juegos")
+	var st := t.standings()
+	check(st[0].id == 3 and st[0].total == 170 and st[0].place == 1, "tabla general: primero Tomi con 170 (%s)" % [st[0]])
+	check(st[1].total == 150 and st[2].total == 140, "tabla general ordenada por puntos")
+
+
+func test_tournament_ties_and_skip() -> void:
+	var players := _fake_players(2)
+	var t := Tournament.new(["pingpong", "tap_race"] as Array[String], players, true)
+	check(t.game_ids.size() == 2 and "pingpong" in t.game_ids and "tap_race" in t.game_ids, "mezclar conserva los juegos")
+	t.advance(2)
+	t.skip_current()
+	check(t.skipped.size() == 1 and t.total_rounds() == 1, "saltar un juego no da puntos ni cuenta como ronda")
+	t.advance(2)
+	t.record({"winners": [1, 2], "scores": {1: 5, 2: 5}}, players)
+	var st := t.standings()
+	check(st[0].place == 1 and st[1].place == 1 and st[0].total == 100 and st[1].total == 100, "empate total: ambos primeros")
+
+
+func test_tournament_survives_bad_results() -> void:
+	var players := _fake_players(2)
+	var t := Tournament.new(["arena"] as Array[String], players)
+	t.advance(2)
+	var s := t.record({"winners": "x", "scores": {1: NAN, 2: "mucho"}}, players)
+	check(s.rows.size() == 2, "resultado inválido no rompe")
+	t = Tournament.new(["arena"] as Array[String], players)
+	t.advance(2)
+	s = t.record({}, players)
+	check(s.rows[0].place == 1 and s.rows[1].place == 1, "sin puntajes: todos empatan")
+	check(Tournament.new([] as Array[String], players).advance(2) == "", "sin juegos no hay rondas")
+
+
+# --- Lobby ------------------------------------------------------------------------
+
+func test_lobby_screen() -> void:
+	var lobby := LobbyScreen.new()
+	root.add_child(lobby)
+	var capacity: Array[int] = []
+	lobby.capacity_changed.connect(func(n: int) -> void: capacity.append(n))
+	lobby.refresh(_fake_players(1))
+	check(lobby.player_count == LobbyScreen.DEFAULT_PLAYERS, "arranca en %d jugadores" % LobbyScreen.DEFAULT_PLAYERS)
+	check(not lobby.can_start(), "no arranca si falta gente")
+	lobby.refresh(_fake_players(2))
+	check(lobby.can_start(), "con 2 de 2 se puede empezar")
+	check(lobby.selected_game_ids().size() == MiniGameRegistry.all_info().size(), "por defecto entran todos los juegos")
+	lobby.refresh(_fake_players(3))
+	check(lobby.player_count == 3 and capacity.has(3), "la cantidad sube sola si entra más gente")
+	check(not "pingpong" in lobby.selected_game_ids(), "juegos incompatibles con 3 quedan afuera")
+	(lobby._cards["arena"] as GameCard).button_pressed = false
+	check(lobby.selected_game_ids() == (["tap_race"] as Array[String]), "desmarcar un juego lo saca")
+	(lobby._cards["tap_race"] as GameCard).button_pressed = false
+	check(not lobby.can_start(), "sin juegos no se puede empezar")
+	lobby._stepper.set_value(1)
+	check(lobby.player_count == 3, "no se puede bajar de la cantidad de conectados")
+	lobby.queue_free()
+	await process_frame
+
+
 # --- Integración host <-> control por WebSocket real --------------------------
 
 func test_join_play_reconnect() -> void:
@@ -225,6 +325,80 @@ func test_join_play_reconnect() -> void:
 	await process_frame
 
 
+func test_room_capacity() -> void:
+	var server := HostServer.new()
+	root.add_child(server)
+	server.start(TEST_PORT + 2, "127.0.0.1")
+	server.max_players = 2
+	for n in ["A", "B"]:
+		_client().join("127.0.0.1", TEST_PORT + 2, server.room_code, n)
+	await _until(func() -> bool: return server.get_players().size() == 2)
+	var third := _client()
+	var r: Array = []
+	third.rejected.connect(func(reason: String) -> void: r.append(reason))
+	third.join("127.0.0.1", TEST_PORT + 2, server.room_code, "C")
+	await _until(func() -> bool: return not r.is_empty())
+	check(r == [Protocol.R_ROOM_FULL], "la capacidad elegida en la TV limita la sala (%s)" % [r])
+	server.max_players = 99
+	check(server.max_players == Protocol.MAX_PLAYERS, "la capacidad se recorta al máximo del protocolo")
+	server.stop()
+	server.queue_free()
+	await _free_clients()
+
+
+## Flujo completo en la TV con controles reales: lobby -> juego -> resumen ->
+## siguiente juego -> pausa/saltar -> podio -> jugar otra vez -> lobby.
+func test_host_tournament_flow() -> void:
+	var host := HostMain.new()
+	host.server_port = TEST_PORT + 3
+	host.announce = false
+	root.add_child(host)
+	await process_frame
+	var c1 := _client()
+	var layouts: Array = []
+	c1.layout_changed.connect(func(l: String, _d: Dictionary) -> void: layouts.append(l))
+	c1.join("127.0.0.1", TEST_PORT + 3, host.server.room_code, "Pablo")
+	_client().join("127.0.0.1", TEST_PORT + 3, host.server.room_code, "Sofi")
+	await _until(func() -> bool: return host.server.get_players().size() == 2)
+	check(host._lobby.can_start(), "lobby listo con 2 jugadores")
+	check(not host.start_tournament([] as Array[String]), "sin juegos no arranca")
+
+	check(host.start_tournament(["tap_race", "pingpong"] as Array[String]), "arranca la competencia")
+	check(host.phase == Protocol.PHASE_PLAYING and host._game != null, "fase de juego")
+	check(not host.server.accepting_new_players, "no entran jugadores nuevos durante la competencia")
+	await _until(func() -> bool: return Protocol.LAYOUT_ONE_BUTTON in layouts)
+	check(Protocol.LAYOUT_ONE_BUTTON in layouts, "el celular recibe el control del juego")
+
+	host._game.finish({"winners": [2], "scores": {1: 30, 2: 40}})
+	check(host.phase == Protocol.PHASE_RESULTS and host._summary.visible, "resumen de ronda al terminar")
+	check(host.tournament.totals == {1: 70, 2: 100}, "puntos acumulados (%s)" % host.tournament.totals)
+
+	var cancel := InputEventAction.new()
+	cancel.action = "ui_cancel"
+	cancel.pressed = true
+	host._unhandled_input(cancel)
+	check(host._pause.visible and host._summary.paused, "Atrás en el resumen abre el menú y frena la cuenta")
+	host._unhandled_input(cancel)
+	check(not host._pause.visible and not host._summary.paused, "Atrás de nuevo lo cierra")
+
+	host._summary._on_continue()
+	check(host.phase == Protocol.PHASE_PLAYING and host.tournament.current_game_id == "pingpong", "sigue Ping Pong")
+	host._unhandled_input(cancel)
+	check(host._pause.visible and host._game.process_mode == Node.PROCESS_MODE_DISABLED, "pausa congela el juego")
+	host._skip_game()
+	check(host._final.visible and host.tournament.is_over(), "saltar el último juego lleva al podio")
+	check(host.tournament.history.size() == 1, "el juego salteado no suma ronda")
+
+	host._play_again()
+	check(host.phase == Protocol.PHASE_PLAYING and host.tournament.history.is_empty(), "jugar otra vez reinicia los puntos")
+	host._quit_tournament()
+	check(host.phase == Protocol.PHASE_LOBBY and host._lobby.visible, "terminar sin rondas jugadas vuelve al lobby")
+	check(host.server.accepting_new_players, "en el lobby vuelven a entrar jugadores")
+
+	host.queue_free()
+	await _free_clients()
+
+
 func test_rejects_raw_garbage() -> void:
 	var server := HostServer.new()
 	root.add_child(server)
@@ -245,6 +419,21 @@ func test_rejects_raw_garbage() -> void:
 
 
 # --- Utilidades -----------------------------------------------------------------
+
+func _fake_players(n: int) -> Array[Dictionary]:
+	var names := ["Pablo", "Sofi", "Tomi", "Juli"]
+	var out: Array[Dictionary] = []
+	for i in n:
+		out.append({"id": i + 1, "slot": i, "name": names[i], "color": Protocol.player_color(i), "connected": true})
+	return out
+
+
+func _free_clients() -> void:
+	for c in root.get_children():
+		if c is ControllerClient:
+			c.queue_free()
+	await process_frame
+
 
 func _client() -> ControllerClient:
 	var c := ControllerClient.new()

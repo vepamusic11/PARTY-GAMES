@@ -4,7 +4,7 @@ extends MiniGame
 ## posición de la paleta (control absoluto, no velocidad).
 
 const POINTS_TO_WIN := 5
-const TABLE := Rect2(610, 60, 700, 960)
+const TABLE := Rect2(610, 130, 700, 900)
 const PADDLE_SIZE := Vector2(150, 22)
 const PADDLE_MARGIN := 50.0
 const BALL_RADIUS := 16.0
@@ -32,6 +32,8 @@ static func get_info() -> Dictionary:
 		"max_players": 2,
 		"layout": Protocol.LAYOUT_SLIDER_H,
 		"layout_data": {},
+		"accent": Color("#2EC4D6"),
+		"score_label": "puntos",
 	}
 
 
@@ -112,16 +114,33 @@ func _reset_ball(dir: int) -> void:
 
 
 func _draw() -> void:
-	draw_rect(Rect2(Vector2.ZERO, SCREEN), Color("#FAC775"))
-	draw_rect(TABLE, Color("#639922"))
+	draw_sky()
+	draw_rect(Rect2(0, SCREEN.y * 0.84, SCREEN.x, SCREEN.y * 0.16), Color("#F4F6FB"))
+	# Mesa con patas y sombra
+	UiTheme.draw_round_rect(self, TABLE.grow(22).grow_side(SIDE_BOTTOM, 18), UiTheme.INK, 30)
+	UiTheme.draw_round_rect(self, TABLE.grow(18), Color("#1F4FB0"), 26)
+	draw_rect(TABLE, Color("#2F6FDB"))
 	draw_rect(TABLE, Color.WHITE, false, 6.0)
-	draw_line(Vector2(TABLE.position.x, TABLE.get_center().y), Vector2(TABLE.end.x, TABLE.get_center().y), Color.WHITE, 6.0)
+	draw_line(Vector2(TABLE.get_center().x, TABLE.position.y), Vector2(TABLE.get_center().x, TABLE.end.y), Color(1, 1, 1, 0.5), 3.0)
+	var net_y := TABLE.get_center().y
+	draw_line(Vector2(TABLE.position.x - 24, net_y), Vector2(TABLE.end.x + 24, net_y), UiTheme.INK, 10.0)
+	draw_line(Vector2(TABLE.position.x - 24, net_y), Vector2(TABLE.end.x + 24, net_y), Color.WHITE, 5.0)
 	for pid: int in [_top_id, _bottom_id]:
 		var p := player_by_id(pid)
-		var y := TABLE.position.y + PADDLE_MARGIN if pid == _top_id else TABLE.end.y - PADDLE_MARGIN
+		var top := pid == _top_id
+		var y := TABLE.position.y + PADDLE_MARGIN if top else TABLE.end.y - PADDLE_MARGIN
 		var rect := Rect2(Vector2(_paddle_x[pid] - PADDLE_SIZE.x / 2.0, y - PADDLE_SIZE.y / 2.0), PADDLE_SIZE)
-		draw_rect(rect, p.color)
-		var label_y := 140.0 if pid == _top_id else SCREEN.y - 140.0
-		draw_string(ThemeDB.fallback_font, Vector2(TABLE.end.x + 60, label_y), "%s  %d" % [p.name, _score[pid]],
-			HORIZONTAL_ALIGNMENT_LEFT, -1, 44, Color("#412402"))
+		UiTheme.draw_round_rect(self, rect.grow(4), UiTheme.INK, 14)
+		UiTheme.draw_round_rect(self, rect, p.color, 11)
+		# Mascota y nombre al costado de su lado de la mesa
+		var side := Vector2(TABLE.end.x + 250, TABLE.position.y + 260 if top else TABLE.end.y - 90)
+		PlayerAvatar.draw_mascot(self, side, 1.6, p.color, p.slot, PlayerAvatar.Mood.HAPPY if _score[pid] > _score[_other(pid)] else PlayerAvatar.Mood.NORMAL)
+		draw_text_centered(p.name, side + Vector2(0, 40), 40, UiTheme.PAPER, 8)
+	UiTheme.draw_ellipse(self, _ball + Vector2(6, 10), BALL_RADIUS, BALL_RADIUS * 0.7, Color(0, 0, 0, 0.25))
+	draw_circle(_ball, BALL_RADIUS + 3.0, UiTheme.INK)
 	draw_circle(_ball, BALL_RADIUS, Color.WHITE)
+	draw_hud(_score, "Gana: %d" % POINTS_TO_WIN)
+
+
+func _other(pid: int) -> int:
+	return _bottom_id if pid == _top_id else _top_id
