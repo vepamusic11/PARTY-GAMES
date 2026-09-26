@@ -30,6 +30,8 @@ Juegos cortos para **1 a 4 jugadores en el sillón**: la **TV es la pantalla** y
   - **Carrera de toques** (1–4) · un botón
   - **Reloj exacto** (1–4) · un botón
   - **Esquivar** (1–4) · joystick · caen bloques; el último en pie gana
+  - **Empujones** (2–4) · joystick · tirá a los demás de una isla que se achica
+  - **Pintar el piso** (1–4) · joystick · pintá baldosas de tu color y robá las ajenas
 - Sistema visual propio: tipografía Fredoka, mascotas por jugador (distinguibles también sin color), marcadores hexagonales, fondos animados. Todo dibujado por código.
 - Toda la TV se maneja con el control remoto (D-pad), con menú de pausa en "Atrás".
 - 390 verificaciones automáticas (unitarias + integración real de red + flujo completo de la TV), compilación de todos los scripts y prueba de humo visual en CI.

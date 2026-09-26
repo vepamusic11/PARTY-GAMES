@@ -273,6 +273,77 @@ func test_paint_rules() -> void:
 			check(int(results[0].scores[1]) > 0, "%d jug.: con la brocha inicial Pablo tiene baldosas" % n)
 		g.queue_free()
 	check(script.get_info().score_label == "baldosas", "puntaje en baldosas")
+
+
+## Empujones: choque entre círculos, caída fuera de la isla, bonus por
+## tirar a un rival y un único `finished` con los que siguen en pie.
+func test_sumo_physics() -> void:
+	var script: Script = load("res://host/minigames/sumo/sumo.gd")
+	# Choque: A embiste a B (quieto) hacia la derecha.
+	var r: Dictionary = script.resolve_collision(Vector2(0, 0), Vector2(500, 0), Vector2(60, 0), Vector2.ZERO, 72.0)
+	check(r.hit, "detecta el choque si se superponen")
+	var vb: Vector2 = r.vb
+	var va: Vector2 = r.va
+	check(vb.x > 500.0 and absf(vb.y) < 0.001, "B sale en la dirección del empujón y con bonus (%s)" % vb)
+	check(va.x < vb.x, "A queda más lento que B (%s)" % va)
+	check((r.pb as Vector2).distance_to(r.pa) >= 72.0 - 0.01, "los cuerpos quedan separados")
+	check((vb - va).dot(Vector2.RIGHT) > 0.0, "después del choque se alejan")
+	var diag: Dictionary = script.resolve_collision(Vector2(0, 0), Vector2(300, 300), Vector2(40, 40), Vector2(-100, -100), 72.0)
+	check((diag.vb as Vector2).normalized().dot(Vector2(1, 1).normalized()) > 0.99, "en diagonal también conserva la dirección")
+	var apart: Dictionary = script.resolve_collision(Vector2(0, 0), Vector2(-100, 0), Vector2(200, 0), Vector2(100, 0), 72.0)
+	check(not apart.hit and apart.va == Vector2(-100, 0), "sin contacto no cambia nada")
+	check(script.is_off_platform(Vector2(1000, 0), Vector2.ZERO, 400.0) and not script.is_off_platform(Vector2(390, 0), Vector2.ZERO, 400.0),
+		"cae solo si el centro sale de la isla")
+	check(script.platform_radius(10.0) == script.RADIUS_START and script.platform_radius(40.0) < script.RADIUS_START,
+		"la isla se achica recién después de los 15 s")
+	check(script.step_velocity(Vector2.ZERO, Vector2.RIGHT, 10.0).length() <= script.MAX_SPEED + 0.01, "velocidad máxima con el joystick")
+
+	# Partida: 3 jugadores, avanzada a mano (sin _physics_process).
+	var game: Variant = MiniGameRegistry.create("sumo")
+	var players := _fake_players(3)
+	root.add_child(game)
+	game.set_physics_process(false)
+	game.setup(players)
+	var results: Array = []
+	game.finished.connect(func(res: Dictionary) -> void: results.append(res))
+	var center: Vector2 = script.CENTER
+	var edge: float = script.RADIUS_START
+	game._pos[1] = center + Vector2(-200, 0)
+	game._pos[2] = center + Vector2(200, 0)
+	game._pos[3] = center + Vector2(0, 250)
+	game.on_input(1, {"seq": 0, "axis": Vector2(1, 0), "btn": 0})
+	game.step(1.0)  # cuenta regresiva: nadie se mueve
+	check(game._pos[1] == center + Vector2(-200, 0), "sin movimiento durante la cuenta regresiva")
+	game._countdown = 0.0
+	# Sofi (2) embiste a Pablo (1), que está al borde.
+	game._pos[1] = center + Vector2(edge - 50, 0)
+	game._pos[2] = center + Vector2(edge - 115, 0)
+	game._vel[2] = Vector2(500, 0)
+	game.on_input(1, {"seq": 1, "axis": Vector2.ZERO, "btn": 0})
+	for i in 30:
+		game.step(1.0 / 60.0)
+	check(game._out_time.has(1), "Pablo se cae de la isla")
+	check(not game._out_time.has(2), "Sofi sigue en pie")
+	check(game._kos[2] == 1, "Sofi suma el rival tirado")
+	# Tomi (3) se tira solo: nadie se lleva el bonus.
+	game._pos[3] = center + Vector2(0, edge + 20)
+	for i in 5:
+		game.step(1.0 / 60.0)
+	check(game._kos[2] == 1 and game._kos[1] == 0, "caerse solo no le da bonus a nadie")
+	check(results.is_empty(), "espera la animación de caída antes de terminar")
+	for i in 120:
+		game.step(1.0 / 60.0)
+	check(results.size() == 1, "termina al quedar uno en pie (%d)" % results.size())
+	if results.size() == 1:
+		var res: Dictionary = results[0]
+		check(res.winners == [2], "gana Sofi (%s)" % [res.winners])
+		check(float(res.scores[2]) >= float(res.scores[1]) + 5.0, "el bonus de +5 entra en el puntaje (%s)" % [res.scores])
+		check(is_equal_approx(float(res.scores[3]), snappedf(float(res.scores[3]), 0.1)), "puntaje con un decimal")
+	game.finish({"winners": [1], "scores": {}})
+	for i in 60:
+		game.step(1.0 / 60.0)
+	check(results.size() == 1, "finished se emite una sola vez (%d)" % results.size())
+	game.queue_free()
 	await process_frame
 
 

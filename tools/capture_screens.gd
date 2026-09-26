@@ -17,10 +17,10 @@ const PHONE := Vector2i(2340, 1080)  ## Celular apaisado típico (19.5:9).
 
 ## Segundos de juego antes de capturar (default 2,5): algunos juegos se ven
 ## mejor más avanzados (ej. el reloj ya corriendo o bloques cayendo).
-const SHOT_DELAY := {"stop_clock": 5.0, "dodge": 6.0, "paint": 8.0}
+const SHOT_DELAY := {"stop_clock": 5.0, "dodge": 6.0, "paint": 8.0, "sumo": 7.0}
 ## Juegos en los que los controles de prueba mueven el joystick en círculos
 ## mientras esperan la captura (ej. para que se vea el piso pintado).
-const WANDER := ["paint"]
+const WANDER := ["paint", "sumo"]
 ## Nombre de la captura del celular según el control que muestra.
 const CONTROL_SHOTS := {
 	Protocol.LAYOUT_JOYSTICK: "ctrl_joy", Protocol.LAYOUT_ONE_BUTTON: "ctrl_button", Protocol.LAYOUT_SLIDER_H: "ctrl_slider",
