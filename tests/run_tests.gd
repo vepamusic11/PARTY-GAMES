@@ -100,6 +100,39 @@ func test_parse_input() -> void:
 	check(Protocol.parse_input({"axis": [0, 0]}) == {}, "sin seq")
 
 
+func test_parse_standing() -> void:
+	var ok := {"round": 1, "total_rounds": 3, "place": 2, "points": 70, "total": 170, "rank": 2, "players": 4, "final": false}
+	var r := Protocol.parse_standing(ok)
+	check(r == ok, "standing válido (%s)" % r)
+	# Tal como llega por la red: JSON convierte los números en float.
+	r = Protocol.parse_standing(Protocol.decode(Protocol.encode(Protocol.T_STANDING, ok)))
+	check(r == ok and typeof(r.total) == TYPE_INT, "ida y vuelta por JSON")
+	var bad := ok.duplicate()
+	bad.place = "2"
+	check(Protocol.parse_standing(bad) == {}, "tipo incorrecto")
+	bad = ok.duplicate()
+	bad.final = 1
+	check(Protocol.parse_standing(bad) == {}, "final no booleano")
+	bad = ok.duplicate()
+	bad.total = NAN
+	check(Protocol.parse_standing(bad) == {}, "NaN")
+	bad = ok.duplicate()
+	bad.points = INF
+	check(Protocol.parse_standing(bad) == {}, "infinito")
+	for key in ok:
+		bad = ok.duplicate()
+		bad.erase(key)
+		check(Protocol.parse_standing(bad) == {}, "falta %s" % key)
+	check(Protocol.parse_standing({}) == {}, "vacío")
+	var wild := {"round": 500, "total_rounds": -3, "place": 9, "points": -50, "total": 1e300, "rank": 0, "players": 99, "final": true}
+	r = Protocol.parse_standing(wild)
+	check(r.round == Protocol.MAX_ROUNDS and r.total_rounds == Protocol.MAX_ROUNDS, "rondas recortadas (%s)" % r)
+	check(r.place == Protocol.MAX_PLAYERS and r.rank == 1 and r.players == Protocol.MAX_PLAYERS, "puestos recortados (%s)" % r)
+	check(r.points == 0 and r.total == Protocol.MAX_STANDING_POINTS, "puntos recortados (%s)" % r)
+	r = Protocol.parse_standing({"round": 1, "total_rounds": 1, "place": 0, "points": 0, "total": 0, "rank": 3, "players": 2, "final": true})
+	check(r.place == 0 and r.players == 3, "place 0 = sin puesto; players nunca menor que rank")
+
+
 # --- Minijuegos -----------------------------------------------------------------
 
 func test_registry_games_are_valid() -> void:
@@ -437,6 +470,83 @@ func test_host_tournament_flow() -> void:
 
 	host.queue_free()
 	await _free_clients()
+
+
+## Cada celular recibe SU resultado ("standing") al terminar un juego de la
+## competencia y en el podio, y lo recupera si se reconecta.
+func test_host_sends_standing() -> void:
+	var port := TEST_PORT + 4
+	var host := HostMain.new()
+	host.server_port = port
+	host.announce = false
+	root.add_child(host)
+	await process_frame
+	var c1 := _client()
+	var c2 := _client()
+	var got1: Array[Dictionary] = []
+	var got2: Array[Dictionary] = []
+	c1.standing_received.connect(func(d: Dictionary) -> void: got1.append(d))
+	c2.standing_received.connect(func(d: Dictionary) -> void: got2.append(d))
+	c1.join("127.0.0.1", port, host.server.room_code, "Pablo")
+	await _until(func() -> bool: return host.server.get_players().size() == 1)
+	c2.join("127.0.0.1", port, host.server.room_code, "Sofi")
+	await _until(func() -> bool: return host.server.get_players().size() == 2)
+	check(host.start_tournament(["tap_race", "arena"] as Array[String]), "arranca la competencia")
+	await process_frame
+	check(got1.is_empty() and got2.is_empty(), "sin standing mientras se juega")
+
+	host._game.finish({"winners": [2], "scores": {1: 30, 2: 40}})
+	await _until(func() -> bool: return not got1.is_empty() and not got2.is_empty())
+	check(not got1.is_empty() and not got2.is_empty(), "ambos celulares reciben su resultado")
+	if got1.is_empty() or got2.is_empty():
+		host.queue_free()
+		await _free_clients()
+		return
+	check(got1[0] == {"round": 1, "total_rounds": 2, "place": 2, "points": 70, "total": 70, "rank": 2, "players": 2, "final": false},
+		"Pablo: 2° en la ronda, +70 (%s)" % got1[0])
+	check(got2[0].place == 1 and got2[0].points == 100 and got2[0].total == 100 and got2[0].rank == 1, "Sofi: 1°, +100 (%s)" % got2[0])
+	check((host._standings_sent[1] as Dictionary).keys().size() == 8 and not host._standings_sent[1].has("token"),
+		"solo datos propios, sin token ni datos de otros")
+
+	host._summary._on_continue()
+	check(host.tournament.current_game_id == "arena", "sigue Arena")
+	host._game.finish({"winners": [1], "scores": {1: 12, 2: 3}})
+	await _until(func() -> bool: return got1.size() == 2 and got2.size() == 2)
+	check(got1.size() == 2 and got1[1].round == 2 and got1[1].place == 1 and got1[1].total == 170, "ronda 2: Pablo 1° con 170")
+	host._summary._on_continue()
+	check(host._final.visible, "podio")
+	await _until(func() -> bool: return got1.size() == 3 and got2.size() == 3)
+	check(got1.size() == 3 and got1[2].final and got1[2].rank == 1 and got1[2].total == 170, "podio: Pablo termina 1° (%s)" % [got1.back()])
+	check(got2.size() == 3 and got2[2].final and got2[2].rank == 1 and got2[2].total == 170, "podio: empate, Sofi también 1°")
+
+	# Reconexión durante el podio: vuelve a recibir su resultado.
+	var reconnected: Array = []
+	c1.reconnected.connect(func() -> void: reconnected.append(true))
+	c1._ws.close()
+	await _until(func() -> bool: return got1.size() == 4, 5000)
+	check(not reconnected.is_empty() and got1.size() == 4 and got1[3].final, "al reconectarse recupera el resultado")
+
+	host.queue_free()
+	await _free_clients()
+
+
+func test_controller_standing_view() -> void:
+	var ctrl := ControllerMain.new()
+	root.add_child(ctrl)
+	await process_frame
+	ctrl._show_standing({"round": 1, "total_rounds": 3, "place": 2, "points": 70, "total": 170, "rank": 2, "players": 4, "final": false})
+	check(ctrl._standing_panel.visible and ctrl._standing_medal.place == 2, "muestra el panel con la medalla del puesto")
+	check(ctrl._standing_main.text == "+70" and ctrl._standing_total.text == "Total 170 · vas 2°", "textos de la ronda")
+	check(ctrl._standing_round.text == "Ronda 1/3", "ronda")
+	ctrl._on_layout_changed(Protocol.LAYOUT_JOYSTICK, {})
+	check(not ctrl._standing_panel.visible, "se limpia cuando empieza otro juego")
+	ctrl._on_layout_changed(Protocol.LAYOUT_WAIT, {})
+	ctrl._show_standing({"round": 3, "total_rounds": 3, "place": 0, "points": 0, "total": 170, "rank": 1, "players": 4, "final": true})
+	check(ctrl._standing_main.text == "¡Terminaste 1°!" and ctrl._standing_total.text == "170 pts", "podio final")
+	ctrl._on_phase_changed(Protocol.PHASE_LOBBY)
+	check(not ctrl._standing_panel.visible, "se limpia al volver al lobby")
+	ctrl.queue_free()
+	await process_frame
 
 
 func test_rejects_raw_garbage() -> void:

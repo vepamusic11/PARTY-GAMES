@@ -86,12 +86,35 @@ Seguido del cierre de la conexión con código **4000** y el motivo como razón 
 ```json
 {"v":1,"type":"phase","phase":"playing"}
 ```
-Valores: `lobby`, `playing`, `results`. En modo competencia `results` cubre tanto el resumen de cada ronda como el podio final (el celular muestra "Mirá la TV" en ambos casos).
+Valores: `lobby`, `playing`, `results`. En modo competencia `results` cubre tanto el resumen de cada ronda como el podio final (el celular muestra "Mirá la TV" en ambos casos, más su resultado si recibe `standing`).
 
 ### `pong`
 ```json
 {"v":1,"type":"pong","t":123456}
 ```
+
+### `standing` — resultado propio (resumen y podio)
+```json
+{"v":1,"type":"standing","round":1,"total_rounds":3,"place":2,"points":70,"total":170,"rank":2,"players":4,"final":false}
+{"v":1,"type":"standing","round":3,"total_rounds":3,"place":0,"points":0,"total":170,"rank":1,"players":4,"final":true}
+```
+La TV lo manda **a cada jugador por separado**, justo después de `phase: results` + `layout: wait`, al mostrar el resumen de una ronda y al mostrar el podio. Si el celular se reconecta durante el resumen o el podio, se le reenvía.
+
+| Campo | Qué es | Rango (el control recorta) |
+|---|---|---|
+| `round` / `total_rounds` | "Ronda 1/3" (rondas salteadas no cuentan) | 0..99 |
+| `place` | Puesto en **esta ronda**. `0` = sin puesto (no la jugó, o es el podio final) | 0..4 |
+| `points` | Puntos que sumó en esta ronda | 0..100000 |
+| `total` | Total acumulado en la competencia | 0..100000 |
+| `rank` | Puesto en la **tabla general** (los empates comparten puesto) | 1..4 |
+| `players` | Cantidad de jugadores en la tabla | 1..4 (nunca menor que `rank`) |
+| `final` | `true` en el podio final | booleano |
+
+- **Solo datos propios:** ni tokens ni puntajes de otros jugadores (esos se ven en la TV).
+- **Solo informativo:** el control lo muestra y no responde nada; los puntos los decide la TV.
+- **El control tampoco confía a ciegas:** `Protocol.parse_standing` descarta el mensaje si falta un campo, un tipo no coincide o hay `NaN`/infinito, y recorta los rangos.
+- **Compatible:** es un tipo nuevo que los controles viejos ignoran, por eso `VERSION` sigue en 1.
+- El celular lo muestra junto a "¡Mirá la TV!" y lo borra al volver al lobby o cuando empieza otro juego.
 
 ## Descubrimiento (UDP)
 

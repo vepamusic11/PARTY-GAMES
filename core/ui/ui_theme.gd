@@ -283,6 +283,14 @@ static func draw_star(ci: CanvasItem, center: Vector2, r: float, color: Color = 
 	ci.draw_colored_polygon(star_points(center + Vector2(-r * 0.12, -r * 0.12), r * 0.35, 0.5, rotation), Color(1, 1, 1, 0.55))
 
 
+## Medalla redonda con el puesto ("1°" en oro, "2°" plata, "3°" bronce).
+static func draw_medal(ci: CanvasItem, center: Vector2, r: float, place: int) -> void:
+	ci.draw_circle(center, r + maxf(4.0, r * 0.1), INK)
+	ci.draw_circle(center, r, place_color(place))
+	ci.draw_circle(center + Vector2(-r, -r) * 0.27, r / 3.0, Color(1, 1, 1, 0.4))
+	draw_text(ci, place_text(place), center + Vector2(2, 1) * (r / 30.0), int(r), INK)
+
+
 static func draw_check(ci: CanvasItem, center: Vector2, s: float, color: Color = PAPER, width: float = 6.0) -> void:
 	ci.draw_polyline(PackedVector2Array([
 		center + Vector2(-0.5, 0.0) * s, center + Vector2(-0.15, 0.35) * s, center + Vector2(0.5, -0.35) * s,

@@ -11,6 +11,9 @@ signal reconnected()
 signal gave_up()                ## No se pudo reconectar: volver a la pantalla inicial.
 signal layout_changed(layout: String, data: Dictionary)
 signal phase_changed(phase: String)
+## Resultado propio del resumen de ronda o del podio, ya validado con
+## Protocol.parse_standing (ver docs/PROTOCOL.md). Solo informativo.
+signal standing_received(data: Dictionary)
 
 enum State { IDLE, CONNECTING, JOINED, RECONNECTING, LEAVING }
 
@@ -158,6 +161,10 @@ func _handle(raw: String) -> void:
 			layout_changed.emit(layout, data if typeof(data) == TYPE_DICTIONARY else {})
 		Protocol.T_PHASE:
 			phase_changed.emit(str(msg.get("phase", "")))
+		Protocol.T_STANDING:
+			var standing := Protocol.parse_standing(msg)
+			if not standing.is_empty():
+				standing_received.emit(standing)
 		Protocol.T_PONG:
 			var sent: Variant = msg.get("t")
 			if typeof(sent) in [TYPE_INT, TYPE_FLOAT]:

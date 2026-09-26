@@ -2,12 +2,16 @@ class_name ControllerMain
 extends Control
 ## Pantalla del celular. Tres estados:
 ##   JOIN    -> elegir TV (descubierta o IP manual), apodo y código de sala
-##   WAIT    -> unido; esperando que la TV arranque un juego
+##   WAIT    -> unido; esperando que la TV arranque un juego. Durante el
+##              resumen de ronda y el podio muestra además el resultado propio
+##              (puesto, puntos y total) que manda la TV con "standing".
 ##   PLAY    -> muestra el control que pidió la TV (joystick, slider o botón)
 
 const SEND_RATE_HZ := 30.0
 const KEEPALIVE_SEC := 0.25   ## Reenvía el estado aunque no cambie (por si se perdió).
 const SETTINGS_PATH := "user://settings.cfg"
+const STANDING_POINTS_SIZE := 124  ## "+70": corto, va bien grande.
+const STANDING_FINAL_SIZE := 92    ## "¡Terminaste 1°!": más largo.
 
 var client := ControllerClient.new()
 var discovery := DiscoveryListener.new()
@@ -24,6 +28,12 @@ var _header: Label
 var _header_avatar: PlayerAvatar
 var _wait_view: Control
 var _wait_avatar: PlayerAvatar
+var _wait_sub: Label
+var _standing_panel: PanelContainer
+var _standing_round: Label
+var _standing_medal: _Medal
+var _standing_main: Label
+var _standing_total: Label
 var _latency: Label
 var _layout_host: Control
 var _active_layout: Control
@@ -47,6 +57,8 @@ func _ready() -> void:
 	client.reconnected.connect(func() -> void: _update_header())
 	client.gave_up.connect(func() -> void: _show_join("Se perdió la conexión con la TV."))
 	client.layout_changed.connect(_on_layout_changed)
+	client.phase_changed.connect(_on_phase_changed)
+	client.standing_received.connect(_show_standing)
 	discovery.hosts_changed.connect(_on_hosts_changed)
 	_build_ui()
 	if discovery.start() != OK:
@@ -119,11 +131,64 @@ func _on_layout_changed(layout: String, data: Dictionary) -> void:
 			b.label = str(data.get("label", "A")).left(12)
 			_active_layout = b
 	_wait_view.visible = _active_layout == null
+	if layout != Protocol.LAYOUT_WAIT:
+		_clear_standing()  # Empieza un juego nuevo: el resultado anterior ya no aplica.
 	if _active_layout:
 		_active_layout.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		_active_layout.mouse_filter = Control.MOUSE_FILTER_STOP
 		_layout_host.add_child(_active_layout)
 	_last_sent_btn = -1
+
+
+func _on_phase_changed(phase: String) -> void:
+	if phase != Protocol.PHASE_RESULTS:
+		_clear_standing()
+
+
+## Resultado propio (ya validado por Protocol.parse_standing). En el
+## resumen de ronda: medalla con el puesto, "+70" y "Total 170 · vas 2°".
+## En el podio: "¡Terminaste 1°!" y el total.
+func _show_standing(data: Dictionary) -> void:
+	var is_final: bool = data.final
+	var rank: int = data.rank
+	var place: int = data.place
+	var medal_place := rank if is_final else place
+	_standing_round.text = "Resultado final" if is_final else "Ronda %d/%d" % [data.round, data.total_rounds]
+	_standing_medal.place = medal_place
+	_standing_medal.visible = medal_place > 0
+	_standing_medal.queue_redraw()
+	_set_headline_size(_standing_main, STANDING_FINAL_SIZE if is_final else STANDING_POINTS_SIZE)
+	if is_final:
+		_standing_main.text = "¡Terminaste %s!" % UiTheme.place_text(rank)
+		_standing_total.text = "%d pts" % data.total
+	elif place > 0:
+		_standing_main.text = "+%d" % data.points
+		_standing_total.text = "Total %d · vas %s" % [data.total, UiTheme.place_text(rank)]
+	else:  # No jugó esta ronda: solo la tabla general.
+		_standing_main.text = "Total %d" % data.total
+		_standing_total.text = "Vas %s" % UiTheme.place_text(rank)
+	_wait_sub.visible = false
+	if not _standing_panel.visible:
+		_standing_panel.visible = true
+		_standing_panel.modulate.a = 0.0
+		create_tween().tween_property(_standing_panel, "modulate:a", 1.0, 0.3)
+	if medal_place == 1:
+		_wait_avatar.hop()
+
+
+## Cambia el tamaño de un UiTheme.headline manteniendo su contorno proporcional.
+static func _set_headline_size(l: Label, size: int) -> void:
+	l.add_theme_font_size_override("font_size", size)
+	l.add_theme_constant_override("outline_size", maxi(6, size / 7))
+	l.add_theme_constant_override("shadow_outline_size", maxi(6, size / 7))
+	l.add_theme_constant_override("shadow_offset_y", maxi(3, size / 18))
+
+
+func _clear_standing() -> void:
+	if _standing_panel == null:
+		return
+	_standing_panel.visible = false
+	_wait_sub.visible = true
 
 
 func _on_hosts_changed(hosts: Array[Dictionary]) -> void:
@@ -175,6 +240,7 @@ func _show_join(message: String) -> void:
 	if is_instance_valid(_active_layout):
 		_active_layout.queue_free()
 	_active_layout = null
+	_clear_standing()
 	_play_screen.visible = false
 	_join_screen.visible = true
 	_join_status.text = message
@@ -285,21 +351,57 @@ func _build_ui() -> void:
 	_layout_host.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_play_screen.add_child(_layout_host)
 
+	# Vista de espera: mascota + "¡Mirá la TV!" y, a la derecha, el panel
+	# con el resultado propio (solo durante el resumen y el podio).
+	var wait_view := HBoxContainer.new()
+	wait_view.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	wait_view.alignment = BoxContainer.ALIGNMENT_CENTER
+	wait_view.add_theme_constant_override("separation", 72)
+	_layout_host.add_child(wait_view)
+	_wait_view = wait_view
 	var wait_box := VBoxContainer.new()
-	wait_box.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	wait_box.alignment = BoxContainer.ALIGNMENT_CENTER
-	_layout_host.add_child(wait_box)
-	_wait_view = wait_box
+	wait_box.custom_minimum_size = Vector2(760, 0)
+	wait_view.add_child(wait_box)
 	_wait_avatar = PlayerAvatar.new()
 	_wait_avatar.mood = PlayerAvatar.Mood.HAPPY
 	_wait_avatar.custom_minimum_size = Vector2(0, 330)
 	wait_box.add_child(_wait_avatar)
 	var wait := UiTheme.headline("¡Mirá la TV!", 64)
 	wait_box.add_child(wait)
-	var wait_sub := UiTheme.label("El juego empieza cuando la TV lo elija", 34, UiTheme.INK, true)
-	wait_sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	wait_box.add_child(wait_sub)
+	_wait_sub = UiTheme.label("El juego empieza cuando la TV lo elija", 34, UiTheme.INK, true)
+	_wait_sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	wait_box.add_child(_wait_sub)
+	_build_standing_panel(wait_view)
 	_play_screen.visible = false
+
+
+func _build_standing_panel(parent: Control) -> void:
+	_standing_panel = PanelContainer.new()
+	_standing_panel.add_theme_stylebox_override("panel", UiTheme.panel_style(UiTheme.PAPER, UiTheme.RADIUS + 8, 44))
+	_standing_panel.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_standing_panel.custom_minimum_size = Vector2(980, 0)
+	_standing_panel.visible = false
+	parent.add_child(_standing_panel)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 16)
+	_standing_panel.add_child(col)
+	_standing_round = UiTheme.label("", 44, UiTheme.INK_SOFT, true)
+	col.add_child(_standing_round)
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 40)
+	col.add_child(row)
+	_standing_medal = _Medal.new()
+	_standing_medal.custom_minimum_size = Vector2(260, 260)
+	row.add_child(_standing_medal)
+	var text := VBoxContainer.new()
+	text.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_child(text)
+	_standing_main = UiTheme.headline("", STANDING_POINTS_SIZE, UiTheme.ACCENT)
+	text.add_child(_standing_main)
+	_standing_total = UiTheme.label("", 56, UiTheme.INK, true)
+	text.add_child(_standing_total)
 
 
 func _section(text: String) -> Label:
@@ -331,3 +433,16 @@ func _save_name(player_name: String) -> void:
 	cfg.load(SETTINGS_PATH)
 	cfg.set_value("player", "name", player_name)
 	cfg.save(SETTINGS_PATH)
+
+
+## Medalla con el puesto de la ronda (o el final en el podio).
+class _Medal:
+	extends Control
+	var place := 1
+
+	func _ready() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	func _draw() -> void:
+		var r := minf(size.x, size.y) / 2.0 - 14.0
+		UiTheme.draw_medal(self, size / 2.0, r, place)

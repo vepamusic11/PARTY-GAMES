@@ -74,6 +74,9 @@ func _run() -> void:
 	await _seconds(4.5)
 	_expect(host._summary.visible, "se muestra el resumen de ronda")
 	await _shot(root, "round_summary")
+	# El celular muestra su propio resultado mientras la TV muestra el resumen.
+	_expect(ctrl._standing_panel.visible, "el celular muestra su resultado de la ronda")
+	await _shot(phone, "ctrl_standing")
 
 	host._summary._on_continue()  # Ping Pong se saltea (es para 2): sigue Carrera.
 	await _seconds(3.0)

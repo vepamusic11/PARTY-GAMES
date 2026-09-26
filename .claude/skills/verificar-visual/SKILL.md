@@ -7,7 +7,7 @@ description: Ver cómo se ven de verdad la TV y el celular de Party Games genera
 
 `tools/capture_screens.gd` levanta la TV y controles reales conectados por WebSocket, recorre una competencia completa y guarda PNGs:
 
-`lobby`, `lobby_full`, `ctrl_join`, `ctrl_wait`, `arena`, `ctrl_joy`, `round_summary`, `tap_race`, `final`, `pingpong`.
+`lobby`, `lobby_full`, `ctrl_join`, `ctrl_wait`, `arena`, `ctrl_joy`, `round_summary`, `ctrl_standing`, `tap_race`, `final`, `pingpong`.
 
 ## Comandos
 

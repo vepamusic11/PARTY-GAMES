@@ -28,6 +28,9 @@ var _lobby: LobbyScreen
 var _summary: RoundSummaryScreen
 var _final: FinalScreen
 var _pause: PauseMenu
+## Último "standing" enviado a cada jugador (player_id -> payload), para
+## reenviarlo si el celular se reconecta durante el resumen o el podio.
+var _standings_sent: Dictionary = {}
 
 
 func _ready() -> void:
@@ -36,7 +39,7 @@ func _ready() -> void:
 	add_child(server)
 	add_child(beacon)
 	server.player_joined.connect(func(_p: Dictionary) -> void: _refresh_lobby())
-	server.player_reconnected.connect(func(_p: Dictionary) -> void: _refresh_lobby())
+	server.player_reconnected.connect(_on_player_reconnected)
 	server.player_disconnected.connect(_on_player_gone)
 	server.player_left.connect(_on_player_gone)
 	server.input_received.connect(_on_input)
@@ -81,6 +84,7 @@ func start_tournament(game_ids: Array[String], shuffle: bool = false) -> bool:
 
 func _play_next() -> void:
 	_summary.hide_summary()
+	_standings_sent.clear()
 	var id := tournament.advance(server.get_players().size())
 	if id.is_empty():
 		_show_final()
@@ -102,6 +106,7 @@ func _on_game_finished(result: Dictionary) -> void:
 	var summary := tournament.record(result, _game.players)
 	_end_game()
 	_enter_results()
+	_send_standings(summary.rows, summary.round, summary.total_rounds, false)
 	var next_id := tournament.peek_next(server.get_players().size())
 	_summary.show_summary(summary, tournament.standings(), str(MiniGameRegistry.info(next_id).get("title", "")))
 
@@ -114,6 +119,35 @@ func _show_final() -> void:
 	for round_summary in tournament.history:
 		titles.append(str(round_summary.title))
 	_final.show_final(tournament.standings(), titles)
+	if not tournament.history.is_empty():
+		var played := tournament.history.size()
+		_send_standings([], played, played, true)
+
+
+## Manda a cada celular SU resultado: puesto y puntos de la ronda (si la
+## jugó) y total y puesto en la tabla general. Solo datos propios: ni tokens
+## ni puntajes de otros. Es informativo; el control no decide nada con esto.
+## `round_rows` vacío = podio final (sin puesto de ronda).
+func _send_standings(round_rows: Array, round_no: int, total_rounds: int, is_final: bool) -> void:
+	_standings_sent.clear()
+	var table := tournament.standings()
+	var round_by_id := {}
+	for row: Dictionary in round_rows:
+		round_by_id[row.id] = row
+	for s in table:
+		var row: Dictionary = round_by_id.get(s.id, {})
+		var payload := {
+			"round": round_no,
+			"total_rounds": total_rounds,
+			"place": int(row.get("place", 0)),   # 0 = no jugó esta ronda
+			"points": int(row.get("points", 0)),
+			"total": int(s.total),
+			"rank": int(s.place),
+			"players": table.size(),
+			"final": is_final,
+		}
+		_standings_sent[s.id] = payload
+		server.send_to(s.id, Protocol.T_STANDING, payload)
 
 
 func _enter_results() -> void:
@@ -133,6 +167,7 @@ func _end_game() -> void:
 func _back_to_lobby() -> void:
 	_end_game()
 	tournament = null
+	_standings_sent.clear()
 	_summary.hide_summary()
 	_final.hide_final()
 	_background.visible = true
@@ -200,6 +235,13 @@ func _quit_tournament() -> void:
 func _on_input(player_id: int, input: Dictionary) -> void:
 	if phase == Protocol.PHASE_PLAYING and is_instance_valid(_game) and not _pause.visible:
 		_game.on_input(player_id, input)
+
+
+## Si vuelve durante el resumen o el podio, recupera su resultado.
+func _on_player_reconnected(player: Dictionary) -> void:
+	if phase == Protocol.PHASE_RESULTS and _standings_sent.has(player.id):
+		server.send_to(player.id, Protocol.T_STANDING, _standings_sent[player.id])
+	_refresh_lobby()
 
 
 ## Desconexión temporal o salida definitiva: el juego recibe input neutro.

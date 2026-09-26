@@ -16,7 +16,7 @@ Cada minijuego mide cosas distintas en escalas distintas (12 estrellas, 40 toque
 2. **Lógica pura en `Tournament`** (`host/tournament/tournament.gd`), sin nodos ni UI. `HostMain` solo orquesta y las pantallas solo muestran.
 3. **La cantidad de jugadores es la capacidad de la sala** (`HostServer.max_players`). No se puede bajar por debajo de los conectados; subir abre lugares. Arrancar exige que estén todos.
 4. **Juegos incompatibles se saltean** sin puntos (ej. alguien se va y Ping Pong necesita 2). Las rondas salteadas no cuentan en "Ronda 2/3".
-5. **Sin cambios de protocolo**: el resumen y el podio usan la fase existente `results` y el layout `wait`. El celular no recibe ni decide puntajes.
+5. **Sin cambios de protocolo**: el resumen y el podio usan la fase existente `results` y el layout `wait`. El celular no recibe ni decide puntajes *(después se sumó el mensaje informativo `standing`; ver Consecuencias)*.
 
 ## Motivos
 - Puntos por posición es justo entre juegos y fácil de entender en el sillón ("salí segundo, +70"). Es el esquema de los party games de consola.
@@ -32,3 +32,4 @@ Cada minijuego mide cosas distintas en escalas distintas (12 estrellas, 40 toque
 - Un minijuego solo tiene que reportar su puntaje propio (`result.scores`) y opcionalmente `winners`.
 - Metadatos opcionales nuevos en `get_info()`: `score_label` ("estrellas") y `accent` (color de su tarjeta).
 - Si en el futuro el celular muestra "vas 2°", se agrega un mensaje nuevo *host → control* (compatible: los tipos desconocidos se ignoran), nunca uno que el control pueda usar para decidir resultados.
+  - **Hecho:** mensaje `standing` (ver [PROTOCOL](../PROTOCOL.md)). La TV manda a cada celular solo su puesto, puntos y total al mostrar el resumen y el podio; `VERSION` no cambia y el control no manda nada nuevo.

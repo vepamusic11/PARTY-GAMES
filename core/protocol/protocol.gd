@@ -22,6 +22,9 @@ const ROOM_CODE_LENGTH := 4
 ## 32 caracteres sin ambiguos (sin I, O, 0, 1). Al ser 32 = 256/8, elegir con
 ## un byte aleatorio módulo 32 no introduce sesgo estadístico.
 const ROOM_CODE_ALPHABET := "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+## Topes del mensaje informativo "standing" (ver parse_standing).
+const MAX_ROUNDS := 99
+const MAX_STANDING_POINTS := 100000
 
 # --- Tipos de mensaje: control -> host ---------------------------------------
 const T_JOIN := "join"
@@ -35,6 +38,9 @@ const T_REJECT := "reject"
 const T_LAYOUT := "layout"
 const T_PHASE := "phase"
 const T_PONG := "pong"
+## Resultado propio (puesto y puntos) durante el resumen y el podio. Es solo
+## informativo y compatible con controles viejos (ignoran tipos desconocidos).
+const T_STANDING := "standing"
 
 # --- Descubrimiento en red local (UDP broadcast) ------------------------------
 const T_ANNOUNCE := "announce"
@@ -178,6 +184,39 @@ static func parse_input(msg: Dictionary) -> Dictionary:
 		"axis": v.limit_length(1.0) if v.length() > 1.0 else v,
 		"btn": int(btn) & BTN_MASK,
 	}
+
+
+## Valida y normaliza un mensaje "standing" (host -> control). El control
+## tampoco confía a ciegas: tipos incorrectos, NaN o campos faltantes
+## devuelven {}; los números fuera de rango se recortan.
+## Resultado: { "round", "total_rounds", "place", "points", "total", "rank",
+##   "players": int, "final": bool }
+## place = puesto en esta ronda (0 = sin puesto: no la jugó o es el podio
+## final); rank = puesto en la tabla general.
+static func parse_standing(msg: Dictionary) -> Dictionary:
+	var limits := {
+		"round": [0, MAX_ROUNDS],
+		"total_rounds": [0, MAX_ROUNDS],
+		"place": [0, MAX_PLAYERS],
+		"points": [0, MAX_STANDING_POINTS],
+		"total": [0, MAX_STANDING_POINTS],
+		"rank": [1, MAX_PLAYERS],
+		"players": [1, MAX_PLAYERS],
+	}
+	var out := {}
+	for key: String in limits:
+		var value: Variant = msg.get(key)
+		if not _is_number(value) or not is_finite(float(value)):
+			return {}
+		# Se recorta como float antes de convertir: int() de 1e300 no es confiable.
+		out[key] = int(clampf(float(value), limits[key][0], limits[key][1]))
+	if typeof(msg.get("final")) != TYPE_BOOL:
+		return {}
+	out["final"] = msg["final"]
+	# Coherencia mínima: "Ronda 3/2" o "vas 4° de 2" no tienen sentido.
+	out["total_rounds"] = maxi(out.total_rounds, out.round)
+	out["players"] = maxi(out.players, maxi(out.rank, out.place))
+	return out
 
 
 static func player_color(slot: int) -> Color:
