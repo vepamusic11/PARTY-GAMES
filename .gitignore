@@ -1,0 +1,22 @@
+# Godot
+.godot/
+/android/
+*.translation
+export_credentials.cfg
+.import/
+
+# Builds y firmas: NUNCA subir keystores ni certificados
+builds/
+*.apk
+*.aab
+*.ipa
+*.keystore
+*.jks
+*.p12
+*.mobileprovision
+
+# Sistema / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

@@ -1,0 +1,30 @@
+; Engine configuration file.
+; Editalo desde Godot (Proyecto > Configuración del proyecto) cuando sea posible.
+
+config_version=5
+
+[application]
+
+config/name="Party Games"
+config/description="Juegos para 1 a 4 jugadores: la TV es la pantalla y los celulares son los controles."
+config/version="0.1.0"
+run/main_scene="res://app/boot.tscn"
+config/features=PackedStringArray("4.4", "Mobile")
+config/icon="res://icon.svg"
+
+[display]
+
+window/size/viewport_width=1920
+window/size/viewport_height=1080
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+window/handheld/orientation=4
+
+[input_devices]
+
+pointing/emulate_touch_from_mouse=true
+
+[rendering]
+
+renderer/rendering_method="mobile"
+textures/vram_compression/import_etc2_astc=true
