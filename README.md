@@ -65,6 +65,7 @@ godot --headless --path . -s res://tests/run_tests.gd    # 0 = todo OK
 | [docs/SECURITY.md](docs/SECURITY.md) | Modelo de amenazas y controles |
 | [docs/BUILD.md](docs/BUILD.md) | Exportar a Android, Google TV e iOS |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Qué sigue |
+| [docs/PLAN.md](docs/PLAN.md) | Plan de calidad: definición de "terminado", presupuestos medibles y fases |
 | [docs/adr/](docs/adr/) | Decisiones de arquitectura registradas |
 | [docs/SKILLS.md](docs/SKILLS.md) | Qué skills de Claude Code usa el proyecto y por qué |
 | [CLAUDE.md](CLAUDE.md) | Contexto para seguir el desarrollo con Claude Code |

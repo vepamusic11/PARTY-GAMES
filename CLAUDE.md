@@ -48,9 +48,10 @@ Siempre correr los tests antes de dar un cambio por terminado.
 - `nuevo-minijuego` — checklist para crear o cambiar un juego.
 - `diseno-tv` — sistema visual y reglas de UI para TV/celular.
 - `verificar-visual` — capturas reales para revisar cambios de UI.
+- `nuevo-layout` — sumar un tipo de control en el celular (toca protocolo y VERSION).
 
 Análisis de qué skills conviene usar (y cuáles no): `docs/SKILLS.md`.
 
 ## Estado y próximos pasos
 
-Ver `docs/ROADMAP.md`. Limitación importante: Godot no exporta a tvOS (ver `docs/adr/0001-motor-godot.md`).
+Ver `docs/PLAN.md` (definición de "terminado", presupuestos de rendimiento y fases) y `docs/ROADMAP.md`. Limitación importante: Godot no exporta a tvOS (ver `docs/adr/0001-motor-godot.md`).
