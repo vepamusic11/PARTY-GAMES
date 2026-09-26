@@ -51,7 +51,7 @@ func set_room(code: String, address: String) -> void:
 		style.border_width_bottom = 8
 		style.border_color = style.bg_color.darkened(0.25)
 		tile.add_theme_stylebox_override("panel", style)
-		tile.custom_minimum_size = Vector2(88, 116)
+		tile.custom_minimum_size = Vector2(90, 112)
 		tile.add_child(UiTheme.headline(code[i], 80))
 		_code_box.add_child(tile)
 	_address.text = address
@@ -151,65 +151,55 @@ func _build() -> void:
 	columns.add_child(_build_setup_column())
 
 
+## Columna izquierda: QUIÉNES juegan (cómo unirse, cuántos y los lugares).
 func _build_join_column() -> Control:
 	var col := VBoxContainer.new()
-	col.custom_minimum_size = Vector2(460, 0)
-	col.add_theme_constant_override("separation", 22)
+	col.custom_minimum_size = Vector2(470, 0)
+	col.add_theme_constant_override("separation", 14)
 	col.add_child(_logo())
 
 	var panel := PanelContainer.new()
-	panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	panel.add_theme_stylebox_override("panel", UiTheme.panel_style(UiTheme.PAPER, UiTheme.RADIUS + 8, 26))
 	col.add_child(panel)
 	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 18)
+	box.add_theme_constant_override("separation", 10)
 	panel.add_child(box)
-	box.add_child(UiTheme.label("¡Sumate desde tu celular!", 38, UiTheme.INK, true, HORIZONTAL_ALIGNMENT_LEFT))
-	var steps := ["Abrí Party Games en el celular", "Elegí esta TV de la lista", "Escribí tu apodo y este código:"]
-	for i in steps.size():
-		box.add_child(_step_row(i + 1, steps[i]))
+	box.add_child(UiTheme.label("¡Sumate desde tu celular!", 34, UiTheme.INK, true, HORIZONTAL_ALIGNMENT_LEFT))
+	var how := UiTheme.label("Abrí Party Games, elegí esta TV y escribí este código:", 24, UiTheme.INK_SOFT, false, HORIZONTAL_ALIGNMENT_LEFT)
+	how.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(how)
 	_code_box = HBoxContainer.new()
 	_code_box.alignment = BoxContainer.ALIGNMENT_CENTER
 	_code_box.add_theme_constant_override("separation", 12)
-	_code_box.custom_minimum_size = Vector2(0, 150)
+	_code_box.custom_minimum_size = Vector2(0, 128)
 	box.add_child(_code_box)
-	var spacer := Control.new()
-	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	box.add_child(spacer)
-	box.add_child(UiTheme.label("¿No aparece la TV? Escribí esta dirección:", 24, UiTheme.INK_SOFT, false, HORIZONTAL_ALIGNMENT_LEFT))
-	_address = UiTheme.label("", 28, UiTheme.INK, true, HORIZONTAL_ALIGNMENT_LEFT)
+	_address = UiTheme.label("", 24, UiTheme.INK_SOFT, true, HORIZONTAL_ALIGNMENT_LEFT)
 	_address.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(_address)
-	_status = UiTheme.label("", 26, UiTheme.DANGER, true, HORIZONTAL_ALIGNMENT_LEFT)
+	_status = UiTheme.label("", 24, UiTheme.DANGER, true, HORIZONTAL_ALIGNMENT_LEFT)
 	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_status.visible = false
 	box.add_child(_status)
+
+	col.add_child(_section_title("¿Cuántos juegan?", 38))
+	_stepper = Stepper.new()
+	_stepper.value = player_count
+	_stepper.custom_minimum_size = Vector2(0, 84)
+	_stepper.value_changed.connect(_on_count_changed)
+	col.add_child(_stepper)
+	for i in Protocol.MAX_PLAYERS:
+		var seat := SeatCard.new(i, true)
+		col.add_child(seat)
+		_seats.append(seat)
 	return col
 
 
+## Columna derecha: A QUÉ se juega. Entran 3 filas de 4 tarjetas (12 juegos)
+## sin tener que desplazarse.
 func _build_setup_column() -> Control:
 	var col := VBoxContainer.new()
 	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	col.add_theme_constant_override("separation", 18)
-
-	var players_header := HBoxContainer.new()
-	players_header.add_theme_constant_override("separation", 24)
-	col.add_child(players_header)
-	var players_title := _section_title("¿Cuántos juegan?")
-	players_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	players_header.add_child(players_title)
-	_stepper = Stepper.new()
-	_stepper.value = player_count
-	_stepper.value_changed.connect(_on_count_changed)
-	players_header.add_child(_stepper)
-
-	var seats := HBoxContainer.new()
-	seats.add_theme_constant_override("separation", 20)
-	col.add_child(seats)
-	for i in Protocol.MAX_PLAYERS:
-		var seat := SeatCard.new(i)
-		seat.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		seats.add_child(seat)
-		_seats.append(seat)
+	col.add_theme_constant_override("separation", 12)
 
 	var games_header := HBoxContainer.new()
 	col.add_child(games_header)
@@ -233,8 +223,8 @@ func _build_setup_column() -> Control:
 	scroll.add_child(pad)
 	var grid := GridContainer.new()
 	grid.columns = 4
-	grid.add_theme_constant_override("h_separation", 14)
-	grid.add_theme_constant_override("v_separation", 18)
+	grid.add_theme_constant_override("h_separation", 16)
+	grid.add_theme_constant_override("v_separation", 14)
 	pad.add_child(grid)
 	for info in MiniGameRegistry.all_info():
 		var card := GameCard.new(info)
@@ -249,7 +239,7 @@ func _build_setup_column() -> Control:
 	col.add_child(actions)
 	_shuffle_btn = Button.new()
 	_shuffle_btn.toggle_mode = true
-	_shuffle_btn.custom_minimum_size = Vector2(380, 96)
+	_shuffle_btn.custom_minimum_size = Vector2(380, 92)
 	_shuffle_btn.add_theme_font_size_override("font_size", 30)
 	_shuffle_btn.toggled.connect(func(on: bool) -> void:
 		shuffle = on
@@ -260,7 +250,7 @@ func _build_setup_column() -> Control:
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	actions.add_child(spacer)
 	_start = Button.new()
-	_start.custom_minimum_size = Vector2(520, 96)
+	_start.custom_minimum_size = Vector2(520, 92)
 	_start.add_theme_font_size_override("font_size", 36)
 	_start.add_theme_stylebox_override("normal", UiTheme.button_style(UiTheme.ACCENT))
 	_start.add_theme_stylebox_override("hover", UiTheme.button_style(UiTheme.ACCENT.lightened(0.1)))
@@ -271,7 +261,7 @@ func _build_setup_column() -> Control:
 	var hints := KeyHint.new()
 	hints.add_hint(["up", "down", "left", "right"], "Moverse") \
 		.add_hint(["OK"], "Elegir / quitar juego") \
-		.add_hint(["left", "right"], "Cambiar cantidad")
+		.add_hint(["left", "right"], "Cambiar cantidad (en jugadores)")
 	col.add_child(hints)
 	return col
 
@@ -279,7 +269,7 @@ func _build_setup_column() -> Control:
 func _logo() -> Control:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 0)
-	row.custom_minimum_size = Vector2(0, 110)
+	row.custom_minimum_size = Vector2(0, 84)
 	var i := 0
 	for ch in "PARTY GAMES":
 		if ch == " ":
@@ -287,31 +277,14 @@ func _logo() -> Control:
 			gap.custom_minimum_size = Vector2(20, 0)
 			row.add_child(gap)
 			continue
-		var l := UiTheme.headline(ch, 64, UiTheme.BRICKS[i % UiTheme.BRICKS.size()], UiTheme.PAPER)
+		var l := UiTheme.headline(ch, 60, UiTheme.BRICKS[i % UiTheme.BRICKS.size()], UiTheme.PAPER)
 		l.add_theme_color_override("font_shadow_color", UiTheme.INK)
 		row.add_child(l)
 		i += 1
 	return row
 
 
-func _section_title(text: String) -> Label:
-	var l := UiTheme.headline(text, 44)
+func _section_title(text: String, size: int = 44) -> Label:
+	var l := UiTheme.headline(text, size)
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	return l
-
-
-func _step_row(n: int, text: String) -> Control:
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 16)
-	var badge := PanelContainer.new()
-	var style := UiTheme.panel_style(UiTheme.ACCENT, 26, 0)
-	style.shadow_size = 0
-	badge.add_theme_stylebox_override("panel", style)
-	badge.custom_minimum_size = Vector2(52, 52)
-	badge.add_child(UiTheme.label(str(n), 30, UiTheme.INK, true))
-	row.add_child(badge)
-	var l := UiTheme.label(text, 28, UiTheme.INK, false, HORIZONTAL_ALIGNMENT_LEFT)
-	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	row.add_child(l)
-	return row

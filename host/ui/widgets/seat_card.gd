@@ -5,20 +5,29 @@ extends Control
 ##   RECONNECTING perdió la conexión   -> lugar reservado 30 s
 ##   OPEN         lugar libre          -> silueta + "Esperando…"
 ##   LOCKED       fuera de la cantidad elegida -> atenuado, "No juega"
+##
+## Dos formatos: tarjeta alta (mascota arriba) o fila compacta (`compact`):
+## [1P] (mascota) Pablo ········ ¡Listo!   — la usa el lobby para dejar
+## más lugar a los juegos.
 
 enum State { READY, RECONNECTING, OPEN, LOCKED }
 
 var slot := 0
 var state := State.OPEN
+var compact := false
 var _avatar: PlayerAvatar
 var _name: Label
 var _status: Label
 
 
-func _init(p_slot: int) -> void:
+func _init(p_slot: int, p_compact: bool = false) -> void:
 	slot = p_slot
-	custom_minimum_size = Vector2(270, 216)
+	compact = p_compact
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if compact:
+		_build_row()
+		return
+	custom_minimum_size = Vector2(270, 216)
 	var box := VBoxContainer.new()
 	box.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	box.offset_top = 40
@@ -37,6 +46,28 @@ func _init(p_slot: int) -> void:
 	box.add_child(_name)
 	_status = UiTheme.label("", 24, UiTheme.INK_SOFT)
 	box.add_child(_status)
+
+
+func _build_row() -> void:
+	custom_minimum_size = Vector2(0, 66)
+	var row := HBoxContainer.new()
+	row.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	row.offset_left = 100  # Deja lugar a la etiqueta 1P dibujada en _draw.
+	row.offset_right = -20
+	row.add_theme_constant_override("separation", 12)
+	add_child(row)
+	_avatar = PlayerAvatar.new()
+	_avatar.slot = slot
+	_avatar.color = Protocol.player_color(slot)
+	_avatar.custom_minimum_size = Vector2(52, 0)
+	row.add_child(_avatar)
+	_name = UiTheme.label("", 28, UiTheme.INK, true, HORIZONTAL_ALIGNMENT_LEFT)
+	_name.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	_name.clip_text = true
+	_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(_name)
+	_status = UiTheme.label("", 24, UiTheme.INK_SOFT, true, HORIZONTAL_ALIGNMENT_RIGHT)
+	row.add_child(_status)
 
 
 ## player: diccionario de HostServer.get_players() o {} si está libre.
@@ -68,11 +99,14 @@ func show_player(player: Dictionary, locked: bool) -> void:
 
 
 func _draw() -> void:
-	var r := Rect2(Vector2(6, 6), size - Vector2(12, 12))
+	var r := Rect2(Vector2(4, 4), size - Vector2(8, 8))
+	var radius := r.size.y / 2.0 if compact else 30.0
 	var filled := state == State.READY or state == State.RECONNECTING
-	UiTheme.draw_round_rect(self, r, UiTheme.PAPER if filled else Color(1, 1, 1, 0.55), 30, 0, UiTheme.INK, filled)
+	UiTheme.draw_round_rect(self, r, UiTheme.PAPER if filled else Color(1, 1, 1, 0.55), radius, 0, UiTheme.INK, filled)
 	if state == State.OPEN:
-		UiTheme.draw_dashed_rect(self, r.grow(-4), Color(UiTheme.INK_SOFT, 0.55), 4.0, 30.0)
+		UiTheme.draw_dashed_rect(self, r.grow(-4), Color(UiTheme.INK_SOFT, 0.55), 4.0, radius)
 	var tag := Rect2(r.position + Vector2(16, 14), Vector2(74, 40))
+	if compact:
+		tag.position = Vector2(r.position.x + 14, r.get_center().y - 20)
 	UiTheme.draw_round_rect(self, tag, Protocol.player_color(slot), 20, 3, UiTheme.INK)
 	UiTheme.draw_text(self, UiTheme.player_tag(slot), tag.get_center(), 26, UiTheme.PAPER, 4, UiTheme.INK)

@@ -19,7 +19,7 @@ func _init(p_info: Dictionary) -> void:
 	info = p_info
 	toggle_mode = true
 	focus_mode = Control.FOCUS_ALL
-	custom_minimum_size = Vector2(280, 214)
+	custom_minimum_size = Vector2(270, 206)
 	for style in ["normal", "hover", "pressed", "disabled", "focus", "hover_pressed"]:
 		add_theme_stylebox_override(style, StyleBoxEmpty.new())
 	toggled.connect(func(_on: bool) -> void: queue_redraw())
@@ -75,7 +75,7 @@ func _draw() -> void:
 			x += 44.0
 		y += 26.0
 		row += 1
-	UiTheme.draw_control_icon(self, art.get_center() + Vector2(0, 6), art.size.y * 0.28, str(info.get("layout", "")), a)
+	UiTheme.draw_control_icon(self, art.get_center() + Vector2(art.size.x * 0.14, 6), art.size.y * 0.28, str(info.get("layout", "")), a)
 	# Tipo de control como etiqueta sobre la ilustración (deja la línea de abajo
 	# para la cantidad de jugadores o el motivo por el que no se puede jugar).
 	var control_name: String = CONTROL_NAMES.get(info.get("layout"), "Control")
