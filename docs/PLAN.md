@@ -52,9 +52,11 @@ Un cambio está terminado cuando cumple **todo** esto (lo revisa quien integra):
 
 ### Fase B · Validación en dispositivos reales
 Requiere tu TV y tus celulares en la misma Wi-Fi: se hace con **Claude Code en la terminal de tu PC**, no desde la nube.
+- **Actualizar Godot 4.4 → 4.7.x** (ADR): lo exige Google Play (páginas de 16 KB) y habilita Sentry 2.x. Ver [PRODUCCION.md](PRODUCCION.md).
+- Comparar los renderizadores `mobile` y `Compatibility` en una TV real.
 - Presets de exportación Android y Google TV (banner, íconos, permisos `Vibrate` y de red).
 - Medir latencia y batería en 3 redes distintas y ajustar la frecuencia de envío.
-- QR en la TV que abra la app con la IP y el código precargados.
+- QR en la TV que abra la app con la IP y el código precargados, con [Kenyoni QR Code](https://github.com/kenyoni-software/godot-addons) (MIT). En iPhone evita depender del permiso de multicast de Apple.
 - **Listo cuando:** una partida de 4 jugadores de 20 minutos sin cortes y con los presupuestos cumplidos.
 
 ### Fase C · Contenido: 10–12 juegos con variedad
@@ -69,11 +71,14 @@ Principio: cada juego nuevo tiene que sumar **algo distinto** (control, dinámic
 | Memoria de colores | Repetir la secuencia | **Cuatro botones** (layout nuevo) | Juego de cabeza, no de reflejos |
 | Equilibrio | Mantener la bandeja nivelada | **Inclinación** (layout nuevo, acelerómetro) | Usa el celular como objeto físico |
 
+Bots con reglas en GDScript para completar lugares y simulación de miles de partidas en CI para balancear (ver "¿Una red neuronal…?" en [PRODUCCION.md](PRODUCCION.md)).
+
 Cada layout nuevo cambia el protocolo y obliga a actualizar la app del celular: conviene sumarlos juntos en una sola versión.
 - **Listo cuando:** 10 juegos o más, al menos 4 tipos de control y 1 por equipos, con puntajes balanceados (ningún juego decide la competencia solo).
 
 ### Fase D · Producto publicable
-- Identidad final: ilustrador para mascotas y logo, música y sonidos de diseñador, que reemplazan lo generado por código sin tocar pantallas ni juegos.
+- Identidad final: estilo elegido en [ESTILOS.md](ESTILOS.md), ilustrador para mascotas y logo, música y sonidos de diseñador (o CC0 de calidad, ver [RECURSOS.md](RECURSOS.md)), que reemplazan lo generado por código sin tocar pantallas ni juegos.
+- Reportes de errores (Sentry) y analítica anónima (Aptabase); pipeline de tiendas con godot-export y fastlane.
 - Tutorial de primera vez y ajustes: volumen, vibración y modo de alto contraste.
 - Localización es / en / pt.
 - Política de privacidad, clasificación de edad, fichas de tienda, prueba cerrada en Play Store y TestFlight.
