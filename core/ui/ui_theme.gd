@@ -36,6 +36,11 @@ const BRICKS: Array[Color] = [
 	Color("#F0524F"), Color("#FF9F2E"), Color("#FFD23F"), Color("#3CC46B"),
 	Color("#2EC4D6"), Color("#3E7BFA"), Color("#9B5DE5"), Color("#F26CB5"),
 ]
+## Piso a cuadros: fondo claro y baldosas del fondo de fiesta y del campo de juego.
+const FLOOR := Color("#F4F6FB")
+const FLOOR_TILE := Color("#E1E6F1")
+const FIELD_TILE := Color("#E3E8F2")
+const LEAF := Color("#8BE36B")          ## Hojitas del brote de la mascota 4P.
 
 # --- Medidas ------------------------------------------------------------------
 const SAFE_MARGIN := 64      ## Margen contra el *overscan* (TVs que recortan bordes).
@@ -45,6 +50,8 @@ const FOCUS_WIDTH := 8.0
 # Estilo reutilizado para dibujar rectángulos redondeados sin crear
 # objetos en cada frame (los minijuegos dibujan 60 veces por segundo).
 static var _box: StyleBoxFlat
+# Senos y cosenos precalculados de ellipse_points (sin trigonometría por frame).
+static var _unit_circles: Dictionary = {}  # steps -> [PackedFloat64Array cos, PackedFloat64Array sin]
 
 
 ## Tema de Godot con los estilos de Button, LineEdit, paneles y scroll.
@@ -200,14 +207,14 @@ static func draw_round_rect(ci: CanvasItem, rect: Rect2, color: Color, radius: f
 		border: float = 0.0, border_color: Color = INK, shadow: bool = false) -> void:
 	if _box == null:
 		_box = StyleBoxFlat.new()
+		_box.shadow_offset = Vector2(0, 8)
+		_box.corner_detail = 8
 	_box.bg_color = color
 	_box.set_corner_radius_all(int(radius))
 	_box.set_border_width_all(int(border))
 	_box.border_color = border_color
 	_box.shadow_color = SHADOW if shadow else Color.TRANSPARENT
 	_box.shadow_size = 12 if shadow else 0
-	_box.shadow_offset = Vector2(0, 8)
-	_box.corner_detail = 8
 	_box.draw(ci.get_canvas_item(), rect)
 
 
@@ -257,9 +264,25 @@ static func draw_text_left(ci: CanvasItem, text: String, pos_left_center: Vector
 
 static func ellipse_points(center: Vector2, rx: float, ry: float, rotation: float = 0.0, steps: int = 28) -> PackedVector2Array:
 	var pts := PackedVector2Array()
+	if steps <= 0:
+		return pts
+	var unit: Array = _unit_circles.get(steps, [])
+	if unit.is_empty():
+		var cosines := PackedFloat64Array()
+		var sines := PackedFloat64Array()
+		for i in steps:
+			var a := TAU * i / steps
+			cosines.append(cos(a))
+			sines.append(sin(a))
+		unit = [cosines, sines]
+		_unit_circles[steps] = unit
+	var cosines: PackedFloat64Array = unit[0]
+	var sines: PackedFloat64Array = unit[1]
+	pts.resize(steps)  # Una sola reserva en vez de crecer punto a punto.
+	# Mismas operaciones que calculando el seno y coseno en cada llamada:
+	# los puntos salen idénticos (bit a bit) y se ven igual.
 	for i in steps:
-		var a := TAU * i / steps
-		pts.append(center + Vector2(cos(a) * rx, sin(a) * ry).rotated(rotation))
+		pts[i] = center + Vector2(cosines[i] * rx, sines[i] * ry).rotated(rotation)
 	return pts
 
 
@@ -269,18 +292,22 @@ static func draw_ellipse(ci: CanvasItem, center: Vector2, rx: float, ry: float, 
 
 static func star_points(center: Vector2, r: float, inner: float = 0.48, rotation: float = 0.0) -> PackedVector2Array:
 	var pts := PackedVector2Array()
+	pts.resize(10)  # Una sola reserva en vez de crecer punto a punto.
 	for i in 10:
 		var a := -PI / 2.0 + rotation + PI * i / 5.0
 		var rr := r if i % 2 == 0 else r * inner
-		pts.append(center + Vector2(cos(a), sin(a)) * rr)
+		pts[i] = center + Vector2(cos(a), sin(a)) * rr
 	return pts
 
 
+## Las tres capas van en un solo lote (ShapeBatch): un draw call, no tres.
 static func draw_star(ci: CanvasItem, center: Vector2, r: float, color: Color = GOLD, rotation: float = 0.0) -> void:
-	var outline := star_points(center, r, 0.48, rotation)
-	ci.draw_colored_polygon(star_points(center, r + 5.0, 0.5, rotation), INK)
-	ci.draw_colored_polygon(outline, color)
-	ci.draw_colored_polygon(star_points(center + Vector2(-r * 0.12, -r * 0.12), r * 0.35, 0.5, rotation), Color(1, 1, 1, 0.55))
+	var batch := ShapeBatch.new()
+	batch.star(star_points(center, r + 5.0, 0.5, rotation), center, INK)
+	batch.star(star_points(center, r, 0.48, rotation), center, color)
+	var shine := center + Vector2(-r * 0.12, -r * 0.12)
+	batch.star(star_points(shine, r * 0.35, 0.5, rotation), shine, Color(1, 1, 1, 0.55))
+	batch.flush(ci)
 
 
 ## Medalla redonda con el puesto ("1°" en oro, "2°" plata, "3°" bronce).
@@ -351,9 +378,10 @@ static func hex_points(r: Rect2) -> PackedVector2Array:
 ## informativo (ej. "Ronda 2/3"); `rainbow` le pone borde arcoíris.
 static func draw_hex_chip(ci: CanvasItem, rect: Rect2, tag: String, tag_color: Color, text: String,
 		rainbow_border: bool = false, alpha: float = 1.0) -> void:
-	var outer := hex_points(rect.grow(4.0))
-	ci.draw_colored_polygon(outer, Color(INK, alpha))
-	ci.draw_colored_polygon(hex_points(rect), Color(PAPER, alpha))
+	# Los fondos van en un lote (un draw call); los textos, después.
+	var batch := ShapeBatch.new()
+	batch.polygon(hex_points(rect.grow(4.0)), Color(INK, alpha))
+	batch.polygon(hex_points(rect), Color(PAPER, alpha))
 	var inner := rect.grow(-5.0)
 	var h := inner.size.y
 	var k := h * 0.42
@@ -363,17 +391,19 @@ static func draw_hex_chip(ci: CanvasItem, rect: Rect2, tag: String, tag_color: C
 	var y0 := inner.position.y
 	var y1 := inner.end.y
 	if tag.is_empty():
-		ci.draw_colored_polygon(hex_points(inner), Color(CHIP_DARK, alpha))
+		batch.polygon(hex_points(inner), Color(CHIP_DARK, alpha))
+		batch.flush(ci)
 		draw_text(ci, text, inner.get_center(), int(h * 0.62), Color(PAPER, alpha))
 	else:
 		var slant := h * 0.16
 		var xt := x0 + k + h * 1.05
-		ci.draw_colored_polygon(PackedVector2Array([
+		batch.polygon(PackedVector2Array([
 			Vector2(x0 + k, y0), Vector2(xt + slant, y0), Vector2(xt - slant, y1), Vector2(x0 + k, y1), Vector2(x0, ym),
 		]), Color(tag_color, alpha))
-		ci.draw_colored_polygon(PackedVector2Array([
+		batch.polygon(PackedVector2Array([
 			Vector2(xt + slant, y0), Vector2(x1 - k, y0), Vector2(x1, ym), Vector2(x1 - k, y1), Vector2(xt - slant, y1),
 		]), Color(CHIP_DARK, alpha))
+		batch.flush(ci)
 		var fs := int(h * 0.6)
 		draw_text(ci, tag, Vector2((x0 + k * 0.6 + xt) / 2.0, ym), fs, Color(PAPER, alpha), maxi(4, fs / 6), Color(INK, alpha))
 		var font := FONT_BOLD
@@ -387,3 +417,116 @@ static func draw_hex_chip(ci: CanvasItem, rect: Rect2, tag: String, tag_color: C
 		for i in pts.size():
 			colors.append(Color(rainbow(float(i) / 6.0), alpha))
 		ci.draw_polyline_colors(pts, colors, 6.0, true)
+
+
+# --- Figuras en lote ------------------------------------------------------------
+
+## Junta varias figuras rellenas (círculos, elipses, polígonos) en UN solo
+## triangle array. Cada draw_circle / draw_colored_polygon de Godot es un
+## comando aparte: arma su propio buffer de vértices y cuesta un draw call.
+## Una mascota tiene ~30 figuras; en lote son unos pocos tramos. Se respeta el orden: lo que se
+## agrega después queda encima, igual que dibujando una por una.
+##
+##   var batch := UiTheme.ShapeBatch.new()
+##   batch.circle(p, 10.0, UiTheme.INK)
+##   batch.circle(p, 8.0, color)
+##   batch.flush(self)   # antes de dibujar cualquier otra cosa (texto, líneas…)
+##
+## Los círculos usan la misma geometría que CanvasItem.draw_circle (64
+## segmentos desde el centro) y los polígonos convexos cubren los mismos
+## píxeles: el resultado se ve igual.
+class ShapeBatch:
+	extends RefCounted
+
+	const CIRCLE_SEGMENTS := 64
+
+	# Plantillas de índices por forma y su versión corrida a cada posición
+	# del lote (se reusan entre frames: el mismo dibujo arma el mismo lote).
+	static var _circle_unit := PackedVector2Array()   # 65 puntos del borde + centro
+	static var _templates: Dictionary = {}             # id -> PackedInt32Array
+	static var _shifted: Dictionary = {}               # id * 1e6 + base -> PackedInt32Array
+
+	var points := PackedVector2Array()
+	var colors := PackedColorArray()
+	var indices := PackedInt32Array()
+
+	## Círculo relleno, como CanvasItem.draw_circle (sin antialiasing).
+	func circle(center: Vector2, radius: float, color: Color) -> void:
+		if _circle_unit.is_empty():
+			# Igual que RenderingServer.canvas_item_add_circle, que calcula en
+			# float de 32 bits: se redondea igual para obtener los mismos vértices.
+			var step := _f32(TAU / CIRCLE_SEGMENTS)
+			for i in CIRCLE_SEGMENTS + 1:
+				var a := _f32(i * step)
+				_circle_unit.append(Vector2(cos(a), sin(a)))
+			_circle_unit.append(Vector2.ZERO)
+		# Transform2D * arreglo = radio * punto + centro para todos los puntos
+		# de una vez (en C++), con las mismas operaciones que draw_circle.
+		_add(Transform2D(0.0, Vector2(radius, radius), 0.0, center) * _circle_unit, color, -1)
+
+	static func _f32(x: float) -> float:
+		return Vector2(x, 0.0).x  # Vector2 guarda float de 32 bits.
+
+	## Elipse rellena, como UiTheme.draw_ellipse.
+	func ellipse(center: Vector2, rx: float, ry: float, color: Color, rotation: float = 0.0) -> void:
+		polygon(UiTheme.ellipse_points(center, rx, ry, rotation), color)
+
+	## Polígono convexo (o con forma de estrella respecto de su primer punto).
+	func polygon(pts: PackedVector2Array, color: Color) -> void:
+		if pts.size() >= 3:
+			_add(pts, color, pts.size())
+
+	## Estrella (u otro polígono "estrellado" respecto de `center`): abanico
+	## desde el centro, cubre lo mismo que draw_colored_polygon.
+	func star(pts: PackedVector2Array, center: Vector2, color: Color) -> void:
+		if pts.size() < 3:
+			return
+		var with_center := pts.duplicate()
+		with_center.append(center)
+		_add(with_center, color, -pts.size())
+
+	## Dibuja lo acumulado en `ci` (un solo comando) y vacía el lote.
+	func flush(ci: CanvasItem) -> void:
+		if points.is_empty():
+			return
+		RenderingServer.canvas_item_add_triangle_array(ci.get_canvas_item(), indices, points, colors)
+		points.clear()
+		colors.clear()
+		indices.clear()
+
+	## kind: -1 círculo de 64; n > 0 abanico convexo de n puntos; n < 0
+	## abanico desde el centro (último punto) de |n| puntos en el borde.
+	func _add(pts: PackedVector2Array, color: Color, kind: int) -> void:
+		var base := points.size()
+		points.append_array(pts)
+		var fill := PackedColorArray()
+		fill.resize(pts.size())
+		fill.fill(color)
+		colors.append_array(fill)
+		indices.append_array(ShapeBatch._indices(kind, base))
+
+	static func _indices(kind: int, base: int) -> PackedInt32Array:
+		var key := (kind + 1000) * 1000000 + base
+		var shifted: PackedInt32Array = _shifted.get(key, PackedInt32Array())
+		if not shifted.is_empty():
+			return shifted
+		var template: PackedInt32Array = _templates.get(kind, PackedInt32Array())
+		if template.is_empty():
+			if kind == -1:  # Igual que RenderingServer.canvas_item_add_circle.
+				for i in CIRCLE_SEGMENTS:
+					template.append_array([CIRCLE_SEGMENTS + 1, i, i + 1])
+			elif kind > 0:
+				for i in range(1, kind - 1):
+					template.append_array([0, i, i + 1])
+			else:
+				var n := -kind
+				for i in n:
+					template.append_array([n, i, (i + 1) % n])
+			_templates[kind] = template
+		shifted = template.duplicate()
+		for i in shifted.size():
+			shifted[i] += base
+		if _shifted.size() > 4096:  # Tope de memoria: se vuelve a llenar solo.
+			_shifted.clear()
+		_shifted[key] = shifted
+		return shifted

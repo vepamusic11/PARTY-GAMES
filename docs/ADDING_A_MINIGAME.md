@@ -57,6 +57,8 @@ func _draw() -> void:
 
 Todo el dibujo sale del sistema visual (`UiTheme`): sin colores sueltos. Ver `.claude/skills/diseno-tv/`.
 
+Rendimiento (ver `docs/PERFORMANCE.md`): `draw_sky()`, `draw_play_field()` y `draw_hud()` están cacheados en capas propias y no cuestan nada si no cambian. Llamá `draw_sky()`/`draw_play_field()` al **principio** de `_draw()` (quedan siempre detrás de todo) y `draw_hud()` una vez por `_draw()` (queda siempre delante). Para varias figuras seguidas usá `UiTheme.ShapeBatch`. Medí el juego nuevo con `tools/benchmark.gd -- --only=<id>`.
+
 ## 2. Registrarlo
 
 En `host/minigames/registry.gd`:

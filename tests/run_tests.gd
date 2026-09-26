@@ -979,6 +979,43 @@ func test_feedback_relay() -> void:
 	await _free_clients()
 
 
+## Celular: sin control en pantalla anima a pocos cuadros por segundo y
+## entra en bajo consumo; con un control activo vuelve a 60 fps.
+func test_controller_power_mode() -> void:
+	var ctrl := ControllerMain.new()
+	root.add_child(ctrl)
+	await process_frame
+	check(ctrl._background.anim_fps == ControllerMain.IDLE_ANIM_FPS, "esperando: nubes a pocos fps")
+	check(ctrl._wait_avatar.anim_fps == ControllerMain.IDLE_ANIM_FPS, "esperando: mascota a pocos fps")
+	check(OS.low_processor_usage_mode, "esperando: modo de bajo consumo")
+	ctrl._on_layout_changed(Protocol.LAYOUT_JOYSTICK, {})
+	check(ctrl._background.anim_fps == 0.0 and not OS.low_processor_usage_mode, "jugando: sin bajo consumo (latencia)")
+	ctrl._on_layout_changed(Protocol.LAYOUT_WAIT, {})
+	check(OS.low_processor_usage_mode, "vuelve a bajo consumo al esperar")
+	ctrl.queue_free()
+	await process_frame
+	check(not OS.low_processor_usage_mode, "al salir deja el modo como estaba")
+
+
+## El cielo, el campo y el marcador de los juegos se dibujan en capas
+## propias que no se redibujan en cada frame (ver MiniGame "Capas cacheadas").
+func test_minigame_cached_layers() -> void:
+	var game := MiniGameRegistry.create("tap_race")
+	root.add_child(game)
+	game.setup(_fake_players(2))
+	for i in 3:
+		await process_frame
+	check(game.get_child_count() == 0 and game.get_child_count(true) == 2, "capas internas (no aparecen en get_children)")
+	check(game._backdrop_ops.size() == 2 and game._backdrop_ops[0] == ["sky"], "fondo: cielo + campo (%s)" % [game._backdrop_ops])
+	check(game._hud_state.size() == 1 + 2 * 3, "marcador con 2 jugadores")
+	var hud_before: Array = game._hud_state.duplicate()
+	game.on_input(1, {"seq": 1, "axis": Vector2.ZERO, "btn": 0})
+	await process_frame
+	check(game._hud_state == hud_before, "sin cambios, el marcador no se toca")
+	game.queue_free()
+	await process_frame
+
+
 func test_rejects_raw_garbage() -> void:
 	var server := HostServer.new()
 	root.add_child(server)

@@ -33,7 +33,8 @@ func _new_piece(y: float) -> Dictionary:
 
 
 func _process(delta: float) -> void:
-	if not visible or _pieces.is_empty():
+	# is_visible_in_tree: con el podio oculto (su padre) tampoco anima.
+	if _pieces.is_empty() or not is_visible_in_tree():
 		return
 	for i in _pieces.size():
 		var p := _pieces[i]

@@ -57,7 +57,7 @@ Relevado el 26/09/2026; algunas fuentes fueron indirectas: confirmar en la conso
 ## Calidad visual y rendimiento en producción
 
 - **Presupuestos** de [PLAN.md](PLAN.md): 60 fps, ≤ 8 ms de CPU por cuadro en la TV, ≤ 60 ms de latencia del celular a la TV.
-- **Medición continua (pendiente):** sumar el benchmark (`tools/benchmark.gd`) a la CI y revisar todo PR que empeore el p95 más de un 20 %.
+- **Medición continua (pendiente):** sumar el benchmark (`tools/benchmark.gd`) a la CI y revisar todo PR que empeore el p95 más de un 20 %. Comando y cómo comparar con `--json` en [PERFORMANCE.md](PERFORMANCE.md).
 - **Arte final sin romper nada:** el sistema visual está centralizado (`UiTheme`, `PlayerAvatar`, `PartyBackground`). Cuando llegue el arte de un ilustrador, o se elija un estilo de [ESTILOS.md](ESTILOS.md), se reemplazan esas piezas sin tocar juegos ni pantallas.
 
 ## ¿Una red neuronal que mejore el juego?

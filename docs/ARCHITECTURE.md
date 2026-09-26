@@ -74,6 +74,9 @@ Los efectos se sintetizan al iniciar (`core/audio/sfx.gd`, sin archivos de audio
 
 *Ejemplo:* en Esquivar, cuando un bloque te toca, la TV hace "¡pum!" y solo tu celular vibra fuerte (220 ms). Así sabés que quedaste afuera sin buscar tu mascota. Ver [ADR 0005](adr/0005-sonido-sintetizado.md).
 
+### Rendimiento
+Lo que no cambia no se redibuja en cada frame: el fondo y el campo de los juegos van en capas propias que se dibujan una vez, y las figuras se dibujan en lote. El celular baja a 30 fps y modo de bajo consumo mientras espera. Medición, presupuestos y detalles en [PERFORMANCE.md](PERFORMANCE.md) y [ADR 0006](adr/0006-rendimiento-capas-cacheadas.md).
+
 ### Reconexión con token
 Al unirse, cada jugador recibe un token aleatorio de 128 bits. Si el celular se bloquea o se corta el Wi-Fi, el cliente reintenta con backoff exponencial (0,5 s, 1 s, 2 s… hasta 5 s) presentando el token, y recupera **el mismo lugar, color e id**. El host reserva el lugar 30 segundos.
 
@@ -99,6 +102,7 @@ Registradas en [adr/](adr/):
 - [0003 · Modo competencia con puntos por posición](adr/0003-modo-competencia.md)
 - [0004 · Sistema visual dibujado por código](adr/0004-sistema-visual.md)
 - [0005 · Sonido sintetizado por código y vibración por eventos](adr/0005-sonido-sintetizado.md)
+- [0006 · Rendimiento: capas cacheadas, figuras en lote y bajo consumo](adr/0006-rendimiento-capas-cacheadas.md)
 
 ## Límites conocidos (v0.1)
 

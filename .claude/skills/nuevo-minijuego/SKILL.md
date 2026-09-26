@@ -20,6 +20,7 @@ Guía completa con ejemplo: `docs/ADDING_A_MINIGAME.md`. Esta skill es el checkl
    - `PlayerAvatar.draw_mascot(self, pies, escala, p.color, p.slot)` para los jugadores.
    - `draw_hud(puntajes, texto_central)` arriba (reloj con `clock_text(seg)`).
    - `draw_text_centered(texto, pos, tamaño, color, contorno)` para textos.
+   - Cielo, campo y marcador están cacheados (capas propias): `draw_sky()`/`draw_play_field()` al principio de `_draw()`, `draw_hud()` una vez por `_draw()`. Ver `docs/PERFORMANCE.md`.
 6. **Sonido y vibración**: `play_sfx(nombre)` en la TV, `notify_player(pid, tipo)` en el celular del jugador y `tick_countdown(antes, después)` para la cuenta regresiva. Eventos importantes (sumar, eliminar, ganar) siempre con las dos cosas.
 7. **Seguridad**: usar solo `input.axis` / `input.btn`; límites propios si hace falta (ver `tap_race.gd`). Nombres solo con `draw_string`/`Label`.
 8. **Márgenes**: resolución lógica 1920×1080; dejar ~64 px libres en los bordes (overscan) y los 90 px de arriba para el HUD.
@@ -28,4 +29,5 @@ Guía completa con ejemplo: `docs/ADDING_A_MINIGAME.md`. Esta skill es el checkl
 
 - `godot --headless --path . -s res://tests/run_tests.gd` (los tests genéricos cubren el juego nuevo automáticamente).
 - Skill `verificar-visual` para ver cómo se ve en la TV.
+- Rendimiento: `tools/benchmark.gd -- --only=<id>` (con xvfb) y comparar con los presupuestos de `docs/PERFORMANCE.md`.
 - Si el juego necesita un control nuevo (ej. dos botones): es un cambio de protocolo → ver reglas en `CLAUDE.md` y `docs/PROTOCOL.md`.

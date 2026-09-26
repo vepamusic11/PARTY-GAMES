@@ -66,15 +66,17 @@ func _draw() -> void:
 	var art := Rect2(r.position + Vector2(10, 10), Vector2(r.size.x - 20, r.size.y * 0.5))
 	UiTheme.draw_round_rect(self, art, Color(accent, a), 22)
 	var dot := Color(1, 1, 1, 0.16 * a)
+	var dots := UiTheme.ShapeBatch.new()  # ~20 lunares en un solo draw call.
 	var y := art.position.y + 22.0
 	var row := 0
 	while y < art.end.y - 12.0:
 		var x := art.position.x + (24.0 if row % 2 == 0 else 46.0)
 		while x < art.end.x - 16.0:
-			draw_circle(Vector2(x, y), 6.0, dot)
+			dots.circle(Vector2(x, y), 6.0, dot)
 			x += 44.0
 		y += 26.0
 		row += 1
+	dots.flush(self)
 	UiTheme.draw_control_icon(self, art.get_center() + Vector2(art.size.x * 0.14, 6), art.size.y * 0.28, str(info.get("layout", "")), a)
 	# Tipo de control como etiqueta sobre la ilustración (deja la línea de abajo
 	# para la cantidad de jugadores o el motivo por el que no se puede jugar).

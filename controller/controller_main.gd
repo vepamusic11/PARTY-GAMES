@@ -12,9 +12,19 @@ const KEEPALIVE_SEC := 0.25   ## Reenvía el estado aunque no cambie (por si se 
 const SETTINGS_PATH := "user://settings.cfg"
 const STANDING_POINTS_SIZE := 124  ## "+70": corto, va bien grande.
 const STANDING_FINAL_SIZE := 92    ## "¡Terminaste 1°!": más largo.
+## Batería: mientras no hay un control en pantalla (unirse, esperar, ver el
+## resultado) las nubes y la mascota se animan a estos cuadros por segundo y
+## Godot entra en modo de bajo consumo (no dibuja frames que no cambian).
+## Con un control activo vuelve todo a 60 fps: la latencia del input no cambia.
+## 30 y no menos: la mascota de espera saluda con los brazos y a menos fps
+## el saludo se vería a saltos.
+const IDLE_ANIM_FPS := 30.0
 
 var client := ControllerClient.new()
 var discovery := DiscoveryListener.new()
+
+var _background: PartyBackground
+var _power_saving := false
 
 var _join_screen: Control
 var _hosts_box: VBoxContainer
@@ -67,6 +77,11 @@ func _ready() -> void:
 	if discovery.start() != OK:
 		_join_status.text = "No se pudo buscar TVs automáticamente. Ingresá la IP."
 	_show_join("")
+
+
+func _exit_tree() -> void:
+	if _power_saving:
+		OS.low_processor_usage_mode = false
 
 
 func _process(delta: float) -> void:
@@ -145,6 +160,23 @@ func _on_layout_changed(layout: String, data: Dictionary) -> void:
 		_active_layout.mouse_filter = Control.MOUSE_FILTER_STOP
 		_layout_host.add_child(_active_layout)
 	_last_sent_btn = -1
+	_update_power_mode()
+
+
+## Sin control activo: animaciones a IDLE_ANIM_FPS y modo de bajo consumo.
+## El modo de bajo consumo es global del proceso: solo se toca si este
+## control es la app (raíz de la ventana). En las capturas y los tests la
+## TV corre en el mismo proceso y no se debe frenar.
+func _update_power_mode() -> void:
+	var idle := _active_layout == null
+	var fps := IDLE_ANIM_FPS if idle else 0.0
+	_background.anim_fps = fps
+	for avatar: PlayerAvatar in [_header_avatar, _wait_avatar]:
+		avatar.anim_fps = fps
+	var owns_window := is_inside_tree() and get_viewport() == get_tree().root
+	if owns_window and idle != _power_saving:
+		_power_saving = idle
+		OS.low_processor_usage_mode = idle
 
 
 func _on_phase_changed(phase: String) -> void:
@@ -261,6 +293,7 @@ func _show_join(message: String) -> void:
 	_play_screen.visible = false
 	_join_screen.visible = true
 	_join_status.text = message
+	_update_power_mode()
 
 
 func _update_header() -> void:
@@ -276,11 +309,11 @@ func _update_header() -> void:
 # --- UI -------------------------------------------------------------------------
 
 func _build_ui() -> void:
-	var bg := PartyBackground.new()
-	bg.bricks = false
-	bg.towers = false
-	bg.checker_floor = false
-	add_child(bg)
+	_background = PartyBackground.new()
+	_background.bricks = false
+	_background.towers = false
+	_background.checker_floor = false
+	add_child(_background)
 
 	# Pantalla para unirse: una tarjeta centrada, legible en celular apaisado.
 	var margin := MarginContainer.new()

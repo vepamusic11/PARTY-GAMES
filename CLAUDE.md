@@ -11,6 +11,8 @@ godot --path . -- --host                                # correr como TV
 godot --path . -- --controller                          # correr como control
 # Capturas reales de TV y celular (pantalla virtual; ver skill verificar-visual)
 xvfb-run -a -s "-screen 0 1920x1080x24" godot --path . --rendering-driver opengl3 --audio-driver Dummy -s res://tools/capture_screens.gd -- --out=/tmp/capturas
+# Benchmark de rendimiento por pantalla y juego (ver docs/PERFORMANCE.md)
+xvfb-run -a -s "-screen 0 1920x1080x24" godot --path . --rendering-driver opengl3 --audio-driver Dummy -s res://tools/benchmark.gd -- --json=/tmp/bench.json
 ```
 
 En Claude Code en la web, `.claude/hooks/session-start.sh` instala Godot 4.4.1 automáticamente.
@@ -40,6 +42,7 @@ Siempre correr los tests antes de dar un cambio por terminado.
 - Jugadores distinguibles sin depender del color (etiqueta 1P–4P + accesorio de la mascota).
 - El botón "Atrás" abre el menú de pausa; nunca corta una partida sin confirmar.
 - Nuevos juegos: agregar al registry; los tests genéricos los cubren solos.
+- Rendimiento (60 fps en TV de gama baja): lo que no cambia no se redibuja en cada frame; presupuestos en `docs/PERFORMANCE.md`.
 - Decisiones de arquitectura relevantes: nuevo ADR en `docs/adr/`.
 - Nunca commitear keystores, certificados ni `export_credentials.cfg`.
 

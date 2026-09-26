@@ -71,6 +71,7 @@ godot --headless --path . -s res://tests/run_tests.gd    # 0 = todo OK
 | [docs/ADDING_A_MINIGAME.md](docs/ADDING_A_MINIGAME.md) | Guía paso a paso para sumar un juego |
 | [docs/SECURITY.md](docs/SECURITY.md) | Modelo de amenazas y controles |
 | [docs/BUILD.md](docs/BUILD.md) | Exportar a Android, Google TV e iOS |
+| [docs/PERFORMANCE.md](docs/PERFORMANCE.md) | Benchmark, presupuestos de rendimiento y optimizaciones |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Qué sigue |
 | [docs/PLAN.md](docs/PLAN.md) | Plan de calidad: definición de "terminado", presupuestos medibles y fases |
 | [docs/PRODUCCION.md](docs/PRODUCCION.md) | Dónde vive el proyecto en producción, requisitos de tiendas, bots y redes neuronales |

@@ -32,7 +32,7 @@ Un cambio está terminado cuando cumple **todo** esto (lo revisa quien integra):
 | Métrica | Objetivo | Cómo se mide |
 |---|---|---|
 | Cuadros por segundo en la TV | 60 estables | Benchmark con render real |
-| CPU por cuadro en la TV | ≤ 8 ms (p95) | `tools/benchmark.gd` |
+| CPU por cuadro en la TV | ≤ 8 ms (p95) | `tools/benchmark.gd` (columna "Scripts"; equivalencias en [PERFORMANCE.md](PERFORMANCE.md)) |
 | Latencia dedo → TV | ≤ 60 ms (p95) en Wi-Fi doméstico | Medidor de latencia del control, en dispositivos reales |
 | Reconexión tras corte | ≤ 3 s | Test de integración y prueba manual |
 | Arranque de la TV | ≤ 3 s hasta el lobby | Cronómetro en dispositivo real |
@@ -45,7 +45,7 @@ Un cambio está terminado cuando cumple **todo** esto (lo revisa quien integra):
 
 ### Fase A · Pulido del núcleo *(en curso)*
 - [x] Sonido y vibración
-- [ ] Rendimiento: benchmark, capas estáticas cacheadas y ahorro de batería en el celular
+- [x] Rendimiento: benchmark, capas estáticas cacheadas y ahorro de batería en el celular (ver [PERFORMANCE.md](PERFORMANCE.md))
 - [ ] Pantalla "¿Cómo se juega?" antes de cada juego y transiciones entre pantallas
 - [ ] Juegos 6 y 7: Empujones (contacto físico) y Pintar el piso (territorio)
 - **Listo cuando:** 7 juegos, CI en verde, benchmark dentro del presupuesto.
