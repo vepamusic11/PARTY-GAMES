@@ -87,6 +87,8 @@ tools/          Capturas automáticas de pantalla (prueba de humo visual)
 docs/           Documentación
 ```
 
-## Créditos
+## Licencia
 
-- Tipografía [Fredoka](https://fonts.google.com/specimen/Fredoka) · © The Fredoka Project Authors · [SIL Open Font License 1.1](assets/fonts/OFL.txt).
+- **Código:** [MIT](LICENSE) · © 2026 vepamusic11. Podés usarlo y modificarlo manteniendo el aviso de copyright.
+- **Nombre, logo y personajes:** reservados; ver [TRADEMARKS.md](TRADEMARKS.md).
+- **Tipografía [Fredoka](https://fonts.google.com/specimen/Fredoka):** © The Fredoka Project Authors · [SIL Open Font License 1.1](assets/fonts/OFL.txt).
