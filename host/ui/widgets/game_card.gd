@@ -3,7 +3,7 @@ extends Button
 ## Tarjeta de minijuego en el lobby. OK del control remoto la marca o
 ## desmarca para la competencia. Si no se puede jugar con la cantidad de
 ## jugadores elegida queda deshabilitada, pero sigue siendo navegable para
-## que se pueda leer el motivo ("Solo para 2 jugadores").
+## que se pueda leer el motivo ("Solo 2 jugadores").
 
 const CONTROL_NAMES := {
 	Protocol.LAYOUT_JOYSTICK: "Joystick",
@@ -19,7 +19,7 @@ func _init(p_info: Dictionary) -> void:
 	info = p_info
 	toggle_mode = true
 	focus_mode = Control.FOCUS_ALL
-	custom_minimum_size = Vector2(372, 262)
+	custom_minimum_size = Vector2(280, 214)
 	for style in ["normal", "hover", "pressed", "disabled", "focus", "hover_pressed"]:
 		add_theme_stylebox_override(style, StyleBoxEmpty.new())
 	toggled.connect(func(_on: bool) -> void: queue_redraw())
@@ -63,7 +63,7 @@ func _draw() -> void:
 	UiTheme.draw_round_rect(self, r, Color(UiTheme.PAPER, a), 30, 6.0 if is_selected() else 0.0, UiTheme.SUCCESS, true)
 
 	# Ilustración: fondo de color con lunares y el ícono del tipo de control.
-	var art := Rect2(r.position + Vector2(12, 12), Vector2(r.size.x - 24, r.size.y * 0.52))
+	var art := Rect2(r.position + Vector2(10, 10), Vector2(r.size.x - 20, r.size.y * 0.5))
 	UiTheme.draw_round_rect(self, art, Color(accent, a), 22)
 	var dot := Color(1, 1, 1, 0.16 * a)
 	var y := art.position.y + 22.0
@@ -75,10 +75,17 @@ func _draw() -> void:
 			x += 44.0
 		y += 26.0
 		row += 1
-	_draw_control_icon(art.get_center() + Vector2(0, 4), art.size.y * 0.34, str(info.get("layout", "")), a)
+	_draw_control_icon(art.get_center() + Vector2(0, 6), art.size.y * 0.28, str(info.get("layout", "")), a)
+	# Tipo de control como etiqueta sobre la ilustración (deja la línea de abajo
+	# para la cantidad de jugadores o el motivo por el que no se puede jugar).
+	var control_name: String = CONTROL_NAMES.get(info.get("layout"), "Control")
+	var cw := UiTheme.FONT_BOLD.get_string_size(control_name, HORIZONTAL_ALIGNMENT_LEFT, -1, 20).x + 24.0
+	var chip := Rect2(art.position + Vector2(10, 10), Vector2(cw, 32))
+	UiTheme.draw_round_rect(self, chip, Color(UiTheme.PAPER, 0.92 * a), 16)
+	UiTheme.draw_text(self, control_name, chip.get_center(), 20, Color(UiTheme.INK, a))
 
 	# Marca de selección
-	var badge := Vector2(art.end.x - 30, art.position.y + 30)
+	var badge := Vector2(art.end.x - 26, art.position.y + 26)
 	if is_selected():
 		draw_circle(badge, 24, UiTheme.PAPER)
 		draw_circle(badge, 20, UiTheme.SUCCESS)
@@ -87,12 +94,12 @@ func _draw() -> void:
 		draw_circle(badge, 22, Color(UiTheme.PAPER, 0.9 * a))
 		draw_arc(badge, 16, 0, TAU, 24, Color(UiTheme.INK_SOFT, 0.5 * a), 3.0, true)
 
-	var text_x := r.position.x + 24
-	UiTheme.draw_text_left(self, str(info.get("title", "")), Vector2(text_x, art.end.y + 38), 34,
-		Color(UiTheme.INK, a), r.size.x - 48)
-	var meta := unavailable_reason if disabled else "%s · %s" % [players_text(info), CONTROL_NAMES.get(info.get("layout"), "Control")]
-	UiTheme.draw_text_left(self, meta, Vector2(text_x, art.end.y + 80), 25,
-		UiTheme.DANGER if disabled else UiTheme.INK_SOFT, r.size.x - 48, false)
+	var text_x := r.position.x + 20
+	UiTheme.draw_text_left(self, str(info.get("title", "")), Vector2(text_x, art.end.y + 30), 28,
+		Color(UiTheme.INK, a), r.size.x - 40)
+	var meta := unavailable_reason if disabled else players_text(info)
+	UiTheme.draw_text_left(self, meta, Vector2(text_x, art.end.y + 66), 24,
+		UiTheme.DANGER if disabled else UiTheme.INK_SOFT, r.size.x - 40, false)
 
 
 func _draw_control_icon(c: Vector2, s: float, layout: String, a: float) -> void:

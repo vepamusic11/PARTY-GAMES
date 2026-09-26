@@ -14,7 +14,7 @@
 
 ## Fase 2 · Producto mínimo publicable
 - [ ] Identidad visual propia (arte, tipografía, sonidos) — *base lista: sistema visual, tipografía y mascotas por código ([ADR 0004](adr/0004-sistema-visual.md)); faltan arte final y sonidos*
-- [ ] 8–10 minijuegos; nuevos layouts: dos botones, tilt (acelerómetro)
+- [ ] 8–10 minijuegos (van 5: Arena, Ping Pong, Carrera, Reloj exacto, Esquivar); nuevos layouts: dos botones, tilt (acelerómetro)
 - [x] Modo competencia: elegir jugadores y juegos, resumen por ronda, podio ([ADR 0003](adr/0003-modo-competencia.md))
 - [x] Mostrar en el celular el puesto y los puntos propios durante el resumen (mensaje `standing`, ver [PROTOCOL](PROTOCOL.md))
 - [ ] Localización (es / en / pt)

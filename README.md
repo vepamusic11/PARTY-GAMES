@@ -6,10 +6,12 @@ Juegos cortos para **1 a 4 jugadores en el sillón**: la **TV es la pantalla** y
 |---|---|
 | ![Lobby: cuántos juegan y qué juegos entran](docs/img/lobby_full.png) | ![Resumen de cada jugador al terminar un minijuego](docs/img/round_summary.png) |
 | ![Arena de estrellas](docs/img/arena.png) | ![Podio final](docs/img/final.png) |
+| ![Reloj exacto](docs/img/stop_clock.png) | ![Esquivar](docs/img/dodge.png) |
 
 | Celular (control) | |
 |---|---|
 | ![Pantalla para unirse](docs/img/ctrl_join.png) | ![Control con joystick](docs/img/ctrl_joy.png) |
+| ![Tu resultado en el celular durante el resumen](docs/img/ctrl_standing.png) | ![Esperando que empiece el juego](docs/img/ctrl_wait.png) |
 
 > Capturas generadas automáticamente desde el propio proyecto (host + controles reales conectados por WebSocket) con `tools/capture_screens.gd`. La CI las vuelve a generar en cada PR (artefacto `capturas`).
 
@@ -19,7 +21,7 @@ Juegos cortos para **1 a 4 jugadores en el sillón**: la **TV es la pantalla** y
 
 - Conexión TV ↔ celulares por Wi-Fi local, con código de sala, reconexión automática y medición de latencia.
 - Descubrimiento automático de la TV en la red (con IP manual como respaldo).
-- **Modo competencia**: en el lobby se elige **cuántos juegan** (1–4) y **qué minijuegos entran**; después de cada juego, **resumen por jugador** con puesto, puntaje y puntos ganados; al final, **podio**. Puntos por posición (1° 100 · 2° 70 · 3° 50 · 4° 30).
+- **Modo competencia**: en el lobby se elige **cuántos juegan** (1–4) y **qué minijuegos entran**; después de cada juego, **resumen por jugador** con puesto, puntaje y puntos ganados; al final, **podio**. Puntos por posición (1° 100 · 2° 70 · 3° 50 · 4° 30). Cada celular muestra **su propio resultado** (puesto, puntos y total).
 - Minijuegos:
   - **Arena de estrellas** (1–4) · joystick
   - **Ping Pong** (2) · slider horizontal
@@ -28,7 +30,7 @@ Juegos cortos para **1 a 4 jugadores en el sillón**: la **TV es la pantalla** y
   - **Esquivar** (1–4) · joystick · caen bloques; el último en pie gana
 - Sistema visual propio: tipografía Fredoka, mascotas por jugador (distinguibles también sin color), marcadores hexagonales, fondos animados. Todo dibujado por código.
 - Toda la TV se maneja con el control remoto (D-pad), con menú de pausa en "Atrás".
-- 335 verificaciones automáticas (unitarias + integración real de red + flujo completo de la TV), compilación de todos los scripts y prueba de humo visual en CI.
+- 390 verificaciones automáticas (unitarias + integración real de red + flujo completo de la TV), compilación de todos los scripts y prueba de humo visual en CI.
 
 ## Probarlo en 2 minutos (en tu PC)
 

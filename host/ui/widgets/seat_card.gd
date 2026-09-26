@@ -17,11 +17,11 @@ var _status: Label
 
 func _init(p_slot: int) -> void:
 	slot = p_slot
-	custom_minimum_size = Vector2(270, 250)
+	custom_minimum_size = Vector2(270, 216)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var box := VBoxContainer.new()
 	box.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	box.offset_top = 44
+	box.offset_top = 40
 	box.offset_bottom = -14
 	box.add_theme_constant_override("separation", 0)
 	add_child(box)
@@ -35,7 +35,7 @@ func _init(p_slot: int) -> void:
 	_name.clip_text = true
 	_name.custom_minimum_size = Vector2(0, 40)
 	box.add_child(_name)
-	_status = UiTheme.label("", 23, UiTheme.INK_SOFT)
+	_status = UiTheme.label("", 24, UiTheme.INK_SOFT)
 	box.add_child(_status)
 
 

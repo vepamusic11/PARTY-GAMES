@@ -51,8 +51,8 @@ func set_room(code: String, address: String) -> void:
 		style.border_width_bottom = 8
 		style.border_color = style.bg_color.darkened(0.25)
 		tile.add_theme_stylebox_override("panel", style)
-		tile.custom_minimum_size = Vector2(96, 124)
-		tile.add_child(UiTheme.headline(code[i], 86))
+		tile.custom_minimum_size = Vector2(88, 116)
+		tile.add_child(UiTheme.headline(code[i], 80))
 		_code_box.add_child(tile)
 	_address.text = address
 
@@ -77,7 +77,7 @@ func refresh(players: Array[Dictionary]) -> void:
 	for id: String in _cards:
 		var card: GameCard = _cards[id]
 		var ok := MiniGameRegistry.can_play(card.info, player_count)
-		card.set_unavailable("" if ok else "Solo para " + GameCard.players_text(card.info))
+		card.set_unavailable("" if ok else "Solo " + GameCard.players_text(card.info))
 	_update_start()
 
 
@@ -153,7 +153,7 @@ func _build() -> void:
 
 func _build_join_column() -> Control:
 	var col := VBoxContainer.new()
-	col.custom_minimum_size = Vector2(500, 0)
+	col.custom_minimum_size = Vector2(460, 0)
 	col.add_theme_constant_override("separation", 22)
 	col.add_child(_logo())
 
@@ -169,7 +169,7 @@ func _build_join_column() -> Control:
 		box.add_child(_step_row(i + 1, steps[i]))
 	_code_box = HBoxContainer.new()
 	_code_box.alignment = BoxContainer.ALIGNMENT_CENTER
-	_code_box.add_theme_constant_override("separation", 14)
+	_code_box.add_theme_constant_override("separation", 12)
 	_code_box.custom_minimum_size = Vector2(0, 150)
 	box.add_child(_code_box)
 	var spacer := Control.new()
@@ -232,8 +232,8 @@ func _build_setup_column() -> Control:
 		pad.add_theme_constant_override("margin_" + side, 16)
 	scroll.add_child(pad)
 	var grid := GridContainer.new()
-	grid.columns = 3
-	grid.add_theme_constant_override("h_separation", 18)
+	grid.columns = 4
+	grid.add_theme_constant_override("h_separation", 14)
 	grid.add_theme_constant_override("v_separation", 18)
 	pad.add_child(grid)
 	for info in MiniGameRegistry.all_info():
@@ -284,10 +284,10 @@ func _logo() -> Control:
 	for ch in "PARTY GAMES":
 		if ch == " ":
 			var gap := Control.new()
-			gap.custom_minimum_size = Vector2(26, 0)
+			gap.custom_minimum_size = Vector2(20, 0)
 			row.add_child(gap)
 			continue
-		var l := UiTheme.headline(ch, 84, UiTheme.BRICKS[i % UiTheme.BRICKS.size()], UiTheme.PAPER)
+		var l := UiTheme.headline(ch, 64, UiTheme.BRICKS[i % UiTheme.BRICKS.size()], UiTheme.PAPER)
 		l.add_theme_color_override("font_shadow_color", UiTheme.INK)
 		row.add_child(l)
 		i += 1
