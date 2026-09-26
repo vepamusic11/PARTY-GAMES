@@ -15,6 +15,14 @@ const OUT_DIR := "res://docs/img/"
 const OUT_WIDTH := 960
 const PHONE := Vector2i(2340, 1080)  ## Celular apaisado típico (19.5:9).
 
+## Segundos de juego antes de capturar (default 2,5): algunos juegos se ven
+## mejor más avanzados (ej. el reloj ya corriendo o bloques cayendo).
+const SHOT_DELAY := {"stop_clock": 5.0, "dodge": 6.0}
+## Nombre de la captura del celular según el control que muestra.
+const CONTROL_SHOTS := {
+	Protocol.LAYOUT_JOYSTICK: "ctrl_joy", Protocol.LAYOUT_ONE_BUTTON: "ctrl_button", Protocol.LAYOUT_SLIDER_H: "ctrl_slider",
+}
+
 var host: HostMain
 var _out_dir := OUT_DIR
 var _clients: Array[ControllerClient] = []
@@ -66,25 +74,28 @@ func _run() -> void:
 	await _shot(phone, "ctrl_wait")
 	await _shot(root, "lobby_full")
 
+	# Competencia con todos los juegos que admiten 4: se recorre sin importar
+	# cuántos haya (un juego nuevo en el registry aparece solo en las capturas).
 	_expect(host.start_tournament(host._lobby.selected_game_ids()), "arranca la competencia")
-	await _seconds(2.5)
-	await _shot(root, "arena")
-	await _shot(phone, "ctrl_joy")
-	host._game.finish({"winners": [1], "scores": {1: 12, 2: 9, 3: 9, 4: 4}, "summary": ""})
-	await _seconds(4.5)
-	_expect(host._summary.visible, "se muestra el resumen de ronda")
-	await _shot(root, "round_summary")
-	# El celular muestra su propio resultado mientras la TV muestra el resumen.
-	_expect(ctrl._standing_panel.visible, "el celular muestra su resultado de la ronda")
-	await _shot(phone, "ctrl_standing")
-
-	host._summary._on_continue()  # Ping Pong se saltea (es para 2): sigue Carrera.
-	await _seconds(3.0)
-	await _shot(root, "tap_race")
-	host._game.finish({"winners": [3], "scores": {1: 31, 2: 36, 3: 40, 4: 22}, "summary": ""})
-	await _seconds(1.0)
-	host._summary._on_continue()
-	await _seconds(2.5)
+	var round_index := 0
+	while host.phase == Protocol.PHASE_PLAYING:
+		var game_id := host.tournament.current_game_id
+		await _seconds(SHOT_DELAY.get(game_id, 2.5))
+		await _shot(root, game_id)
+		if round_index == 0:
+			await _shot(phone, CONTROL_SHOTS.get(MiniGameRegistry.info(game_id).layout, "ctrl_play"))
+		host._game.finish(_fake_result(round_index))
+		await _seconds(4.5 if round_index == 0 else 1.0)
+		_expect(host._summary.visible, "se muestra el resumen de la ronda %d" % (round_index + 1))
+		if round_index == 0:
+			await _shot(root, "round_summary")
+			# El celular muestra su propio resultado mientras la TV muestra el resumen.
+			_expect(ctrl._standing_panel.visible, "el celular muestra su resultado de la ronda")
+			await _shot(phone, "ctrl_standing")
+		host._summary._on_continue()
+		round_index += 1
+		await _seconds(0.5)
+	await _seconds(2.0)
 	_expect(host._final.visible, "se muestra el podio")
 	await _shot(root, "final")
 
@@ -100,6 +111,24 @@ func _run() -> void:
 
 	print("Capturas guardadas en ", ProjectSettings.globalize_path(_out_dir))
 	quit(0)
+
+
+## Resultado inventado pero variado: el ganador rota en cada ronda para que
+## el podio muestre puntos distintos.
+func _fake_result(round_index: int) -> Dictionary:
+	var scores := {}
+	var ids: Array = []
+	for p in host.server.get_players():
+		ids.append(p.id)
+	for i in ids.size():
+		scores[ids[i]] = 10 + ((i + round_index) % ids.size()) * 7
+	var best := -1
+	var winner := 0
+	for pid: int in scores:
+		if scores[pid] > best:
+			best = scores[pid]
+			winner = pid
+	return {"winners": [winner], "scores": scores, "summary": ""}
 
 
 ## Si algo del recorrido no pasa, sale con error (útil en CI).
