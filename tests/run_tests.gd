@@ -145,6 +145,44 @@ func test_registry_optional_defaults() -> void:
 	check(MiniGameRegistry.info("arena").score_label == "estrellas", "el juego puede sobrescribir los valores por defecto")
 
 
+
+func test_stop_clock_scoring() -> void:
+	var sc = preload("res://host/minigames/stop_clock/stop_clock.gd")  # Sin tipo: métodos propios del juego.
+	check(sc.score_for(10.0) == 1000, "frenar justo en 10.00 da 1000")
+	check(sc.score_for(10.25) == 750 and sc.score_for(9.75) == 750, "250 ms de error, pasado o corto, da 750")
+	check(sc.score_for(9.9) == 900, "redondea el error a milisegundos (%d)" % sc.score_for(9.9))
+	check(sc.score_for(11.0) == 0 and sc.score_for(15.0) == 0 and sc.score_for(0.0) == 0, "nunca es negativo")
+
+	var game = MiniGameRegistry.create("stop_clock")
+	root.add_child(game)
+	game.process_mode = Node.PROCESS_MODE_DISABLED  # El test maneja el tiempo a mano.
+	game.setup(_fake_players(2))
+	var results: Array = []
+	game.finished.connect(func(r: Dictionary) -> void: results.append(r))
+	var down := {"seq": 1, "axis": Vector2.ZERO, "btn": Protocol.BTN_A}
+	var up := {"seq": 2, "axis": Vector2.ZERO, "btn": 0}
+	game.on_input(1, down)
+	check(not game.has_stopped(1), "apretar durante la cuenta regresiva no frena")
+	game._physics_process(3.5)
+	game.on_input(1, down)
+	check(not game.has_stopped(1), "mantener apretado desde la cuenta no cuenta como toque")
+	game._physics_process(9.5)
+	game.on_input(1, up)
+	game.on_input(1, down)
+	check(game.has_stopped(1) and is_equal_approx(game.stop_time(1), 10.0), "frena en 10.00 (%.3f)" % game.stop_time(1))
+	game.on_input(1, up)
+	game._physics_process(1.0)
+	game.on_input(1, down)
+	check(is_equal_approx(game.stop_time(1), 10.0), "frena una sola vez")
+	game._physics_process(5.0)
+	check(game.is_revealing() and is_equal_approx(game.stop_time(2), 15.0), "quien no frena se detiene solo a los 15 s")
+	check(results.is_empty(), "revela los tiempos antes de terminar")
+	game._physics_process(2.1)
+	check(results.size() == 1 and results[0].winners == [1] and results[0].scores == {1: 1000, 2: 0},
+		"resultado final (%s)" % [results])
+	game.queue_free()
+	await process_frame
+
 # --- Competencia ------------------------------------------------------------------
 
 func test_tournament_rank() -> void:
@@ -227,7 +265,9 @@ func test_lobby_screen() -> void:
 	lobby.refresh(_fake_players(3))
 	check(lobby.player_count == 3 and capacity.has(3), "la cantidad sube sola si entra más gente")
 	check(not "pingpong" in lobby.selected_game_ids(), "juegos incompatibles con 3 quedan afuera")
-	(lobby._cards["arena"] as GameCard).button_pressed = false
+	for id: String in lobby._cards:
+		if id != "tap_race":
+			(lobby._cards[id] as GameCard).button_pressed = false
 	check(lobby.selected_game_ids() == (["tap_race"] as Array[String]), "desmarcar un juego lo saca")
 	(lobby._cards["tap_race"] as GameCard).button_pressed = false
 	check(not lobby.can_start(), "sin juegos no se puede empezar")
