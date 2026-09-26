@@ -20,8 +20,9 @@ Guía completa con ejemplo: `docs/ADDING_A_MINIGAME.md`. Esta skill es el checkl
    - `PlayerAvatar.draw_mascot(self, pies, escala, p.color, p.slot)` para los jugadores.
    - `draw_hud(puntajes, texto_central)` arriba (reloj con `clock_text(seg)`).
    - `draw_text_centered(texto, pos, tamaño, color, contorno)` para textos.
-6. **Seguridad**: usar solo `input.axis` / `input.btn`; límites propios si hace falta (ver `tap_race.gd`). Nombres solo con `draw_string`/`Label`.
-7. **Márgenes**: resolución lógica 1920×1080; dejar ~64 px libres en los bordes (overscan) y los 90 px de arriba para el HUD.
+6. **Sonido y vibración**: `play_sfx(nombre)` en la TV, `notify_player(pid, tipo)` en el celular del jugador y `tick_countdown(antes, después)` para la cuenta regresiva. Eventos importantes (sumar, eliminar, ganar) siempre con las dos cosas.
+7. **Seguridad**: usar solo `input.axis` / `input.btn`; límites propios si hace falta (ver `tap_race.gd`). Nombres solo con `draw_string`/`Label`.
+8. **Márgenes**: resolución lógica 1920×1080; dejar ~64 px libres en los bordes (overscan) y los 90 px de arriba para el HUD.
 
 ## Verificar
 

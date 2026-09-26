@@ -64,6 +64,11 @@ Cada pantalla es un componente independiente que **emite señales** (`start_requ
 ### Sistema visual
 Colores, tipografía y funciones de dibujo están en `core/ui/ui_theme.gd` (*design tokens*). Las mascotas, chips y fondos se dibujan por código. Ver [ADR 0004](adr/0004-sistema-visual.md) y la skill `.claude/skills/diseno-tv/`.
 
+### Sonido y vibración
+Los efectos se sintetizan al iniciar (`core/audio/sfx.gd`, sin archivos de audio). Un juego llama `play_sfx("point")` para la TV y `notify_player(pid, "point")` para el celular de ese jugador; la TV lo reenvía como mensaje `feedback` con límite de frecuencia y el celular vibra (`Haptics`) y suena.
+
+*Ejemplo:* en Esquivar, cuando un bloque te toca, la TV hace "¡pum!" y solo tu celular vibra fuerte (220 ms). Así sabés que quedaste afuera sin buscar tu mascota. Ver [ADR 0005](adr/0005-sonido-sintetizado.md).
+
 ### Reconexión con token
 Al unirse, cada jugador recibe un token aleatorio de 128 bits. Si el celular se bloquea o se corta el Wi-Fi, el cliente reintenta con backoff exponencial (0,5 s, 1 s, 2 s… hasta 5 s) presentando el token, y recupera **el mismo lugar, color e id**. El host reserva el lugar 30 segundos.
 
@@ -88,6 +93,7 @@ Registradas en [adr/](adr/):
 - [0002 · Red local con WebSocket y host autoritativo](adr/0002-red-local-websocket.md)
 - [0003 · Modo competencia con puntos por posición](adr/0003-modo-competencia.md)
 - [0004 · Sistema visual dibujado por código](adr/0004-sistema-visual.md)
+- [0005 · Sonido sintetizado por código y vibración por eventos](adr/0005-sonido-sintetizado.md)
 
 ## Límites conocidos (v0.1)
 

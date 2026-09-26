@@ -4,16 +4,19 @@ extends Control
 ##   Seguir jugando        -> cierra el menú
 ##   Saltar este juego     -> pasa al siguiente sin dar puntos (solo en partida)
 ##   Terminar competencia  -> muestra el podio con los puntos hasta ahora
+##   Sonido: Sí/No         -> silencia la TV (se recuerda entre sesiones)
 ## Antes, "Atrás" cortaba la partida sin preguntar: un toque accidental
 ## arruinaba la ronda.
 
 signal resume_requested
 signal skip_requested
 signal quit_requested
+signal sound_toggled
 
 var _subtitle: Label
 var _resume: Button
 var _skip: Button
+var _sound: Button
 
 
 func _ready() -> void:
@@ -42,6 +45,8 @@ func _ready() -> void:
 	_skip = _button("Saltar este juego", skip_requested)
 	box.add_child(_skip)
 	box.add_child(_button("Terminar competencia", quit_requested))
+	_sound = _button("Sonido: Sí", sound_toggled)
+	box.add_child(_sound)
 
 
 func open(subtitle: String, can_skip: bool) -> void:
@@ -49,6 +54,10 @@ func open(subtitle: String, can_skip: bool) -> void:
 	_skip.visible = can_skip
 	visible = true
 	_resume.grab_focus()
+
+
+func set_sound_on(on: bool) -> void:
+	_sound.text = "Sonido: Sí" if on else "Sonido: No"
 
 
 func close() -> void:

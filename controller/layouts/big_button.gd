@@ -32,7 +32,8 @@ func _update() -> void:
 	if now_pressed != pressed:
 		pressed = now_pressed
 		if pressed:
-			Input.vibrate_handheld(15)
+			Haptics.buzz("tap")
+			Sfx.play("tap")
 		queue_redraw()
 
 

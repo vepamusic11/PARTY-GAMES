@@ -14,6 +14,8 @@ signal phase_changed(phase: String)
 ## Resultado propio del resumen de ronda o del podio, ya validado con
 ## Protocol.parse_standing (ver docs/PROTOCOL.md). Solo informativo.
 signal standing_received(data: Dictionary)
+## Aviso de vibración/sonido para este jugador (ver Protocol.T_FEEDBACK).
+signal feedback_received(kind: String)
 
 enum State { IDLE, CONNECTING, JOINED, RECONNECTING, LEAVING }
 
@@ -161,6 +163,10 @@ func _handle(raw: String) -> void:
 			layout_changed.emit(layout, data if typeof(data) == TYPE_DICTIONARY else {})
 		Protocol.T_PHASE:
 			phase_changed.emit(str(msg.get("phase", "")))
+		Protocol.T_FEEDBACK:
+			var kind := Protocol.parse_feedback(msg)
+			if not kind.is_empty():
+				feedback_received.emit(kind)
 		Protocol.T_STANDING:
 			var standing := Protocol.parse_standing(msg)
 			if not standing.is_empty():

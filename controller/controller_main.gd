@@ -49,6 +49,8 @@ func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	theme = UiTheme.build()
 	DisplayServer.screen_set_keep_on(true)
+	Sfx.load_prefs(SETTINGS_PATH)
+	add_child(Sfx.new())
 	add_child(client)
 	add_child(discovery)
 	client.joined.connect(_on_joined)
@@ -59,6 +61,7 @@ func _ready() -> void:
 	client.layout_changed.connect(_on_layout_changed)
 	client.phase_changed.connect(_on_phase_changed)
 	client.standing_received.connect(_show_standing)
+	client.feedback_received.connect(_on_feedback)
 	discovery.hosts_changed.connect(_on_hosts_changed)
 	_build_ui()
 	if discovery.start() != OK:
@@ -93,6 +96,8 @@ func _process(delta: float) -> void:
 # --- Eventos de red -------------------------------------------------------------
 
 func _on_joined(info: Dictionary) -> void:
+	Sfx.play("join")
+	Haptics.buzz("go")
 	_save_name(info.name)
 	_join_screen.visible = false
 	_play_screen.visible = true
@@ -133,6 +138,8 @@ func _on_layout_changed(layout: String, data: Dictionary) -> void:
 	_wait_view.visible = _active_layout == null
 	if layout != Protocol.LAYOUT_WAIT:
 		_clear_standing()  # Empieza un juego nuevo: el resultado anterior ya no aplica.
+		Sfx.play("select")
+		Haptics.buzz("point")
 	if _active_layout:
 		_active_layout.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		_active_layout.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -148,7 +155,17 @@ func _on_phase_changed(phase: String) -> void:
 ## Resultado propio (ya validado por Protocol.parse_standing). En el
 ## resumen de ronda: medalla con el puesto, "+70" y "Total 170 · vas 2°".
 ## En el podio: "¡Terminaste 1°!" y el total.
+## La TV pide vibrar/sonar por algo que le pasó a este jugador en el juego.
+## El tipo ya viene validado (Protocol.parse_feedback).
+func _on_feedback(kind: String) -> void:
+	Haptics.buzz(kind)
+	Sfx.play(kind)
+
+
 func _show_standing(data: Dictionary) -> void:
+	var celebrate := int(data.place) == 1 or (bool(data.final) and int(data.rank) == 1)
+	Sfx.play("win" if celebrate else "pop")
+	Haptics.buzz("win" if celebrate else "point")
 	var is_final: bool = data.final
 	var rank: int = data.rank
 	var place: int = data.place
@@ -347,6 +364,10 @@ func _build_ui() -> void:
 	_latency = UiTheme.label("", 28, UiTheme.INK_SOFT, true)
 	_latency.custom_minimum_size = Vector2(160, 0)
 	top.add_child(_latency)
+	top.add_child(_toggle_button(func() -> String: return "Sonido: " + ("No" if Sfx.muted else "Sí"),
+		func() -> void: Sfx.muted = not Sfx.muted))
+	top.add_child(_toggle_button(func() -> String: return "Vibrar: " + ("Sí" if Haptics.enabled else "No"),
+		func() -> void: Haptics.enabled = not Haptics.enabled))
 	_layout_host = Control.new()
 	_layout_host.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_play_screen.add_child(_layout_host)
@@ -406,6 +427,21 @@ func _build_standing_panel(parent: Control) -> void:
 
 func _section(text: String) -> Label:
 	return UiTheme.label(text, 34, UiTheme.INK, true, HORIZONTAL_ALIGNMENT_LEFT)
+
+
+## Botón que alterna una preferencia de audio, la guarda y muestra su estado.
+func _toggle_button(caption: Callable, toggle: Callable) -> Button:
+	var b := Button.new()
+	b.text = caption.call()
+	b.custom_minimum_size = Vector2(230, 0)
+	b.add_theme_font_size_override("font_size", 26)
+	b.pressed.connect(func() -> void:
+		toggle.call()
+		Sfx.save_prefs(SETTINGS_PATH)
+		b.text = caption.call()
+		Sfx.play("select")
+		Haptics.buzz("tap"))
+	return b
 
 
 func _label(text: String, size: int, color: Color = UiTheme.INK,

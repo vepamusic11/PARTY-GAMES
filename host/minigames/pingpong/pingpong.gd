@@ -96,11 +96,16 @@ func _check_paddle(pid: int, y: float, dir: int) -> void:
 	var speed := _vel.length() * BALL_SPEEDUP
 	# Pegarle con el borde de la paleta desvía más la pelota.
 	_vel = Vector2(offset * 0.8, dir).normalized() * speed
+	play_sfx("pong", 1.0 + minf(speed / BALL_START_SPEED - 1.0, 0.5))
+	notify_player(pid, "tap")
 	_ball.y = y + dir * (BALL_RADIUS + PADDLE_SIZE.y / 2.0)
 
 
 func _point(winner_id: int, next_dir: int) -> void:
 	_score[winner_id] += 1
+	play_sfx("point")
+	notify_player(winner_id, "point")
+	notify_player(_bottom_id if winner_id == _top_id else _top_id, "lose")
 	if _score[winner_id] >= POINTS_TO_WIN:
 		finish(result_from_scores(_score, "Primero a %d puntos" % POINTS_TO_WIN))
 		return

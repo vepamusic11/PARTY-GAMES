@@ -243,6 +243,52 @@ func test_stop_clock_scoring() -> void:
 	game.queue_free()
 	await process_frame
 
+# --- Sonido y vibración ------------------------------------------------------------
+
+func test_sfx_synthesis() -> void:
+	for sound_name: String in Sfx.RECIPES:
+		var stream := Sfx.synth(Sfx.RECIPES[sound_name])
+		var seconds := 0.0
+		for n: Array in Sfx.RECIPES[sound_name]:
+			seconds += float(n[2])
+		var expected_bytes := 0
+		for n: Array in Sfx.RECIPES[sound_name]:
+			expected_bytes += int(float(n[2]) * Sfx.MIX_RATE) * 2
+		check(stream.data.size() == expected_bytes and stream.data.size() > 0, "%s: duración correcta" % sound_name)
+		check(stream.format == AudioStreamWAV.FORMAT_16_BITS and not stream.stereo, "%s: PCM16 mono" % sound_name)
+		check(seconds <= 1.2, "%s: efecto corto (%.2f s)" % [sound_name, seconds])
+	# El volumen nunca satura: el pico queda por debajo del máximo de 16 bits.
+	var peak := 0
+	var data := Sfx.synth(Sfx.RECIPES["fanfare"]).data
+	for i in range(0, data.size(), 2):
+		peak = maxi(peak, absi(data.decode_s16(i)))
+	check(peak > 3000 and peak < 32767, "volumen audible y sin saturar (pico %d)" % peak)
+	Sfx.play("no-existe")  # Sin nodo ni nombre válido: no hace nada ni rompe.
+	for kind in Protocol.FEEDBACK_KINDS:
+		check(Sfx.has_sound(kind) and Haptics.duration_ms(kind) > 0, "feedback %s tiene sonido y vibración" % kind)
+
+
+func test_parse_feedback() -> void:
+	check(Protocol.parse_feedback({"kind": "point"}) == "point", "tipo válido")
+	check(Protocol.parse_feedback({"kind": "explotar"}) == "", "tipo desconocido")
+	check(Protocol.parse_feedback({"kind": 3}) == "", "tipo no string")
+	check(Protocol.parse_feedback({}) == "", "sin tipo")
+
+
+func test_tick_countdown() -> void:
+	var game := MiniGame.new()
+	game.setup(_fake_players(3))
+	var got: Array = []
+	game.feedback.connect(func(pid: int, kind: String) -> void: got.append([pid, kind]))
+	game.tick_countdown(2.1, 1.9)
+	check(got.is_empty(), "3 -> 2 solo suena en la TV")
+	game.tick_countdown(0.05, -0.01)
+	check(got.size() == 3 and got.all(func(g: Array) -> bool: return g[1] == "go"), "al llegar a 0 vibran todos los celulares")
+	game.tick_countdown(-0.01, -0.03)
+	check(got.size() == 3, "después de 0 no repite")
+	game.free()
+
+
 # --- Competencia ------------------------------------------------------------------
 
 func test_tournament_rank() -> void:
@@ -576,6 +622,39 @@ func test_controller_standing_view() -> void:
 	await process_frame
 
 
+## Un aviso del juego llega solo al celular de ese jugador, validado y con
+## límite de frecuencia.
+func test_feedback_relay() -> void:
+	var host := HostMain.new()
+	host.server_port = TEST_PORT + 6
+	host.announce = false
+	root.add_child(host)
+	await process_frame
+	var c1 := _client()
+	var c2 := _client()
+	var got1: Array = []
+	var got2: Array = []
+	c1.feedback_received.connect(func(k: String) -> void: got1.append(k))
+	c2.feedback_received.connect(func(k: String) -> void: got2.append(k))
+	c1.join("127.0.0.1", TEST_PORT + 6, host.server.room_code, "Pablo")
+	await _until(func() -> bool: return host.server.get_players().size() == 1)
+	c2.join("127.0.0.1", TEST_PORT + 6, host.server.room_code, "Sofi")
+	await _until(func() -> bool: return host.server.get_players().size() == 2)
+	host._lobby._stepper.set_value(2)
+	check(host.start_tournament(["arena"] as Array[String]), "arranca Arena")
+	var game := host._game
+	var p1: int = c1.player_info.id
+	game.notify_player(p1, "point")
+	game.notify_player(p1, "point")      # Muy seguido: se descarta.
+	game.notify_player(p1, "explotar")   # Tipo inválido: no se manda.
+	await _until(func() -> bool: return not got1.is_empty())
+	await _frames(10)
+	check(got1 == ["point"], "llega un solo aviso válido al jugador correcto (%s)" % [got1])
+	check(got2.is_empty(), "el otro celular no recibe nada")
+	host.queue_free()
+	await _free_clients()
+
+
 func test_rejects_raw_garbage() -> void:
 	var server := HostServer.new()
 	root.add_child(server)
@@ -603,6 +682,11 @@ func _fake_players(n: int) -> Array[Dictionary]:
 	for i in n:
 		out.append({"id": i + 1, "slot": i, "name": names[i], "color": Protocol.player_color(i), "connected": true})
 	return out
+
+
+func _frames(n: int) -> void:
+	for i in n:
+		await process_frame
 
 
 func _free_clients() -> void:

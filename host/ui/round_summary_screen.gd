@@ -124,9 +124,13 @@ func _reveal(columns: Array[Dictionary], totals: Dictionary) -> void:
 		tw.parallel().tween_property(delta_label, "scale", Vector2.ONE, 0.35) \
 			.from(Vector2(0.2, 0.2)).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT).set_delay(delay)
 		tw.parallel().tween_callback(pedestal.light_up).set_delay(delay)
+		# Cuanto mejor el puesto, más agudo el "pop": se escucha la escalera.
+		var pitch := 1.0 + 0.12 * (4 - int(col.place))
+		tw.parallel().tween_callback(func() -> void: Sfx.play("pop", 0.0, pitch)).set_delay(delay)
 		delay += REVEAL_GAP
 	tw.parallel().tween_callback(func() -> void:
 		_bar.count_to(totals)
+		Sfx.play("win")
 		for col: Dictionary in columns:
 			if col.place == 1:
 				(col.avatar as PlayerAvatar).hop(3)).set_delay(delay)

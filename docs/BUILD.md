@@ -12,7 +12,7 @@ La misma APK/AAB sirve para ambos: en un dispositivo **sin pantalla táctil** (T
 1. Instalar Android Studio (o solo el SDK + JDK 17) y configurar las rutas en **Editor → Configuración del editor → Exportar → Android**.
 2. **Proyecto → Exportar → Agregar → Android**.
 3. Opciones a revisar en el preset:
-   - **Permisos:** `Internet`, `Access Network State`, `Access Wifi State`, `Change Wifi Multicast State` (este último ayuda a recibir el anuncio UDP en algunos celulares).
+   - **Permisos:** `Internet`, `Access Network State`, `Access Wifi State`, `Change Wifi Multicast State` (este último ayuda a recibir el anuncio UDP en algunos celulares) y `Vibrate` (vibración del control; sin él, `Haptics.buzz` no hace nada).
    - **Package → Show In Android TV** (si tu versión de Godot la tiene): activado, para aparecer en el launcher de Google TV. Si no está, se resuelve con el manifiesto personalizado del punto siguiente.
    - **Screen → Support Small/Normal/Large/Xlarge:** activados.
 4. Para instalar rápido en un dispositivo conectado por USB/Wi-Fi: botón de **Despliegue remoto** (ícono de Android arriba a la derecha).

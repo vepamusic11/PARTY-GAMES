@@ -16,6 +16,11 @@ extends Control
 var server_port := Protocol.WS_PORT
 var announce := true
 
+const SETTINGS_PATH := "user://tv_settings.cfg"
+## Mínimo entre dos avisos "feedback" al mismo celular: un juego no puede
+## inundar la red aunque pida vibrar en cada frame.
+const FEEDBACK_MIN_MS := 80
+
 var server := HostServer.new()
 var beacon := DiscoveryBeacon.new()
 var phase := Protocol.PHASE_LOBBY
@@ -31,14 +36,19 @@ var _pause: PauseMenu
 ## Último "standing" enviado a cada jugador (player_id -> payload), para
 ## reenviarlo si el celular se reconecta durante el resumen o el podio.
 var _standings_sent: Dictionary = {}
+var _feedback_last_ms: Dictionary = {}  # player_id -> ticks del último aviso
 
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	theme = UiTheme.build()
+	Sfx.load_prefs(SETTINGS_PATH)
+	add_child(Sfx.new())
 	add_child(server)
 	add_child(beacon)
-	server.player_joined.connect(func(_p: Dictionary) -> void: _refresh_lobby())
+	server.player_joined.connect(func(_p: Dictionary) -> void:
+		Sfx.play("join")
+		_refresh_lobby())
 	server.player_reconnected.connect(_on_player_reconnected)
 	server.player_disconnected.connect(_on_player_gone)
 	server.player_left.connect(_on_player_gone)
@@ -92,6 +102,7 @@ func _play_next() -> void:
 	var info := MiniGameRegistry.info(id)
 	_game = MiniGameRegistry.create(id)
 	_game.finished.connect(_on_game_finished)
+	_game.feedback.connect(_on_game_feedback)
 	_game_layer.add_child(_game)
 	_game.setup(server.get_players())
 	_background.visible = false  # El juego dibuja su propio fondo.
@@ -195,9 +206,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		_resume()
 	elif phase == Protocol.PHASE_PLAYING and is_instance_valid(_game):
 		_game.process_mode = Node.PROCESS_MODE_DISABLED
+		Sfx.play("whoosh")
 		_pause.open(str(MiniGameRegistry.info(tournament.current_game_id).get("title", "")), true)
 	elif phase == Protocol.PHASE_RESULTS and _summary.visible:
 		_summary.paused = true
+		Sfx.play("whoosh")
 		_pause.open("Resumen de la ronda", false)
 	else:
 		return
@@ -247,11 +260,42 @@ func _on_player_reconnected(player: Dictionary) -> void:
 ## Desconexión temporal o salida definitiva: el juego recibe input neutro.
 ## Si no queda nadie, se vuelve al lobby.
 func _on_player_gone(player_id: int) -> void:
+	Sfx.play("back")
 	if phase == Protocol.PHASE_PLAYING and is_instance_valid(_game):
 		_game.on_player_disconnected(player_id)
 	if phase != Protocol.PHASE_LOBBY and server.get_players().is_empty():
 		_back_to_lobby()
 	_refresh_lobby()
+
+
+## Reenvía al celular del jugador un pedido de vibración/sonido del juego.
+func _on_game_feedback(player_id: int, kind: String) -> void:
+	if not kind in Protocol.FEEDBACK_KINDS:
+		return
+	var now := Time.get_ticks_msec()
+	if now - int(_feedback_last_ms.get(player_id, -FEEDBACK_MIN_MS)) < FEEDBACK_MIN_MS:
+		return
+	_feedback_last_ms[player_id] = now
+	server.send_to(player_id, Protocol.T_FEEDBACK, {"kind": kind})
+
+
+## Sonidos de navegación: mover el foco y confirmar. No consume el evento.
+func _input(event: InputEvent) -> void:
+	if event.is_action_pressed("ui_accept"):
+		var focused := get_viewport().gui_get_focus_owner()
+		if focused is BaseButton:
+			Sfx.play("back" if (focused as BaseButton).disabled else "select")
+
+
+func _on_focus_changed(_control: Control) -> void:
+	Sfx.play("tick")
+
+
+func _toggle_sound() -> void:
+	Sfx.muted = not Sfx.muted
+	Sfx.save_prefs(SETTINGS_PATH)
+	_pause.set_sound_on(not Sfx.muted)
+	Sfx.play("select")
 
 
 func _refresh_lobby() -> void:
@@ -286,7 +330,10 @@ func _build_ui() -> void:
 	_pause.resume_requested.connect(_resume)
 	_pause.skip_requested.connect(_skip_game)
 	_pause.quit_requested.connect(_quit_tournament)
+	_pause.sound_toggled.connect(_toggle_sound)
 	add_child(_pause)
+	_pause.set_sound_on(not Sfx.muted)
+	get_viewport().gui_focus_changed.connect(_on_focus_changed)
 
 
 static func _local_ipv4() -> Array[String]:

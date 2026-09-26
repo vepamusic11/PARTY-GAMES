@@ -74,6 +74,8 @@ func on_input(player_id: int, input: Dictionary) -> void:
 	var down := (int(input.btn) & Protocol.BTN_A) != 0
 	if down and not _was_down[player_id] and is_running() and not has_stopped(player_id):
 		_stops[player_id] = elapsed()
+		play_sfx("stop")
+		notify_player(player_id, "tap")
 		if _all_stopped():
 			_start_reveal()
 	_was_down[player_id] = down
@@ -124,6 +126,7 @@ func _all_stopped() -> bool:
 func _start_reveal() -> void:
 	_final_clock = elapsed()
 	_reveal_left = REVEAL_TIME
+	play_sfx("pop")
 
 
 func _physics_process(delta: float) -> void:
@@ -134,6 +137,7 @@ func _physics_process(delta: float) -> void:
 		if _reveal_left <= 0.0:
 			finish(result_from_scores(scores(), "Más cerca de 10.00 gana"))
 	else:
+		tick_countdown(COUNTDOWN - _t, COUNTDOWN - _t - delta)
 		_t += delta
 		if is_running() and elapsed() >= MAX_TIME:
 			# Quien no frenó se detiene solo con el peor resultado.

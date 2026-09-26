@@ -93,6 +93,12 @@ Valores: `lobby`, `playing`, `results`. En modo competencia `results` cubre tant
 {"v":1,"type":"pong","t":123456}
 ```
 
+### `feedback` — vibrar/sonar en un celular
+```json
+{"v":1,"type":"feedback","kind":"point"}
+```
+La TV avisa a **un** jugador que le pasó algo en el juego para que su celular vibre y suene: `point` (sumó), `hit` (lo eliminaron), `win`, `lose`, `go` (arranca el juego), `count` y `tap`. Cualquier otro valor se descarta (`Protocol.parse_feedback`). La TV limita a un aviso cada 80 ms por jugador. Es informativo y **compatible**: los controles viejos lo ignoran y `VERSION` no cambia.
+
 ### `standing` — resultado propio (resumen y podio)
 ```json
 {"v":1,"type":"standing","round":1,"total_rounds":3,"place":2,"points":70,"total":170,"rank":2,"players":4,"final":false}

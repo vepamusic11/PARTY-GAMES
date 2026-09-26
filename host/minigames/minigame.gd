@@ -9,6 +9,9 @@ extends Node2D
 
 ## Emitir una sola vez al terminar. result = { "winners": Array[int], "scores": {player_id: int}, "summary": String }
 signal finished(result: Dictionary)
+## Pedido de vibración/sonido en el celular de un jugador (la TV lo reenvía
+## como mensaje "feedback"). kind: uno de Protocol.FEEDBACK_KINDS.
+signal feedback(player_id: int, kind: String)
 
 ## Tamaño lógico de la pantalla de la TV (ver project.godot).
 const SCREEN := Vector2(1920, 1080)
@@ -77,6 +80,36 @@ static func result_from_scores(scores: Dictionary, summary: String = "") -> Dict
 		elif s == best:
 			winners.append(pid)
 	return {"winners": winners, "scores": scores.duplicate(), "summary": summary}
+
+
+# --- Sonido y vibración ------------------------------------------------------
+
+## Sonido en la TV (ver Sfx.RECIPES). Sin nodo Sfx (tests) no hace nada.
+func play_sfx(sound_name: String, pitch: float = 1.0) -> void:
+	Sfx.play(sound_name, 0.0, pitch)
+
+
+## Vibración/sonido en el celular de un jugador.
+func notify_player(player_id: int, kind: String) -> void:
+	feedback.emit(player_id, kind)
+
+
+func notify_all(kind: String) -> void:
+	for p in players:
+		feedback.emit(p.id, kind)
+
+
+## Cuenta regresiva con sonido: llamar en cada frame con los segundos que
+## faltaban antes y después del delta. Suena "3, 2, 1" y al llegar a 0 "¡YA!"
+## en la TV y vibra en todos los celulares.
+func tick_countdown(left_before: float, left_after: float) -> void:
+	if left_before <= 0.0:
+		return
+	if left_after <= 0.0:
+		play_sfx("go")
+		notify_all("go")
+	elif ceili(left_after) < ceili(left_before):
+		play_sfx("count")
 
 
 ## Texto centrado con la tipografía del juego. outline > 0 le pone contorno.

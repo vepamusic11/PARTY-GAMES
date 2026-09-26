@@ -52,6 +52,7 @@ func show_final(standings: Array[Dictionary], game_titles: Array[String]) -> voi
 		_others.add_child(chip)
 	_games.text = "Se jugó: " + " · ".join(game_titles) if not game_titles.is_empty() else ""
 	_confetti.burst()
+	Sfx.play("fanfare")
 	_again.grab_focus()
 
 

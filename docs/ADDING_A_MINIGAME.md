@@ -70,6 +70,19 @@ const GAMES: Array[Script] = [
 
 Listo: aparece como tarjeta en el lobby, se puede elegir para la competencia y se habilita cuando la cantidad de jugadores elegida está en su rango.
 
+## Sonido y vibración
+
+Una línea por evento, sin archivos de audio (ver `core/audio/sfx.gd`):
+
+```gdscript
+play_sfx("point")                 # suena en la TV
+notify_player(pid, "point")       # vibra y suena en el celular de ese jugador
+notify_all("go")                  # en todos los celulares
+tick_countdown(antes, despues)    # "3, 2, 1, ¡YA!" con sonido y vibración
+```
+
+*Ejemplo:* en Arena, al juntar una estrella: `play_sfx("point")` y `notify_player(pid, "point")`. Tipos válidos para el celular: `Protocol.FEEDBACK_KINDS`.
+
 ## Cómo entra en la competencia
 
 El juego **solo reporta su puntaje propio** en `finish(...)`. El modo competencia lo convierte en puestos y puntos (1° 100 · 2° 70 · 3° 50 · 4° 30) y arma el resumen de ronda.

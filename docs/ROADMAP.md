@@ -10,7 +10,7 @@
 - [ ] Probar en Google TV + 2 Android + 1 iPhone; medir latencia en 3 redes distintas
 - [ ] Presets de exportación Android/iOS, banner de TV, íconos
 - [ ] Código QR en la TV (librería GDScript o generación propia) que abra la app con IP y código precargados
-- [ ] Vibración y sonido de feedback en el control
+- [x] Vibración y sonido de feedback en el control y la TV (sintetizados por código, [ADR 0005](adr/0005-sonido-sintetizado.md))
 
 ## Fase 2 · Producto mínimo publicable
 - [ ] Identidad visual propia (arte, tipografía, sonidos) — *base lista: sistema visual, tipografía y mascotas por código ([ADR 0004](adr/0004-sistema-visual.md)); faltan arte final y sonidos*

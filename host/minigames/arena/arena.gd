@@ -62,6 +62,8 @@ func _physics_process(delta: float) -> void:
 			if p.distance_to(_stars[i]) < RADIUS + STAR_RADIUS:
 				_score[pid] += 1
 				_stars[i] = _random_star()
+				play_sfx("point", 1.0 + 0.04 * p.x / SCREEN.x)
+				notify_player(pid, "point")
 	queue_redraw()
 	if _time_left <= 0.0:
 		finish(result_from_scores(_score, "Más estrellas gana"))

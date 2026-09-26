@@ -41,6 +41,10 @@ const T_PONG := "pong"
 ## Resultado propio (puesto y puntos) durante el resumen y el podio. Es solo
 ## informativo y compatible con controles viejos (ignoran tipos desconocidos).
 const T_STANDING := "standing"
+## Aviso de vibración/sonido para UN jugador (sumaste, te eliminaron…). Solo
+## informativo y compatible: "kind" tiene que ser uno de FEEDBACK_KINDS.
+const T_FEEDBACK := "feedback"
+const FEEDBACK_KINDS: Array[String] = ["point", "hit", "win", "lose", "go", "count", "tap"]
 
 # --- Descubrimiento en red local (UDP broadcast) ------------------------------
 const T_ANNOUNCE := "announce"
@@ -217,6 +221,14 @@ static func parse_standing(msg: Dictionary) -> Dictionary:
 	out["total_rounds"] = maxi(out.total_rounds, out.round)
 	out["players"] = maxi(out.players, maxi(out.rank, out.place))
 	return out
+
+
+## Valida un mensaje "feedback". Devuelve el tipo o "" si es inválido.
+static func parse_feedback(msg: Dictionary) -> String:
+	var kind: Variant = msg.get("kind")
+	if typeof(kind) != TYPE_STRING or not (kind as String) in FEEDBACK_KINDS:
+		return ""
+	return kind
 
 
 static func player_color(slot: int) -> Color:

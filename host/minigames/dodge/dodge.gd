@@ -122,7 +122,9 @@ func _physics_process(delta: float) -> void:
 		return
 	_anim += delta
 	if _countdown > -GO_SEC:
+		var before := _countdown
 		_countdown -= delta
+		tick_countdown(before, _countdown)
 	_move_players(delta)
 	if _countdown <= 0.0:
 		_elapsed = minf(_elapsed + delta, DURATION_SEC)
@@ -194,6 +196,8 @@ func _check_hits() -> void:
 			if feet.distance_to(closest) < HIT_RADIUS:
 				_out_time[pid] = snappedf(_elapsed, 0.1)
 				_axis[pid] = Vector2.ZERO
+				play_sfx("hit")
+				notify_player(pid, "hit")
 
 
 func _check_end() -> void:

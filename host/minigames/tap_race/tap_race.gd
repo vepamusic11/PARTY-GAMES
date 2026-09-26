@@ -56,12 +56,16 @@ func _register_tap(player_id: int) -> void:
 	times.append(now)
 	_taps[player_id] += 1
 	if _taps[player_id] >= TAPS_TO_WIN:
+		play_sfx("win")
+		notify_player(player_id, "win")
 		finish({"winners": [player_id], "scores": _taps.duplicate(), "summary": "Primero en la meta"})
 
 
 func _physics_process(delta: float) -> void:
 	if _countdown > -1.0:
+		var before := _countdown
 		_countdown -= delta
+		tick_countdown(before, _countdown)
 	queue_redraw()
 
 
