@@ -1,7 +1,7 @@
 extends SceneTree
 ## Genera las capturas de docs/img/ desde el propio proyecto: una TV real y
 ## controles reales conectados por WebSocket, recorriendo una competencia
-## completa (lobby -> juego -> resumen de ronda -> podio).
+## completa (lobby -> intro -> juego -> resumen de ronda -> podio).
 ##
 ##   xvfb-run -a -s "-screen 0 1920x1080x24" godot --path . -s res://tools/capture_screens.gd
 ##   … -- --out=/tmp/capturas/      (otra carpeta, para revisar sin pisar docs/)
@@ -17,7 +17,7 @@ const PHONE := Vector2i(2340, 1080)  ## Celular apaisado típico (19.5:9).
 
 ## Segundos de juego antes de capturar (default 2,5): algunos juegos se ven
 ## mejor más avanzados (ej. el reloj ya corriendo o bloques cayendo).
-const SHOT_DELAY := {"stop_clock": 5.0, "dodge": 6.0, "paint": 8.0, "sumo": 7.0}
+const SHOT_DELAY := {"stop_clock": 5.0, "dodge": 6.0, "paint": 8.0, "sumo": 4.5}
 ## Juegos en los que los controles de prueba mueven el joystick en círculos
 ## mientras esperan la captura (ej. para que se vea el piso pintado).
 const WANDER := ["paint", "sumo"]
@@ -80,9 +80,18 @@ func _run() -> void:
 	# Competencia con todos los juegos que admiten 4: se recorre sin importar
 	# cuántos haya (un juego nuevo en el registry aparece solo en las capturas).
 	_expect(host.start_tournament(host._lobby.selected_game_ids()), "arranca la competencia")
+	await _settle()
 	var round_index := 0
 	while host.phase == Protocol.PHASE_PLAYING:
 		var game_id := host.tournament.current_game_id
+		# Antes de cada juego, la intro "¿Cómo se juega?" (se captura la primera).
+		_expect(host._intro.visible and host._game == null, "se muestra la intro de %s" % game_id)
+		if round_index == 0:
+			await _seconds(1.2)
+			await _shot(root, "game_intro")
+		host.skip_intro()
+		await _settle()
+		_expect(host._game != null, "arranca %s después de la intro" % game_id)
 		if game_id in WANDER:
 			await _wander(SHOT_DELAY.get(game_id, 2.5))
 		else:
@@ -90,7 +99,9 @@ func _run() -> void:
 		await _shot(root, game_id)
 		if round_index == 0:
 			await _shot(phone, CONTROL_SHOTS.get(MiniGameRegistry.info(game_id).layout, "ctrl_play"))
-		host._game.finish(_fake_result(round_index))
+		# El juego puede haber terminado solo (ej. en Empujones se tiran entre ellos).
+		if is_instance_valid(host._game):
+			host._game.finish(_fake_result(round_index))
 		await _seconds(4.5 if round_index == 0 else 1.0)
 		_expect(host._summary.visible, "se muestra el resumen de la ronda %d" % (round_index + 1))
 		if round_index == 0:
@@ -100,7 +111,7 @@ func _run() -> void:
 			await _shot(phone, "ctrl_standing")
 		host._summary._on_continue()
 		round_index += 1
-		await _seconds(0.5)
+		await _settle()
 	await _seconds(2.0)
 	_expect(host._final.visible, "se muestra el podio")
 	await _shot(root, "final")
@@ -112,6 +123,9 @@ func _run() -> void:
 	await _until(func() -> bool: return host.server.get_players().size() == 2)
 	host._lobby._stepper.set_value(2)
 	_expect(host.start_tournament(["pingpong"] as Array[String]), "arranca Ping Pong con 2")
+	await _settle()
+	host.skip_intro()
+	await _settle()
 	await _seconds(2.0)
 	await _shot(root, "pingpong")
 
@@ -163,6 +177,12 @@ func _wander(s: float) -> void:
 		await _seconds(0.05)
 	for c in _clients:
 		c.send_input(Vector2.ZERO, 0)
+
+
+## Espera a que termine el barrido entre pantallas (Transition).
+func _settle() -> void:
+	await _until(func() -> bool: return not host._transition.is_running(), 2000)
+	await _frames(2)
 
 
 func _frames(n: int) -> void:

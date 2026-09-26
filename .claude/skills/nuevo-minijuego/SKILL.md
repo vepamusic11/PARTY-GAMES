@@ -10,7 +10,7 @@ Guía completa con ejemplo: `docs/ADDING_A_MINIGAME.md`. Esta skill es el checkl
 ## Pasos
 
 1. **Carpeta y script** `host/minigames/<id>/<id>.gd` que `extends MiniGame`.
-2. **`get_info()`** con: `id` (único, minúsculas), `title`, `description`, `min_players`, `max_players`, `layout` (uno de `Protocol.LAYOUTS`), `layout_data`, y los opcionales recomendados:
+2. **`get_info()`** con: `id` (único, minúsculas), `title`, `description` (se lee en la intro "¿Cómo se juega?": una o dos frases), `min_players`, `max_players`, `layout` (uno de `Protocol.LAYOUTS`), `layout_data`, y los opcionales recomendados:
    - `accent`: color de la tarjeta en el lobby (tomar uno de `UiTheme.BRICKS`).
    - `score_label`: unidad del puntaje en el resumen de ronda ("estrellas", "goles"…).
 3. **Registrar** el script en `MiniGameRegistry.GAMES` (`host/minigames/registry.gd`).

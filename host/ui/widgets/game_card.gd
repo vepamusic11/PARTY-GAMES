@@ -75,7 +75,7 @@ func _draw() -> void:
 			x += 44.0
 		y += 26.0
 		row += 1
-	_draw_control_icon(art.get_center() + Vector2(0, 6), art.size.y * 0.28, str(info.get("layout", "")), a)
+	UiTheme.draw_control_icon(self, art.get_center() + Vector2(0, 6), art.size.y * 0.28, str(info.get("layout", "")), a)
 	# Tipo de control como etiqueta sobre la ilustración (deja la línea de abajo
 	# para la cantidad de jugadores o el motivo por el que no se puede jugar).
 	var control_name: String = CONTROL_NAMES.get(info.get("layout"), "Control")
@@ -101,29 +101,3 @@ func _draw() -> void:
 	UiTheme.draw_text_left(self, meta, Vector2(text_x, art.end.y + 66), 24,
 		UiTheme.DANGER if disabled else UiTheme.INK_SOFT, r.size.x - 40, false)
 
-
-func _draw_control_icon(c: Vector2, s: float, layout: String, a: float) -> void:
-	var white := Color(1, 1, 1, a)
-	var ink := Color(UiTheme.INK, a)
-	match layout:
-		Protocol.LAYOUT_JOYSTICK:
-			draw_circle(c, s + 4, ink)
-			draw_circle(c, s, Color(1, 1, 1, 0.35 * a))
-			var knob := c + Vector2(s * 0.35, -s * 0.3)
-			draw_circle(knob, s * 0.5 + 4, ink)
-			draw_circle(knob, s * 0.5, white)
-		Protocol.LAYOUT_SLIDER_H:
-			var bar := Rect2(c.x - s * 1.5, c.y - s * 0.2, s * 3.0, s * 0.4)
-			UiTheme.draw_round_rect(self, bar.grow(4), ink, s * 0.24)
-			UiTheme.draw_round_rect(self, bar, Color(1, 1, 1, 0.45 * a), s * 0.2)
-			var knob := Vector2(c.x + s * 0.5, c.y)
-			draw_circle(knob, s * 0.5 + 4, ink)
-			draw_circle(knob, s * 0.5, white)
-		Protocol.LAYOUT_ONE_BUTTON:
-			draw_circle(c + Vector2(0, 6), s + 4, ink)
-			draw_circle(c + Vector2(0, 6), s, white.darkened(0.2))
-			draw_circle(c, s + 4, ink)
-			draw_circle(c, s, white)
-			UiTheme.draw_text(self, "A", c, int(s), ink)
-		_:
-			UiTheme.draw_star(self, c, s, white)

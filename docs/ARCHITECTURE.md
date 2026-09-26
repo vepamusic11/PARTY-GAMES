@@ -31,14 +31,17 @@ El celular no sabe qué juego se está jugando. La TV le dice **qué control mos
 `HostMain` es una máquina de estados simple que recorre la lista de juegos elegida:
 
 ```
-LOBBY ──¡A jugar!──► PLAYING ──juego termina──► RESULTS (resumen de ronda)
-  ▲                    ▲                              │
-  │                    └──── quedan juegos ◄──────────┤ OK o 15 s
-  │                                                   ▼
-  └──── Cambiar juegos ◄──── RESULTS (podio) ◄── no quedan juegos
+LOBBY ──¡A jugar!──► PLAYING: intro ──OK o 6 s──► PLAYING: juego ──termina──► RESULTS (resumen de ronda)
+  ▲                    ▲                                                          │
+  │                    └──────────────── quedan juegos ◄──────────────────────────┤ OK o 15 s
+  │                                                                               ▼
+  └──── Cambiar juegos ◄──── RESULTS (podio) ◄──────────────────────────── no quedan juegos
                                │
-                               └── Jugar otra vez ──► PLAYING
+                               └── Jugar otra vez ──► PLAYING: intro
 ```
+
+- La **intro "¿Cómo se juega?"** es parte de `PLAYING`: la TV ya manda el `layout` (los celulares muestran el control para que cada uno se ubique), pero el minijuego todavía no existe y el input se descarta.
+- Cada flecha del diagrama pasa por un **barrido de bloques** (`Transition`, ≤ 0,45 s): el cambio de pantalla ocurre cuando la pantalla está tapada y los cambios pedidos se ejecutan en el orden en que llegaron. Mientras dura, se ignoran las teclas del control remoto.
 
 - En el **lobby** se elige cuántos juegan (esa es la capacidad de la sala) y qué minijuegos entran.
 - **Atrás** del control remoto abre un menú de pausa: seguir, saltar el juego (sin puntos) o terminar (ir al podio).
@@ -55,9 +58,11 @@ HostMain (orquesta fases)
 ├─ PartyBackground           fondo animado (cielo, nubes, bloques)
 ├─ capa de juego             MiniGame activo (Node2D, dibuja su propio fondo)
 ├─ LobbyScreen               unirse · cuántos juegan · qué juegos
+├─ GameIntroScreen           "¿Cómo se juega?" antes de cada juego
 ├─ RoundSummaryScreen        resumen por jugador tras cada juego
 ├─ FinalScreen               podio
-└─ PauseMenu                 encima de todo
+├─ PauseMenu                 encima de las pantallas
+└─ Transition                barrido entre pantallas, encima de todo
 ```
 Cada pantalla es un componente independiente que **emite señales** (`start_requested`, `continue_requested`…) y no conoce a las demás. La lógica de puntos no vive en ninguna pantalla: está en `Tournament`, que se testea sola.
 

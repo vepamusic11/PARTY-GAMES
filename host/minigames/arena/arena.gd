@@ -21,7 +21,7 @@ static func get_info() -> Dictionary:
 	return {
 		"id": "arena",
 		"title": "Arena de estrellas",
-		"description": "Mové tu círculo y juntá la mayor cantidad de estrellas en 30 segundos.",
+		"description": "Mové tu mascota con el joystick y juntá la mayor cantidad de estrellas en 30 segundos.",
 		"min_players": 1,
 		"max_players": 4,
 		"layout": Protocol.LAYOUT_JOYSTICK,

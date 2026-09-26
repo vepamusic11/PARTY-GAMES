@@ -358,6 +358,12 @@ func test_registry_optional_defaults() -> void:
 		check(typeof(info.get("score_label")) == TYPE_STRING and not str(info.score_label).is_empty(),
 			"%s: score_label es un texto" % info.id)
 	check(MiniGameRegistry.info("arena").score_label == "estrellas", "el juego puede sobrescribir los valores por defecto")
+	# Cada juego tiene su color de tarjeta: dos iguales se confunden en el lobby.
+	var accents := {}
+	for info in MiniGameRegistry.all_info():
+		var key := (info.accent as Color).to_html(false)
+		check(not accents.has(key), "%s repite el color de %s" % [info.id, accents.get(key, "")])
+		accents[key] = info.id
 
 
 
@@ -659,12 +665,14 @@ func test_room_capacity() -> void:
 	await _free_clients()
 
 
-## Flujo completo en la TV con controles reales: lobby -> juego -> resumen ->
-## siguiente juego -> pausa/saltar -> podio -> jugar otra vez -> lobby.
+## Flujo completo en la TV con controles reales: lobby -> intro -> juego ->
+## resumen -> intro -> juego -> pausa/saltar -> podio -> jugar otra vez -> lobby.
+## Sin barrido entre pantallas (ver test_screen_transition).
 func test_host_tournament_flow() -> void:
 	var host := HostMain.new()
 	host.server_port = TEST_PORT + 3
 	host.announce = false
+	host.transition_seconds = 0.0
 	root.add_child(host)
 	await process_frame
 	var c1 := _client()
@@ -677,10 +685,13 @@ func test_host_tournament_flow() -> void:
 	check(not host.start_tournament([] as Array[String]), "sin juegos no arranca")
 
 	check(host.start_tournament(["tap_race", "pingpong"] as Array[String]), "arranca la competencia")
-	check(host.phase == Protocol.PHASE_PLAYING and host._game != null, "fase de juego")
+	check(not host.start_tournament(["tap_race"] as Array[String]), "no arranca dos veces")
+	check(host.phase == Protocol.PHASE_PLAYING and host._intro.visible and host._game == null, "primero la intro")
 	check(not host.server.accepting_new_players, "no entran jugadores nuevos durante la competencia")
 	await _until(func() -> bool: return Protocol.LAYOUT_ONE_BUTTON in layouts)
-	check(Protocol.LAYOUT_ONE_BUTTON in layouts, "el celular recibe el control del juego")
+	check(Protocol.LAYOUT_ONE_BUTTON in layouts, "el celular recibe el control del juego ya en la intro")
+	host.skip_intro()
+	check(host._game != null and not host._intro.visible, "saltar la intro arranca el juego")
 
 	host._game.finish({"winners": [2], "scores": {1: 30, 2: 40}})
 	check(host.phase == Protocol.PHASE_RESULTS and host._summary.visible, "resumen de ronda al terminar")
@@ -696,6 +707,8 @@ func test_host_tournament_flow() -> void:
 
 	host._summary._on_continue()
 	check(host.phase == Protocol.PHASE_PLAYING and host.tournament.current_game_id == "pingpong", "sigue Ping Pong")
+	check(host._intro.visible and not host._summary.visible, "con su intro")
+	host.skip_intro()
 	host._unhandled_input(cancel)
 	check(host._pause.visible and host._game.process_mode == Node.PROCESS_MODE_DISABLED, "pausa congela el juego")
 	host._skip_game()
@@ -719,6 +732,7 @@ func test_host_sends_standing() -> void:
 	var host := HostMain.new()
 	host.server_port = port
 	host.announce = false
+	host.transition_seconds = 0.0
 	root.add_child(host)
 	await process_frame
 	var c1 := _client()
@@ -732,6 +746,7 @@ func test_host_sends_standing() -> void:
 	c2.join("127.0.0.1", port, host.server.room_code, "Sofi")
 	await _until(func() -> bool: return host.server.get_players().size() == 2)
 	check(host.start_tournament(["tap_race", "arena"] as Array[String]), "arranca la competencia")
+	host.skip_intro()
 	await process_frame
 	check(got1.is_empty() and got2.is_empty(), "sin standing mientras se juega")
 
@@ -750,6 +765,7 @@ func test_host_sends_standing() -> void:
 
 	host._summary._on_continue()
 	check(host.tournament.current_game_id == "arena", "sigue Arena")
+	host.skip_intro()
 	host._game.finish({"winners": [1], "scores": {1: 12, 2: 3}})
 	await _until(func() -> bool: return got1.size() == 2 and got2.size() == 2)
 	check(got1.size() == 2 and got1[1].round == 2 and got1[1].place == 1 and got1[1].total == 170, "ronda 2: Pablo 1° con 170")
@@ -766,6 +782,142 @@ func test_host_sends_standing() -> void:
 	await _until(func() -> bool: return got1.size() == 4, 5000)
 	check(not reconnected.is_empty() and got1.size() == 4 and got1[3].final, "al reconectarse recupera el resultado")
 
+	host.queue_free()
+	await _free_clients()
+
+
+## Intro "¿Cómo se juega?" antes de cada juego: se ve la ronda, el celular ya
+## tiene el control, el input se ignora, avanza con OK o con el tiempo y
+## "Atrás" abre la pausa (con "Saltar este juego").
+func test_game_intro() -> void:
+	var port := TEST_PORT + 40
+	var host := HostMain.new()
+	host.server_port = port
+	host.announce = false
+	host.transition_seconds = 0.0
+	root.add_child(host)
+	await process_frame
+	var c1 := _client()
+	var layouts: Array = []
+	c1.layout_changed.connect(func(l: String, _d: Dictionary) -> void: layouts.append(l))
+	c1.join("127.0.0.1", port, host.server.room_code, "Pablo")
+	await _until(func() -> bool: return host.server.get_players().size() == 1)
+	_client().join("127.0.0.1", port, host.server.room_code, "Sofi")
+	await _until(func() -> bool: return host.server.get_players().size() == 2)
+	var inputs: Array = []
+	host.server.input_received.connect(func(pid: int, _i: Dictionary) -> void: inputs.append(pid))
+
+	check(host.start_tournament(["tap_race", "arena", "stop_clock"] as Array[String]), "arranca la competencia")
+	var intro := host._intro
+	check(intro.visible and host._game == null and host.phase == Protocol.PHASE_PLAYING, "la intro va antes del primer juego")
+	check(intro._round.text == "Ronda 1/3", "muestra la ronda (%s)" % intro._round.text)
+	check(intro._title.text == "Carrera de toques" and intro._description.text == MiniGameRegistry.info("tap_race").description,
+		"título y descripción del juego")
+	check(intro._art.layout == Protocol.LAYOUT_ONE_BUTTON, "ilustra el control del juego")
+	check(intro._players_row.get_child_count() == 2 and intro._players_label.text == "2 jugadores", "muestra quiénes juegan")
+	check(intro._continue.has_focus(), "el foco queda en el botón para el D-pad")
+	await _until(func() -> bool: return Protocol.LAYOUT_ONE_BUTTON in layouts)
+	check(Protocol.LAYOUT_ONE_BUTTON in layouts, "el celular ya muestra el control durante la intro")
+
+	# Input del celular durante la intro: llega a la TV pero se descarta.
+	c1.send_input(Vector2.ZERO, Protocol.BTN_A)
+	await _until(func() -> bool: return not inputs.is_empty())
+	check(not inputs.is_empty(), "el input llega al servidor")
+	check(intro.visible and host._game == null, "el celular no puede saltar la intro")
+	host._on_input(1, {"seq": 99, "axis": Vector2.ZERO, "btn": Protocol.BTN_A})
+	check(host._game == null, "input directo durante la intro: sin efecto")
+
+	# Pausa durante la intro: congela la cuenta regresiva.
+	var cancel := InputEventAction.new()
+	cancel.action = "ui_cancel"
+	cancel.pressed = true
+	host._unhandled_input(cancel)
+	check(host._pause.visible and intro.paused and host._pause._skip.visible, "Atrás en la intro abre la pausa (con Saltar)")
+	intro._process(GameIntroScreen.AUTO_CONTINUE_SEC + 1.0)
+	check(intro.visible and host._game == null, "en pausa la intro no avanza sola")
+	host._unhandled_input(cancel)
+	check(not host._pause.visible and not intro.paused and intro._continue.has_focus(), "Atrás de nuevo vuelve a la intro")
+
+	# Avanza con OK.
+	intro._continue.pressed.emit()
+	check(not intro.visible and host._game != null and host.tournament.current_game_id == "tap_race", "OK arranca el juego")
+	var taps: Dictionary = host._game.get("_taps")
+	check(taps.get(1, -1) == 0, "lo apretado durante la intro no cuenta (%s)" % [taps])
+	host._game.finish({"winners": [1], "scores": {1: 40, 2: 10}})
+	check(host._summary.visible, "resumen")
+	host._summary._on_continue()
+
+	# Segunda intro: avanza sola con el tiempo.
+	check(intro.visible and intro._round.text == "Ronda 2/3" and intro._title.text == "Arena de estrellas", "intro de la ronda 2")
+	check(host._game == null and not host._summary.visible, "sin juego ni resumen detrás")
+	intro._process(GameIntroScreen.AUTO_CONTINUE_SEC / 2.0)
+	check(intro.visible and intro._ring.seconds == ceili(GameIntroScreen.AUTO_CONTINUE_SEC / 2.0), "cuenta regresiva visible")
+	intro._process(GameIntroScreen.AUTO_CONTINUE_SEC / 2.0 + 0.1)
+	check(not intro.visible and host._game != null and host.tournament.current_game_id == "arena", "a los 6 s arranca solo")
+	host._game.finish({"winners": [2], "scores": {1: 3, 2: 9}})
+	host._summary._on_continue()
+
+	# Tercera intro: "Saltar este juego" desde la pausa lleva al podio.
+	check(intro.visible and host.tournament.current_game_id == "stop_clock", "intro de la ronda 3")
+	host._unhandled_input(cancel)
+	host._pause._skip.pressed.emit()
+	check(not intro.visible and not host._pause.visible and host._final.visible, "saltar desde la intro lleva al podio")
+	check(host.tournament.history.size() == 2 and "stop_clock" in host.tournament.skipped, "el juego salteado no suma ronda")
+
+	host.queue_free()
+	await _free_clients()
+
+
+## Barrido entre pantallas: corre los cambios en orden, cuando la pantalla
+## está tapada; no dura más de 0,45 s y traga el input solo mientras corre.
+func test_screen_transition() -> void:
+	check(Transition.DURATION <= 0.45, "dura como máximo 0,45 s")
+	var tr := Transition.new()
+	root.add_child(tr)
+	var calls: Array[String] = []
+	tr.play(func() -> void:
+		calls.append("a")
+		tr.play(func() -> void: calls.append("anidado")))
+	tr.play(func() -> void: calls.append("b"))
+	check(calls.is_empty() and tr.is_running() and tr.visible, "el cambio espera a que la pantalla esté tapada")
+	var start := Time.get_ticks_msec()
+	await _until(func() -> bool: return not calls.is_empty(), 1000)
+	check(calls == ["a", "b", "anidado"], "los cambios corren en el orden pedido (%s)" % [calls])
+	tr.play(func() -> void: calls.append("c"))
+	check(calls.back() == "c", "si ya se está destapando, el cambio va enseguida")
+	await _until(func() -> bool: return not tr.is_running(), 1000)
+	var elapsed := Time.get_ticks_msec() - start
+	check(not tr.is_running() and not tr.visible, "termina y desaparece")
+	check(elapsed < int(Transition.DURATION * 1000.0) + 250, "no se estira (%d ms)" % elapsed)
+	tr.play(func() -> void: calls.append("d"))
+	tr.finish_now()
+	check(calls.back() == "d" and not tr.is_running(), "finish_now corre lo pendiente")
+	tr.queue_free()
+
+	# En la TV: el barrido traga "Atrás" mientras corre y después ya no.
+	var port := TEST_PORT + 41
+	var host := HostMain.new()
+	host.server_port = port
+	host.announce = false
+	root.add_child(host)
+	await process_frame
+	_client().join("127.0.0.1", port, host.server.room_code, "Pablo")
+	await _until(func() -> bool: return host.server.get_players().size() == 1)
+	check(host.start_tournament(["tap_race"] as Array[String]), "arranca la competencia")
+	check(host._lobby.visible and not host._intro.visible and host._transition.is_running(), "el lobby sigue hasta que el barrido tapa")
+	await _until(func() -> bool: return not host._transition.is_running(), 1000)
+	check(host._intro.visible and not host._lobby.visible, "después del barrido: intro")
+	host.skip_intro()
+	check(host._game == null and host._intro.visible, "el juego arranca recién con la pantalla tapada")
+	var cancel := InputEventAction.new()
+	cancel.action = "ui_cancel"
+	cancel.pressed = true
+	root.push_input(cancel)
+	check(not host._pause.visible, "durante el barrido se ignora Atrás")
+	await _until(func() -> bool: return not host._transition.is_running(), 1000)
+	check(host._game != null and not host._intro.visible, "después del barrido: juego")
+	root.push_input(cancel)
+	check(host._pause.visible, "terminado el barrido, Atrás vuelve a abrir la pausa")
 	host.queue_free()
 	await _free_clients()
 
@@ -795,6 +947,7 @@ func test_feedback_relay() -> void:
 	var host := HostMain.new()
 	host.server_port = TEST_PORT + 6
 	host.announce = false
+	host.transition_seconds = 0.0
 	root.add_child(host)
 	await process_frame
 	var c1 := _client()
@@ -809,6 +962,7 @@ func test_feedback_relay() -> void:
 	await _until(func() -> bool: return host.server.get_players().size() == 2)
 	host._lobby._stepper.set_value(2)
 	check(host.start_tournament(["arena"] as Array[String]), "arranca Arena")
+	host.skip_intro()
 	var game := host._game
 	# Juego congelado: si una estrella cae sobre alguien, Arena mandaría su
 	# propio aviso y el test dependería del azar.

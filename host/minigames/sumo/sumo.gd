@@ -94,7 +94,7 @@ static func get_info() -> Dictionary:
 		"max_players": 4,
 		"layout": Protocol.LAYOUT_JOYSTICK,
 		"layout_data": {},
-		"accent": UiTheme.BRICKS[6],   # Violeta: BRICKS[4] y [5] ya los usan Ping Pong y Arena.
+		"accent": UiTheme.BRICKS[3],   # Verde: cada juego tiene su color (ver test_registry_optional_defaults).
 		"score_label": "puntos",
 	}
 

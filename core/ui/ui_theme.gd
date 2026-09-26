@@ -306,6 +306,38 @@ static func draw_arrow(ci: CanvasItem, center: Vector2, s: float, dir: Vector2, 
 	]), color)
 
 
+## Ícono del control que muestra el celular en un juego (joystick, slider o
+## botón). Lo usan la tarjeta del lobby y la pantalla "¿Cómo se juega?".
+## `s` es el radio del elemento principal; `a`, la opacidad.
+static func draw_control_icon(ci: CanvasItem, c: Vector2, s: float, layout: String, a: float = 1.0) -> void:
+	var white := Color(PAPER, a)
+	var ink := Color(INK, a)
+	var line := maxf(4.0, s * 0.06)
+	match layout:
+		Protocol.LAYOUT_JOYSTICK:
+			ci.draw_circle(c, s + line, ink)
+			ci.draw_circle(c, s, Color(PAPER, 0.35 * a))
+			var knob := c + Vector2(s * 0.35, -s * 0.3)
+			ci.draw_circle(knob, s * 0.5 + line, ink)
+			ci.draw_circle(knob, s * 0.5, white)
+		Protocol.LAYOUT_SLIDER_H:
+			var bar := Rect2(c.x - s * 1.5, c.y - s * 0.2, s * 3.0, s * 0.4)
+			draw_round_rect(ci, bar.grow(line), ink, s * 0.24)
+			draw_round_rect(ci, bar, Color(PAPER, 0.45 * a), s * 0.2)
+			var knob := Vector2(c.x + s * 0.5, c.y)
+			ci.draw_circle(knob, s * 0.5 + line, ink)
+			ci.draw_circle(knob, s * 0.5, white)
+		Protocol.LAYOUT_ONE_BUTTON:
+			var depth := maxf(6.0, s * 0.1)
+			ci.draw_circle(c + Vector2(0, depth), s + line, ink)
+			ci.draw_circle(c + Vector2(0, depth), s, white.darkened(0.2))
+			ci.draw_circle(c, s + line, ink)
+			ci.draw_circle(c, s, white)
+			draw_text(ci, "A", c, int(s), ink)
+		_:
+			draw_star(ci, c, s, white)
+
+
 static func hex_points(r: Rect2) -> PackedVector2Array:
 	var k := r.size.y * 0.42
 	var m := r.position.y + r.size.y / 2.0

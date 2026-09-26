@@ -13,6 +13,7 @@ El prototipo usaba el tema por defecto de Godot sobre fondo oscuro. La referenci
 - **Mascotas por lugar**, con un accesorio distinto además del color: 1P antena · 2P orejas redondas · 3P orejas puntiagudas · 4P brote. Personajes propios (no copiados de otros juegos).
 - Los minijuegos comparten fondo, marco, marcador superior (`MiniGame.draw_hud`) y mascotas.
 - **Animación de mascotas por parámetros** (sin sprites): caminata, mirada, parpadeo, brazos, boca por ánimo y *squash & stretch* en los saltos. La hoja de personajes (`tools/character_sheet.gd` → `docs/img/mascotas.png`) muestra todas las poses para revisarlas de un vistazo.
+- **Transiciones**: entre pantallas de la TV, un barrido corto (≤ 0,45 s) de bloques con los colores de `UiTheme.BRICKS` (`host/ui/widgets/transition.gd`). El ícono de cada tipo de control se dibuja con `UiTheme.draw_control_icon` (tarjetas del lobby e intro de cada juego).
 
 ## Motivos
 - Nítido en 720p, 1080p y 4K sin exportar imágenes en varios tamaños; el APK queda liviano (~100 KB de fuentes, nada de sprites).

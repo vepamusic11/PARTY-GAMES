@@ -3,18 +3,25 @@ extends Control
 ## Pantalla principal de la TV. Orquesta la sesión:
 ##   LOBBY   -> los jugadores se unen; se elige cuántos juegan y qué
 ##              minijuegos entran en la competencia
-##   PLAYING -> corre un minijuego de la competencia
+##   PLAYING -> primero la intro "¿Cómo se juega?" (los celulares ya muestran
+##              el control, pero su input se ignora) y después el minijuego
 ##   RESULTS -> resumen de la ronda (puntos de cada jugador) y, al final,
 ##              el podio. Desde el podio se juega otra vez o se vuelve al lobby.
 ##
 ## Este script solo coordina: la lógica de puntos vive en Tournament y cada
 ## pantalla en host/ui/. Toda la UI se navega con el D-pad del control
 ## remoto (requisito de Google TV y Apple TV): no hace falta mouse ni táctil.
+##
+## Los cambios de pantalla pasan por `_go()`: un barrido de bloques
+## (Transition) tapa la pantalla y el cambio ocurre recién ahí, en el orden
+## en que se pidieron.
 
 ## Puerto y anuncio en la red configurables antes de agregarlo al árbol
 ## (los tests usan otro puerto y sin anuncio UDP).
 var server_port := Protocol.WS_PORT
 var announce := true
+## Duración del barrido entre pantallas; 0 = cambio inmediato (tests).
+var transition_seconds := Transition.DURATION
 
 const SETTINGS_PATH := "user://tv_settings.cfg"
 ## Mínimo entre dos avisos "feedback" al mismo celular: un juego no puede
@@ -32,7 +39,9 @@ var _game_layer: Control
 var _lobby: LobbyScreen
 var _summary: RoundSummaryScreen
 var _final: FinalScreen
+var _intro: GameIntroScreen
 var _pause: PauseMenu
+var _transition: Transition
 ## Último "standing" enviado a cada jugador (player_id -> payload), para
 ## reenviarlo si el celular se reconecta durante el resumen o el podio.
 var _standings_sent: Dictionary = {}
@@ -76,8 +85,9 @@ func _exit_tree() -> void:
 
 ## Arranca una competencia con los juegos elegidos. Devuelve false si no se
 ## puede (fase incorrecta, sin jugadores o sin juegos válidos).
+## La competencia se crea ya; la intro del primer juego aparece tras el barrido.
 func start_tournament(game_ids: Array[String], shuffle: bool = false) -> bool:
-	if phase != Protocol.PHASE_LOBBY:
+	if phase != Protocol.PHASE_LOBBY or tournament != null:
 		return false
 	var players := server.get_players()
 	if players.is_empty():
@@ -87,32 +97,73 @@ func start_tournament(game_ids: Array[String], shuffle: bool = false) -> bool:
 		return false
 	tournament = t
 	server.accepting_new_players = false
-	_lobby.visible = false
-	_play_next()
+	_go(_begin_tournament)
 	return true
 
 
+## Saltea la intro "¿Cómo se juega?" y arranca el juego (como apretar OK).
+## Lo usan los tests y tools/capture_screens.gd.
+func skip_intro() -> void:
+	if _intro.visible:
+		_intro.skip()
+
+
+## Pide un cambio de pantalla: corre `fn` cuando el barrido tapa la pantalla.
+func _go(fn: Callable) -> void:
+	_transition.play(fn)
+
+
+func _begin_tournament() -> void:
+	if tournament == null or phase != Protocol.PHASE_LOBBY:
+		return
+	if server.get_players().is_empty():  # Se fueron todos durante el barrido.
+		_back_to_lobby()
+		return
+	_lobby.visible = false
+	_play_next()
+
+
+## Pasa al siguiente juego: muestra su intro y ya manda el layout, así los
+## celulares muestran el control mientras la gente lee cómo se juega.
 func _play_next() -> void:
+	if tournament == null:
+		return
 	_summary.hide_summary()
 	_standings_sent.clear()
-	var id := tournament.advance(server.get_players().size())
+	var players := server.get_players()
+	var id := tournament.advance(players.size())
 	if id.is_empty():
 		_show_final()
 		return
 	var info := MiniGameRegistry.info(id)
-	_game = MiniGameRegistry.create(id)
-	_game.finished.connect(_on_game_finished)
-	_game.feedback.connect(_on_game_feedback)
-	_game_layer.add_child(_game)
-	_game.setup(server.get_players())
-	_background.visible = false  # El juego dibuja su propio fondo.
+	_background.visible = true
 	phase = Protocol.PHASE_PLAYING
 	server.set_phase(phase)
 	server.set_layout(info.layout, info.layout_data)
+	_intro.show_intro(info, tournament.round_number(), tournament.total_rounds(), players)
 
 
-func _on_game_finished(result: Dictionary) -> void:
-	if not is_instance_valid(_game) or tournament == null:
+## Termina la intro y arranca el minijuego en curso. Recién desde acá el
+## input de los celulares llega al juego.
+func _start_game() -> void:
+	if phase != Protocol.PHASE_PLAYING or tournament == null or is_instance_valid(_game):
+		return
+	var id := tournament.current_game_id
+	if id.is_empty():
+		return
+	_intro.hide_intro()
+	_pause.close()
+	var game := MiniGameRegistry.create(id)
+	_game = game
+	game.finished.connect(func(result: Dictionary) -> void: _go(_on_game_finished.bind(result, game)))
+	game.feedback.connect(_on_game_feedback)
+	_game_layer.add_child(game)
+	game.setup(server.get_players())
+	_background.visible = false  # El juego dibuja su propio fondo.
+
+
+func _on_game_finished(result: Dictionary, game: MiniGame) -> void:
+	if not is_instance_valid(_game) or game != _game or tournament == null:
 		return
 	var summary := tournament.record(result, _game.players)
 	_end_game()
@@ -170,6 +221,7 @@ func _enter_results() -> void:
 
 func _end_game() -> void:
 	_pause.close()
+	_intro.hide_intro()
 	if is_instance_valid(_game):
 		_game.queue_free()
 	_game = null
@@ -208,6 +260,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		_game.process_mode = Node.PROCESS_MODE_DISABLED
 		Sfx.play("whoosh")
 		_pause.open(str(MiniGameRegistry.info(tournament.current_game_id).get("title", "")), true)
+	elif phase == Protocol.PHASE_PLAYING and _intro.visible:
+		_intro.paused = true
+		_pause.open(str(MiniGameRegistry.info(tournament.current_game_id).get("title", "")), true)
 	elif phase == Protocol.PHASE_RESULTS and _summary.visible:
 		_summary.paused = true
 		Sfx.play("whoosh")
@@ -221,6 +276,9 @@ func _resume() -> void:
 	_pause.close()
 	if is_instance_valid(_game):
 		_game.process_mode = Node.PROCESS_MODE_INHERIT
+	if _intro.visible:
+		_intro.paused = false
+		_intro.focus_continue()
 	if _summary.visible:
 		_summary.paused = false
 		_summary.focus_continue()
@@ -245,8 +303,9 @@ func _quit_tournament() -> void:
 
 # --- Red --------------------------------------------------------------------------
 
+## Durante la intro todavía no hay juego: el input se descarta.
 func _on_input(player_id: int, input: Dictionary) -> void:
-	if phase == Protocol.PHASE_PLAYING and is_instance_valid(_game) and not _pause.visible:
+	if phase == Protocol.PHASE_PLAYING and is_instance_valid(_game) and not _pause.visible and not _intro.visible:
 		_game.on_input(player_id, input)
 
 
@@ -264,7 +323,9 @@ func _on_player_gone(player_id: int) -> void:
 	if phase == Protocol.PHASE_PLAYING and is_instance_valid(_game):
 		_game.on_player_disconnected(player_id)
 	if phase != Protocol.PHASE_LOBBY and server.get_players().is_empty():
-		_back_to_lobby()
+		_go(func() -> void:
+			if phase != Protocol.PHASE_LOBBY and server.get_players().is_empty():
+				_back_to_lobby())
 	_refresh_lobby()
 
 
@@ -317,23 +378,31 @@ func _build_ui() -> void:
 	_lobby.capacity_changed.connect(func(n: int) -> void: server.max_players = n)
 	add_child(_lobby)
 
+	_intro = GameIntroScreen.new()
+	_intro.continue_requested.connect(_go.bind(_start_game))
+	add_child(_intro)
+
 	_summary = RoundSummaryScreen.new()
-	_summary.continue_requested.connect(_play_next)
+	_summary.continue_requested.connect(_go.bind(_play_next))
 	add_child(_summary)
 
 	_final = FinalScreen.new()
-	_final.play_again_requested.connect(_play_again)
-	_final.lobby_requested.connect(_back_to_lobby)
+	_final.play_again_requested.connect(_go.bind(_play_again))
+	_final.lobby_requested.connect(_go.bind(_back_to_lobby))
 	add_child(_final)
 
 	_pause = PauseMenu.new()
 	_pause.resume_requested.connect(_resume)
-	_pause.skip_requested.connect(_skip_game)
-	_pause.quit_requested.connect(_quit_tournament)
+	_pause.skip_requested.connect(_go.bind(_skip_game))
+	_pause.quit_requested.connect(_go.bind(_quit_tournament))
 	_pause.sound_toggled.connect(_toggle_sound)
 	add_child(_pause)
 	_pause.set_sound_on(not Sfx.muted)
 	get_viewport().gui_focus_changed.connect(_on_focus_changed)
+
+	_transition = Transition.new()
+	_transition.duration = transition_seconds
+	add_child(_transition)
 
 
 static func _local_ipv4() -> Array[String]:
