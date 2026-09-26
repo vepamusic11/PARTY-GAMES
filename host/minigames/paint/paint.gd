@@ -194,6 +194,7 @@ func _physics_process(delta: float) -> void:
 func _move_players(delta: float) -> void:
 	for pid: int in _pos:
 		var p: Vector2 = _pos[pid] + (_axis[pid] as Vector2) * _speed_of(pid) * delta
+		advance_walk(pid, (_axis[pid] as Vector2).length() * _speed_of(pid) / SPEED, delta, 3.0)
 		p.x = clampf(p.x, FIELD.position.x + MOVE_MARGIN_X, FIELD.end.x - MOVE_MARGIN_X)
 		p.y = clampf(p.y, FIELD.position.y + MOVE_MARGIN_Y, FIELD.end.y - MOVE_MARGIN_Y)
 		_pos[pid] = p
@@ -444,11 +445,12 @@ func _draw_player(p: Dictionary, best: int) -> void:
 		for k in 3:
 			var o := feet + Vector2(0, -30) + side * (k - 1) * 18.0 + back * 34.0
 			draw_line(o, o + back * (26.0 + k % 2 * 14.0), Color(UiTheme.INK, 0.45), 5.0, true)
-	var bob := absf(sin(_anim * 14.0) * 3.0) if moving else 0.0
 	var mood := PlayerAvatar.Mood.NORMAL
 	if _state == State.TIME_UP or is_finished():
 		mood = PlayerAvatar.Mood.HAPPY if int(_tiles[pid]) == best else PlayerAvatar.Mood.NORMAL
-	PlayerAvatar.draw_mascot(self, feet, MASCOT_SCALE, p.color, p.slot, mood, 0.0, bob)
+	var anim := mascot_anim(pid, axis)
+	anim["wave"] = mood == PlayerAvatar.Mood.HAPPY
+	PlayerAvatar.draw_mascot(self, feet, MASCOT_SCALE, p.color, p.slot, mood, 0.0, 0.0, false, anim)
 	draw_text_centered(p.name, feet + Vector2(0, NAME_OFFSET), 26, UiTheme.PAPER, 6)
 	# Power-up activo: ícono chico al costado con el tiempo que le queda.
 	var active := maxf(brush, speed)

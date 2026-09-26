@@ -739,6 +739,9 @@ func test_feedback_relay() -> void:
 	host._lobby._stepper.set_value(2)
 	check(host.start_tournament(["arena"] as Array[String]), "arranca Arena")
 	var game := host._game
+	# Juego congelado: si una estrella cae sobre alguien, Arena mandaría su
+	# propio aviso y el test dependería del azar.
+	game.process_mode = Node.PROCESS_MODE_DISABLED
 	var p1: int = c1.player_info.id
 	game.notify_player(p1, "point")
 	game.notify_player(p1, "point")      # Muy seguido: se descarta.
