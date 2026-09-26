@@ -192,6 +192,90 @@ func test_dodge_elimination() -> void:
 	await process_frame
 
 
+## Pintar el piso: posición -> celda (con bordes), pintar y robar, brocha
+## 3×3 recortada y que el conteo final coincida con los puntajes.
+func test_paint_rules() -> void:
+	var script: Script = preload("res://host/minigames/paint/paint.gd")
+	var field: Rect2 = script.FIELD
+	var cell: float = script.CELL
+	var cols: int = script.COLS
+	var rows: int = script.ROWS
+	check(cols * rows >= 200 and field.end.y <= MiniGame.SCREEN.y - UiTheme.SAFE_MARGIN, "grilla de ~20×11 dentro del margen")
+	# Posición -> celda
+	check(script.cell_at(field.position) == Vector2i(0, 0), "esquina superior izquierda = (0, 0)")
+	check(script.cell_at(field.position + Vector2(cell - 0.01, cell - 0.01)) == Vector2i(0, 0), "justo antes del borde sigue en (0, 0)")
+	check(script.cell_at(field.position + Vector2(cell, 0)) == Vector2i(1, 0), "en el borde pasa a la siguiente columna")
+	check(script.cell_at(field.end) == Vector2i(cols - 1, rows - 1), "el borde inferior derecho es la última celda")
+	check(script.cell_at(field.end - Vector2(0.01, 0.01)) == Vector2i(cols - 1, rows - 1), "dentro de la última celda")
+	check(script.cell_at(field.position - Vector2(1, 0)) == Vector2i(-1, -1), "fuera del campo (izquierda) es inválida")
+	check(script.cell_at(field.end + Vector2(0, 1)) == Vector2i(-1, -1), "fuera del campo (abajo) es inválida")
+	check(script.cell_at(script.cell_center(Vector2i(7, 4))) == Vector2i(7, 4), "el centro de una celda vuelve a esa celda")
+	# Brocha: 3×3 en el medio, recortada en bordes y esquinas.
+	check(script.brush_rect(Vector2i(5, 5), 1) == Rect2i(4, 4, 3, 3), "brocha 3×3 en el medio")
+	check(script.brush_rect(Vector2i(0, 0), 1) == Rect2i(0, 0, 2, 2), "brocha recortada en la esquina superior izquierda")
+	check(script.brush_rect(Vector2i(cols - 1, rows - 1), 1) == Rect2i(cols - 2, rows - 2, 2, 2), "brocha recortada en la esquina inferior derecha")
+	check(script.brush_rect(Vector2i(cols - 1, 5), 1) == Rect2i(cols - 2, 4, 2, 3), "brocha recortada en el borde derecho")
+	check(script.brush_rect(Vector2i(3, 3), 0) == Rect2i(3, 3, 1, 1), "sin brocha pinta una sola celda")
+	check(script.brush_rect(Vector2i(-1, -1), 1).size == Vector2i.ZERO, "celda inválida no pinta nada")
+
+	# Pintar y robar (sin agregar al árbol: no corre _physics_process).
+	var game: Variant = MiniGameRegistry.create("paint")
+	game.setup(_fake_players(2))
+	var at: Vector2 = script.cell_center(Vector2i(10, 5))
+	check(game._paint_area(1, at, 0) == 1 and game._tiles[1] == 1, "Pablo pinta una baldosa")
+	check(game._paint_area(1, at, 0) == 0 and game._tiles[1] == 1, "pisar la propia no suma")
+	check(game._paint_area(2, at, 0) == 1 and game._tiles[1] == 0 and game._tiles[2] == 1, "Sofi se la roba")
+	check(game._paint_area(1, field.position, 1) == 4 and game._tiles[1] == 4, "brocha en la esquina pinta 4")
+	check(game._paint_area(2, at, 1) == 8 and game._tiles[2] == 9, "brocha en el medio pinta 9 (una ya era suya)")
+	check(game._paint_area(1, field.position - Vector2(50, 50), 1) == 0, "fuera del campo no pinta")
+	# Power-ups: velocidad ×1,6 y brocha 3×3 al agarrarlos.
+	game._pos[1] = script.cell_center(Vector2i(15, 8))
+	game._spawn_powerup(Vector2i(15, 8), script.PowerUp.SPEED)
+	game._check_pickup()
+	check(game._powerup.is_empty() and is_equal_approx(game._speed_of(1), script.SPEED * script.SPEED_BOOST), "velocidad ×1,6")
+	game._spawn_powerup(Vector2i(15, 8), script.PowerUp.BRUSH)
+	game._check_pickup()
+	var before: int = game._tiles[1]
+	game._paint_all()
+	check(game._tiles[1] == before + 9, "con la brocha pinta 3×3 (%d)" % (game._tiles[1] - before))
+	game.free()
+
+	# Final: "¡Tiempo!" y después los puntajes = baldosas de cada uno.
+	for n in [1, 3]:
+		var g: Variant = MiniGameRegistry.create("paint")
+		var results: Array = []
+		g.finished.connect(func(r: Dictionary) -> void: results.append(r))
+		root.add_child(g)
+		g.setup(_fake_players(n))
+		g._paint_area(1, field.position, 1)
+		if n > 1:
+			g._paint_area(2, field.end, 1)
+			g._paint_area(3, field.position, 0)  # le roba una a Pablo
+		g._countdown = 0.0
+		g._state = g.State.PLAYING
+		g._time_left = 0.01
+		await physics_frame
+		await physics_frame
+		check(g._state == g.State.TIME_UP and results.is_empty(), "%d jug.: muestra ¡Tiempo! antes de terminar" % n)
+		g._end_wait = 0.0
+		await physics_frame
+		await physics_frame
+		check(results.size() == 1, "%d jug.: termina una sola vez" % n)
+		if results.size() == 1:
+			var counted := {}
+			for owner: int in g._owner:
+				if owner != script.EMPTY:
+					counted[owner] = int(counted.get(owner, 0)) + 1
+			var ok := true
+			for p in g.players:
+				ok = ok and int(results[0].scores[p.id]) == int(counted.get(p.id, 0))
+			check(ok, "%d jug.: puntajes = baldosas pintadas (%s vs %s)" % [n, results[0].scores, counted])
+			check(int(results[0].scores[1]) > 0, "%d jug.: con la brocha inicial Pablo tiene baldosas" % n)
+		g.queue_free()
+	check(script.get_info().score_label == "baldosas", "puntaje en baldosas")
+	await process_frame
+
+
 func test_result_from_scores() -> void:
 	var r := MiniGame.result_from_scores({1: 3, 2: 5, 3: 5})
 	check(r.winners == [2, 3], "empate devuelve ambos ganadores")

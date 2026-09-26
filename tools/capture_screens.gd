@@ -17,7 +17,10 @@ const PHONE := Vector2i(2340, 1080)  ## Celular apaisado típico (19.5:9).
 
 ## Segundos de juego antes de capturar (default 2,5): algunos juegos se ven
 ## mejor más avanzados (ej. el reloj ya corriendo o bloques cayendo).
-const SHOT_DELAY := {"stop_clock": 5.0, "dodge": 6.0}
+const SHOT_DELAY := {"stop_clock": 5.0, "dodge": 6.0, "paint": 8.0}
+## Juegos en los que los controles de prueba mueven el joystick en círculos
+## mientras esperan la captura (ej. para que se vea el piso pintado).
+const WANDER := ["paint"]
 ## Nombre de la captura del celular según el control que muestra.
 const CONTROL_SHOTS := {
 	Protocol.LAYOUT_JOYSTICK: "ctrl_joy", Protocol.LAYOUT_ONE_BUTTON: "ctrl_button", Protocol.LAYOUT_SLIDER_H: "ctrl_slider",
@@ -80,7 +83,10 @@ func _run() -> void:
 	var round_index := 0
 	while host.phase == Protocol.PHASE_PLAYING:
 		var game_id := host.tournament.current_game_id
-		await _seconds(SHOT_DELAY.get(game_id, 2.5))
+		if game_id in WANDER:
+			await _wander(SHOT_DELAY.get(game_id, 2.5))
+		else:
+			await _seconds(SHOT_DELAY.get(game_id, 2.5))
 		await _shot(root, game_id)
 		if round_index == 0:
 			await _shot(phone, CONTROL_SHOTS.get(MiniGameRegistry.info(game_id).layout, "ctrl_play"))
@@ -144,6 +150,19 @@ func _shot(vp: Viewport, name: String) -> void:
 	img.resize(OUT_WIDTH, int(img.get_height() * float(OUT_WIDTH) / img.get_width()), Image.INTERPOLATE_LANCZOS)
 	img.save_png(_out_dir + name + ".png")
 	print("  ", name, ".png")
+
+
+## Los controles de prueba mueven el joystick en círculos distintos (por
+## la red, como un celular) durante `s` segundos y después lo sueltan.
+func _wander(s: float) -> void:
+	var start := Time.get_ticks_msec()
+	while Time.get_ticks_msec() - start < s * 1000.0:
+		var t := (Time.get_ticks_msec() - start) / 1000.0
+		for i in _clients.size():
+			_clients[i].send_input(Vector2.from_angle(t * (1.1 + i * 0.35) + i * 2.1), 0)
+		await _seconds(0.05)
+	for c in _clients:
+		c.send_input(Vector2.ZERO, 0)
 
 
 func _frames(n: int) -> void:
