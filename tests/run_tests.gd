@@ -165,6 +165,33 @@ func test_games_run_headless() -> void:
 		game.queue_free()
 
 
+## Esquivar: si un bloque aplasta a uno de dos jugadores, gana el otro y
+## el juego termina una sola vez.
+func test_dodge_elimination() -> void:
+	var game: Variant = MiniGameRegistry.create("dodge")  # sin tipo: usa métodos propios del juego
+	var players := _fake_players(2)
+	root.add_child(game)
+	game.setup(players)
+	var results: Array = []
+	game.finished.connect(func(r: Dictionary) -> void: results.append(r))
+	game._spawn_block(game._pos[1], 120.0, 0.0)  # cae ya, sobre Pablo
+	await physics_frame
+	await physics_frame
+	check(results.size() == 1, "termina al quedar uno en pie (%d)" % results.size())
+	if results.size() == 1:
+		var r: Dictionary = results[0]
+		check(r.winners == [2], "gana Sofi, la que sigue en pie (%s)" % [r.winners])
+		check(float(r.scores[2]) >= float(r.scores[1]), "el que sigue en pie tiene el máximo puntaje")
+	game._spawn_block(game._pos[2], 120.0, 0.0)
+	game.finish({"winners": [1], "scores": {}})
+	await physics_frame
+	await physics_frame
+	check(results.size() == 1, "finished se emite una sola vez (%d)" % results.size())
+	check(game.get_info().score_label == "segundos", "puntaje en segundos")
+	game.queue_free()
+	await process_frame
+
+
 func test_result_from_scores() -> void:
 	var r := MiniGame.result_from_scores({1: 3, 2: 5, 3: 5})
 	check(r.winners == [2, 3], "empate devuelve ambos ganadores")
@@ -298,11 +325,11 @@ func test_lobby_screen() -> void:
 	lobby.refresh(_fake_players(3))
 	check(lobby.player_count == 3 and capacity.has(3), "la cantidad sube sola si entra más gente")
 	check(not "pingpong" in lobby.selected_game_ids(), "juegos incompatibles con 3 quedan afuera")
-	for id: String in lobby._cards:
-		if id != "tap_race":
-			(lobby._cards[id] as GameCard).button_pressed = false
-	check(lobby.selected_game_ids() == (["tap_race"] as Array[String]), "desmarcar un juego lo saca")
-	(lobby._cards["tap_race"] as GameCard).button_pressed = false
+	(lobby._cards["arena"] as GameCard).button_pressed = false
+	var ids := lobby.selected_game_ids()
+	check(not "arena" in ids and "tap_race" in ids, "desmarcar un juego lo saca (%s)" % [ids])
+	for id: String in ids:
+		(lobby._cards[id] as GameCard).button_pressed = false
 	check(not lobby.can_start(), "sin juegos no se puede empezar")
 	lobby._stepper.set_value(1)
 	check(lobby.player_count == 3, "no se puede bajar de la cantidad de conectados")

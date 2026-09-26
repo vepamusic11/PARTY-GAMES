@@ -1,10 +1,12 @@
 # Cómo agregar un minijuego
 
-Ejemplo completo: **"Esquivar"**, 1–4 jugadores, joystick, caen bloques y pierde el que toca uno.
+Ejemplo: **"Esquivar"**, 1–4 jugadores, joystick, caen bloques y pierde el que toca uno.
+El juego ya existe completo en `host/minigames/dodge/dodge.gd`; abajo va una versión
+resumida para ver la forma de un minijuego.
 
 ## 1. Crear la carpeta y el script
 
-`host/minigames/dodge/dodge.gd`:
+`host/minigames/dodge/dodge.gd` (resumido):
 
 ```gdscript
 extends MiniGame
@@ -12,7 +14,7 @@ extends MiniGame
 var _pos: Dictionary = {}
 var _axis: Dictionary = {}
 var _survived: Dictionary = {}   # player_id -> segundos en pie
-var _time_left := 30.0
+var _time_left := 45.0
 
 static func get_info() -> Dictionary:
 	return {
@@ -23,7 +25,7 @@ static func get_info() -> Dictionary:
 		"max_players": 4,
 		"layout": Protocol.LAYOUT_JOYSTICK,   # uno de Protocol.LAYOUTS
 		"layout_data": {},
-		"accent": Color("#9B5DE5"),       # opcional: color de la tarjeta en el lobby
+		"accent": UiTheme.BRICKS[0],      # opcional: color de la tarjeta en el lobby
 		"score_label": "segundos",        # opcional: "12 segundos" en el resumen
 	}
 
@@ -40,9 +42,9 @@ func on_input(player_id: int, input: Dictionary) -> void:
 func _physics_process(delta: float) -> void:
 	if is_finished():
 		return
-	# ... mover, detectar choques ...
-	# Al terminar, UNA sola vez:
-	# finish(result_from_scores(_survived, "Último en pie gana"))
+	# ... mover, hacer caer bloques, detectar choques ...
+	# Al terminar, UNA sola vez (los que siguen en pie ganan):
+	# finish({"winners": en_pie, "scores": _survived, "summary": "Último en pie gana"})
 	queue_redraw()
 
 func _draw() -> void:

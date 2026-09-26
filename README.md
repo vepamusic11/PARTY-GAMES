@@ -20,14 +20,15 @@ Juegos cortos para **1 a 4 jugadores en el sillón**: la **TV es la pantalla** y
 - Conexión TV ↔ celulares por Wi-Fi local, con código de sala, reconexión automática y medición de latencia.
 - Descubrimiento automático de la TV en la red (con IP manual como respaldo).
 - **Modo competencia**: en el lobby se elige **cuántos juegan** (1–4) y **qué minijuegos entran**; después de cada juego, **resumen por jugador** con puesto, puntaje y puntos ganados; al final, **podio**. Puntos por posición (1° 100 · 2° 70 · 3° 50 · 4° 30).
-- 3 minijuegos, cada uno con un tipo de control distinto:
+- Minijuegos:
   - **Arena de estrellas** (1–4) · joystick
   - **Ping Pong** (2) · slider horizontal
   - **Carrera de toques** (1–4) · un botón
   - **Reloj exacto** (1–4) · un botón
+  - **Esquivar** (1–4) · joystick · caen bloques; el último en pie gana
 - Sistema visual propio: tipografía Fredoka, mascotas por jugador (distinguibles también sin color), marcadores hexagonales, fondos animados. Todo dibujado por código.
 - Toda la TV se maneja con el control remoto (D-pad), con menú de pausa en "Atrás".
-- 323 verificaciones automáticas (unitarias + integración real de red + flujo completo de la TV), compilación de todos los scripts y prueba de humo visual en CI.
+- 335 verificaciones automáticas (unitarias + integración real de red + flujo completo de la TV), compilación de todos los scripts y prueba de humo visual en CI.
 
 ## Probarlo en 2 minutos (en tu PC)
 
