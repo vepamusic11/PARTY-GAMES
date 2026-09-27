@@ -3991,7 +3991,11 @@ func test_player_toasts() -> void:
 	var toasts := host._toasts
 	var c1 := _client()
 	c1.join("127.0.0.1", port, host.server.room_code, "Pablo")
-	await _until(func() -> bool: return toasts.active_count() == 1)
+	await _until(func() -> bool: return host.server.get_players().size() == 1)
+	await process_frame
+	check(toasts.active_count() == 0, "en el lobby no hay avisos: lo muestran las tarjetas de los lugares")
+	toasts.enabled = true  # Como en una partida.
+	toasts.show_toast(host.server.get_players()[0], TvToasts.Kind.JOINED)
 	check(toasts.texts() == ["Se sumó Pablo"], "se sumó (%s)" % [toasts.texts()])
 	await create_timer(0.4).timeout  # Termina de entrar (se desliza desde arriba).
 	check(toasts.get_child(0).position.y >= UiTheme.TOAST_TOP, "va debajo del marcador de los juegos")
@@ -4016,6 +4020,8 @@ func test_player_toasts() -> void:
 	check(toasts.active_count() == UiTheme.TOAST_MAX, "como mucho %d avisos a la vez" % UiTheme.TOAST_MAX)
 	toasts.show_toast({}, TvToasts.Kind.JOINED)
 	check(toasts.active_count() == UiTheme.TOAST_MAX, "datos vacíos: sin aviso ni error")
+	toasts.enabled = false
+	check(toasts.active_count() == 0, "al volver al lobby se sacan los avisos")
 	host.queue_free()
 	await _free_clients()
 

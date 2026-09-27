@@ -20,6 +20,10 @@ extends Control
 ## para no tapar el juego. Si vuelve, se reemplaza por "volvió"; si se
 ## vence la espera, por "se fue".
 ##
+## En el lobby van apagados (`enabled = false`): las tarjetas de los
+## lugares ya muestran quién se sumó, quién se está reconectando y quién se
+## fue, y un aviso arriba taparía las tarjetas 2P y 3P.
+##
 ## Se conecta a las señales de HostServer con `watch(server)`. Los nombres
 ## se dibujan con draw_string (texto plano, nunca BBCode).
 ##
@@ -34,6 +38,13 @@ const MAX_WIDTH := 1180.0
 var _server: HostServer
 var _known := {}                ## player_id -> último diccionario conocido del jugador.
 var _toasts: Array[_Toast] = []
+## false: no muestra avisos nuevos y saca los que había (ej. en el lobby).
+var enabled := true:
+	set(v):
+		enabled = v
+		if not v:
+			for t: _Toast in _toasts.duplicate():
+				_remove(t, false)
 
 
 func _init() -> void:
@@ -62,6 +73,8 @@ func show_toast(player: Dictionary, kind: int) -> void:
 		return
 	var pid := int(player.get("id", 0))
 	_known[pid] = player
+	if not enabled:
+		return
 	# Un aviso por jugador: el nuevo reemplaza al anterior ("volvió" tapa a
 	# "se desconectó").
 	for t: _Toast in _toasts.duplicate():

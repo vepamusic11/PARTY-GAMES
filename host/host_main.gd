@@ -152,6 +152,7 @@ func _begin_tournament() -> void:
 		_back_to_lobby()
 		return
 	_lobby.visible = false
+	_toasts.enabled = true
 	_play_next()
 
 
@@ -272,6 +273,7 @@ func _back_to_lobby() -> void:
 	_final.hide_final()
 	_background.visible = true
 	_lobby.visible = true
+	_toasts.enabled = false  # En el lobby lo muestran las tarjetas de los lugares.
 	phase = Protocol.PHASE_LOBBY
 	server.accepting_new_players = true
 	server.set_phase(phase)
@@ -489,6 +491,7 @@ func _build_ui() -> void:
 	get_viewport().gui_focus_changed.connect(_on_focus_changed)
 
 	_toasts = TvToasts.new()
+	_toasts.enabled = false  # Arranca en el lobby.
 	add_child(_toasts)
 	_toasts.watch(server)
 
