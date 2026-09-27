@@ -177,7 +177,9 @@ Fuente principal: [Game Accessibility Guidelines](https://gameaccessibilityguide
 
 ## 3. Audio
 
-**Hoy:** 16 efectos sintetizados por código ([ADR 0005](adr/0005-sonido-sintetizado.md)) y vibración. **No hay música**, y en un party game la música es la mitad del clima: el silencio en el lobby se siente como "esto no arrancó".
+**Antes:** 16 efectos sintetizados por código ([ADR 0005](adr/0005-sonido-sintetizado.md)) y vibración, **sin música**: el silencio en el lobby se sentía como "esto no arrancó".
+
+**Hecho ([ADR 0015](adr/0015-musica-y-mezcla.md)):** música CC0 de Juhani Junkala por pantalla y por energía del juego, con fundido cruzado; buses `Music` y `SFX` con volumen en la pausa; *ducking* de 6 dB con `go`, `win`, `fanfare`, `hit` y `lose`; logos sonoros propios de IO-GAMES y PARTY-GAME; clics de menú de Kenney (CC0). Créditos en [CREDITS.md](../CREDITS.md). Pendiente: *stinger* de intro, capa extra en los últimos 10 s, bus `UI` separado y normalización en LUFS.
 
 ### 3.1 Música
 

@@ -40,6 +40,8 @@ Resumen; el detalle, con fechas y versiones, está en el [relevamiento](#1-addon
 | [Freesound](https://freesound.org/help/faq/) | Mixtas | Filtrar CC0 o CC-BY; **nunca NC** |
 | [google/fonts](https://github.com/google/fonts) | OFL (casi todas), Apache 2.0 (algunas) | Tipografía "sticker" para títulos y una de lectura para textos chicos (ver [assets](#4-assets-en-github)) |
 
+**En uso** (27/09/2026, [ADR 0015](adr/0015-musica-y-mezcla.md)): 6 bucles de Juhani Junkala (Chiptune Adventures y Retro Game Music Pack) y 3 clics de Kenney Interface Sounds, todos CC0 verificados en el texto de licencia del autor. Las webs de los autores estaban bloqueadas desde el entorno de desarrollo: se tomaron de repositorios públicos de GitHub que incluyen el archivo de licencia original. Detalle y commits en [CREDITS.md](../CREDITS.md).
+
 ## Proyectos parecidos (para leer, no para copiar)
 
 | Proyecto | Licencia | Qué aprender |

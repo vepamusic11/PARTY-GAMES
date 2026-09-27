@@ -64,7 +64,10 @@ func _ready() -> void:
 	theme = UiTheme.build()
 	Sfx.load_prefs(SETTINGS_PATH)
 	UiTheme.load_effects_prefs(SETTINGS_PATH)
+	AudioMix.load_prefs(SETTINGS_PATH)
 	add_child(Sfx.new())
+	add_child(Music.new())
+	Music.sync_mute()
 	add_child(server)
 	add_child(beacon)
 	add_child(bots)
@@ -95,7 +98,13 @@ func _ready() -> void:
 	_refresh_lobby()
 	_lobby.focus_default()
 	if show_splash:
-		add_child(SplashScreen.new())
+		var splash := SplashScreen.new()
+		# Logo sonoro de IO-GAMES en la presentación y de PARTY-GAME al llegar al lobby.
+		splash.finished.connect(func() -> void: Music.play("lobby", "party"))
+		add_child(splash)
+		Music.jingle("studio")
+	else:
+		Music.play("lobby", "party")
 
 
 func _exit_tree() -> void:
@@ -162,6 +171,7 @@ func _play_next() -> void:
 	phase = Protocol.PHASE_PLAYING
 	server.set_phase(phase)
 	server.set_layout(info.layout, info.layout_data)
+	Music.play(Music.track_for_game(id))
 	_intro.show_intro(info, tournament.round_number(), tournament.total_rounds(), players)
 
 
@@ -192,6 +202,7 @@ func _on_game_finished(result: Dictionary, game: MiniGame) -> void:
 	_end_game()
 	_enter_results()
 	_send_standings(summary.rows, summary.round, summary.total_rounds, false)
+	Music.play("summary")
 	var next_id := tournament.peek_next(server.get_players().size())
 	_summary.show_summary(summary, tournament.standings(), str(MiniGameRegistry.info(next_id).get("title", "")))
 
@@ -204,6 +215,7 @@ func _show_final() -> void:
 	for round_summary in tournament.history:
 		titles.append(str(round_summary.title))
 	_final.show_final(tournament.standings(), titles)
+	Music.play("podium")
 	if not tournament.history.is_empty():
 		var played := tournament.history.size()
 		_send_standings([], played, played, true)
@@ -265,6 +277,7 @@ func _back_to_lobby() -> void:
 	server.set_layout(Protocol.LAYOUT_WAIT)
 	_refresh_lobby()
 	_lobby.focus_default()
+	Music.play("lobby")
 
 
 func _play_again() -> void:
@@ -413,6 +426,7 @@ func _on_focus_changed(_control: Control) -> void:
 func _toggle_sound() -> void:
 	Sfx.muted = not Sfx.muted
 	Sfx.save_prefs(SETTINGS_PATH)
+	Music.sync_mute()
 	_pause.set_sound_on(not Sfx.muted)
 	Sfx.play("select")
 

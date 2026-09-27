@@ -3628,4 +3628,240 @@ func test_hurdles_determinism() -> void:
 	check(is_equal_approx(g1._runners[1].x, g2._runners[1].x), "pasos fijos: igual con frames de 1/60 que de 1/20 (%.3f, %.3f)" % [g1._runners[1].x, g2._runners[1].x])
 	g1.queue_free()
 	g2.queue_free()
+# --- Música y mezcla (ADR 0015) -------------------------------------------------
+
+func test_audio_buses_and_volumes() -> void:
+	AudioMix.ensure_buses()
+	AudioMix.ensure_buses()  # Idempotente: no duplica buses.
+	for bus_name: String in [AudioMix.BUS_MUSIC, AudioMix.BUS_SFX]:
+		var idx := AudioServer.get_bus_index(bus_name)
+		if not check_that(idx != -1, "existe el bus %s" % bus_name):
+			return
+		check(AudioServer.get_bus_send(idx) == &"Master", "%s sale por Master" % bus_name)
+	var names := {}
+	for i in AudioServer.bus_count:
+		names[AudioServer.get_bus_name(i)] = true
+	check(names.size() == AudioServer.bus_count, "sin buses repetidos")
+	var before_music := AudioMix.get_volume(AudioMix.BUS_MUSIC)
+	var before_sfx := AudioMix.get_volume(AudioMix.BUS_SFX)
+	AudioMix.set_volume(AudioMix.BUS_MUSIC, 0.4)
+	check(is_equal_approx(snappedf(AudioMix.get_volume(AudioMix.BUS_MUSIC), 0.01), 0.4), "volumen de música 40 %")
+	AudioMix.set_volume(AudioMix.BUS_SFX, 7.0)
+	check(is_equal_approx(AudioMix.get_volume(AudioMix.BUS_SFX), 1.0), "volumen recortado a 100 %")
+	AudioMix.set_volume(AudioMix.BUS_SFX, 0.0)
+	check(AudioMix.get_volume(AudioMix.BUS_SFX) == 0.0 and AudioServer.is_bus_mute(AudioServer.get_bus_index(AudioMix.BUS_SFX)),
+		"0 % silencia el bus")
+	# Guardar y leer sin pisar otras secciones; valores basura se ignoran.
+	var path := "user://test_audio_prefs.cfg"
+	var cfg := ConfigFile.new()
+	cfg.set_value("player", "name", "Pablo")
+	cfg.save(path)
+	AudioMix.save_prefs(path)
+	AudioMix.set_volume(AudioMix.BUS_MUSIC, 1.0)
+	AudioMix.set_volume(AudioMix.BUS_SFX, 1.0)
+	AudioMix.load_prefs(path)
+	check(is_equal_approx(snappedf(AudioMix.get_volume(AudioMix.BUS_MUSIC), 0.01), 0.4)
+		and AudioMix.get_volume(AudioMix.BUS_SFX) == 0.0, "los volúmenes se recuerdan")
+	cfg.load(path)
+	check(cfg.get_value("player", "name", "") == "Pablo", "guardar no borra otras secciones")
+	cfg.set_value("audio", "music_volume", "fuerte")
+	cfg.set_value("audio", "sfx_volume", -3)
+	cfg.save(path)
+	AudioMix.load_prefs(path)
+	check(AudioMix.get_volume(AudioMix.BUS_SFX) == 0.0, "valor fuera de rango se recorta")
+	check(is_equal_approx(snappedf(AudioMix.get_volume(AudioMix.BUS_MUSIC), 0.01), 0.4), "valor no numérico se ignora")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	AudioMix.prefs_path = ""
+	AudioMix.set_volume(AudioMix.BUS_MUSIC, before_music)
+	AudioMix.set_volume(AudioMix.BUS_SFX, before_sfx)
+
+
+func test_music_crossfade() -> void:
+	var music := Music.new()
+	root.add_child(music)
+	await process_frame
+	Music.play("lobby")
+	check(music.current == "lobby", "suena la pista del lobby")
+	var stream := music._stream("lobby")
+	check(stream is AudioStreamOggVorbis and (stream as AudioStreamOggVorbis).loop, "la pista es OGG en bucle")
+	var peak_sum := _advance_music(music, Music.FADE + 0.2)
+	check(peak_sum <= 1.001, "el fundido de entrada no pasa de 1 (%.3f)" % peak_sum)
+	check(is_equal_approx(music.gains()[music._active], 1.0), "la pista llega a volumen pleno")
+	Music.play("lobby")
+	check(is_equal_approx(music.gains()[music._active], 1.0) and not music.is_processing(),
+		"pedir la misma pista no la reinicia")
+	for track: String in ["summary", "game_action", "podium"]:
+		Music.play(track)
+		peak_sum = _advance_music(music, 0.3)
+		Music.play("lobby" if track != "podium" else "summary")  # Cambio a mitad del fundido.
+		peak_sum = maxf(peak_sum, _advance_music(music, Music.FADE + 0.2))
+		check(peak_sum <= 1.001, "nunca dos pistas fuertes a la vez (%s, suma %.3f)" % [track, peak_sum])
+		var loud := 0
+		for i in 2:
+			if music.gains()[i] > 0.01:
+				loud += 1
+		check(loud == 1, "terminado el fundido suena una sola pista (%s)" % track)
+		check(not music._players[1 - music._active].playing, "la pista que se fue se detiene")
+	# Con jingle: primero el logo sonoro, la pista entra al terminar.
+	Music.play("podium", "party")
+	check(music._jingle_player.playing, "suena el jingle")
+	_advance_music(music, 0.2)
+	check(music._players[music._active].stream != music._stream("podium") or music.gains()[music._active] < 0.01,
+		"la pista espera al jingle")
+	_advance_music(music, Jingles.duration("party") + Music.FADE)
+	check(music._players[music._active].stream == music._stream("podium")
+		and is_equal_approx(music.gains()[music._active], 1.0), "después del jingle entra la pista")
+	Music.stop()
+	_advance_music(music, Music.FADE + 0.1)
+	check(music.current == "" and music.gains()[0] == 0.0 and music.gains()[1] == 0.0, "stop baja todo")
+	check(not music.is_processing(), "quieta, la música no gasta _process")
+	music.queue_free()
+	await process_frame
+	Music.play("lobby")  # Sin nodo: no hace nada ni rompe.
+	Music.duck()
+
+
+## Avanza la música de a pasos de 1/60 s; devuelve la mayor suma de volúmenes.
+func _advance_music(music: Music, seconds: float) -> float:
+	var peak := 0.0
+	var t := 0.0
+	while t < seconds:
+		music.advance(1.0 / 60.0)
+		peak = maxf(peak, music.gains()[0] + music.gains()[1])
+		t += 1.0 / 60.0
+	return peak
+
+
+func test_music_ducking() -> void:
+	var music := Music.new()
+	root.add_child(music)
+	await process_frame
+	Music.play("game_play")
+	_advance_music(music, Music.FADE + 0.1)
+	var p := music._players[music._active]
+	var full_db := p.volume_db
+	Music.on_sfx("tick")
+	check(music.duck_db() == 0.0, "un efecto menor no baja la música")
+	Music.on_sfx("go")
+	check(is_equal_approx(music.duck_db(), Music.DUCK_DB), "\"¡YA!\" baja la música %.0f dB" % Music.DUCK_DB)
+	check(is_equal_approx(p.volume_db, full_db + Music.DUCK_DB), "el reproductor baja")
+	_advance_music(music, Music.DUCK_HOLD * 0.5)
+	check(is_equal_approx(music.duck_db(), Music.DUCK_DB), "se queda abajo durante DUCK_HOLD")
+	_advance_music(music, Music.DUCK_HOLD + Music.DUCK_RELEASE + 0.1)
+	check(music.duck_db() == 0.0 and is_equal_approx(p.volume_db, full_db), "el ducking vuelve al nivel original")
+	check(not music.is_processing(), "terminado el ducking, se apaga _process")
+	# Con el nodo Sfx en el árbol, Sfx.play("win") también baja la música.
+	var sfx := Sfx.new()
+	root.add_child(sfx)
+	await process_frame
+	var was_muted := Sfx.muted
+	Sfx.muted = false
+	Sfx.play("win")
+	check(music.duck_db() < 0.0, "Sfx.play(\"win\") dispara el ducking")
+	Sfx.muted = was_muted
+	sfx.queue_free()
+	music.queue_free()
+	await process_frame
+
+
+func test_music_mute() -> void:
+	var music := Music.new()
+	root.add_child(music)
+	await process_frame
+	var was_muted := Sfx.muted
+	Music.play("lobby")
+	Sfx.muted = true
+	Music.sync_mute()
+	check(AudioMix.is_muted(), "Sonido: No silencia el bus Master")
+	check(music.is_paused() and music._players[music._active].stream_paused, "la música queda en pausa")
+	Music.play("summary")
+	check(music._players[music._active].stream_paused, "una pista nueva con sonido apagado arranca en pausa")
+	Sfx.muted = false
+	Music.sync_mute()
+	check(not AudioMix.is_muted() and not music._players[music._active].stream_paused, "Sonido: Sí la reanuda")
+	Sfx.muted = was_muted
+	Music.sync_mute()
+	music.queue_free()
+	await process_frame
+
+
+func test_music_tracks_and_jingles() -> void:
+	for track: String in Music.TRACKS:
+		check(ResourceLoader.exists(Music.TRACKS[track]), "existe la pista %s" % track)
+	for info in MiniGameRegistry.all_info():
+		check(Music.TRACKS.has(Music.track_for_game(info.id)), "%s tiene música" % info.id)
+	check(Music.track_for_game("juego-nuevo") == Music.DEFAULT_GAME_TRACK, "un juego sin grupo usa la pista por defecto")
+	for jingle_name: String in Jingles.SCORES:
+		var a := Jingles.render(jingle_name)
+		var b := Jingles.render(jingle_name)
+		var seconds := a.data.size() / 2.0 / Jingles.MIX_RATE
+		check(a.data == b.data, "%s: siempre suena igual" % jingle_name)
+		check(seconds > 1.0 and seconds < 3.0 and absf(seconds - Jingles.duration(jingle_name)) < 0.01,
+			"%s: jingle corto (%.2f s)" % [jingle_name, seconds])
+		var peak := 0
+		for i in range(0, a.data.size(), 2):
+			peak = maxi(peak, absi(a.data.decode_s16(i)))
+		check(peak > 5000 and peak < 32767, "%s: audible y sin saturar (pico %d)" % [jingle_name, peak])
+	check(Jingles.render("no-existe") == null, "jingle desconocido")
+	for sound_name: String in SfxFiles.FILES:
+		check(Sfx.RECIPES.has(sound_name), "%s grabado tiene receta de respaldo" % sound_name)
+	check(SfxFiles.load_streams().size() == SfxFiles.FILES.size(), "cargan los efectos grabados")
+
+
+## Cada archivo de assets/audio tiene su licencia al lado y figura en CREDITS.md.
+func test_audio_licenses() -> void:
+	var credits := FileAccess.get_file_as_string("res://CREDITS.md")
+	if not check_that(not credits.is_empty(), "existe CREDITS.md"):
+		return
+	var count := 0
+	for sub in DirAccess.get_directories_at("res://assets/audio"):
+		var dir := "res://assets/audio/%s" % sub
+		var licenses: Array[String] = []
+		for f in DirAccess.get_files_at(dir):
+			if f.begins_with("LICENSE"):
+				licenses.append(f)
+		for f in DirAccess.get_files_at(dir):
+			if not (f.get_extension() in ["ogg", "wav", "mp3"]):
+				continue
+			count += 1
+			check(not licenses.is_empty(), "%s/%s tiene archivo de licencia al lado" % [sub, f])
+			check(credits.contains("assets/audio/%s/%s" % [sub, f]), "%s/%s figura en CREDITS.md" % [sub, f])
+		for lic in licenses:
+			var text := FileAccess.get_file_as_string("%s/%s" % [dir, lic])
+			check(text.contains("CC0"), "%s/%s es CC0" % [sub, lic])
+	check(count >= 9, "se revisaron los archivos de audio (%d)" % count)
+
+
+func test_volume_stepper() -> void:
+	var before := AudioMix.get_volume(AudioMix.BUS_MUSIC)
+	AudioMix.prefs_path = ""
+	AudioMix.set_volume(AudioMix.BUS_MUSIC, 0.5)
+	var stepper := VolumeStepper.new(AudioMix.BUS_MUSIC, "Música")
+	root.add_child(stepper)
+	check(stepper.value == 5, "arranca en el volumen actual")
+	check(stepper.focus_mode == Control.FOCUS_ALL and stepper.custom_minimum_size.y > 0, "navegable con el D-pad")
+	var right := InputEventAction.new()
+	right.action = "ui_right"
+	right.pressed = true
+	stepper._gui_input(right)
+	check(stepper.value == 6 and is_equal_approx(snappedf(AudioMix.get_volume(AudioMix.BUS_MUSIC), 0.01), 0.6),
+		"▶ sube la música un 10 %")
+	stepper.set_value(-4)
+	check(stepper.value == 0 and AudioMix.get_volume(AudioMix.BUS_MUSIC) == 0.0, "no baja de 0")
+	stepper.queue_free()
+	await process_frame
+	AudioMix.set_volume(AudioMix.BUS_MUSIC, before)
+
+
+func test_controller_has_no_music() -> void:
+	var ctrl := ControllerMain.new()
+	root.add_child(ctrl)
+	await process_frame
+	var has_music := false
+	var has_sfx := false
+	for child in ctrl.get_children():
+		has_music = has_music or child is Music
+		has_sfx = has_sfx or child is Sfx
+	check(has_sfx and not has_music, "el celular tiene efectos pero no música")
+	ctrl.queue_free()
 	await process_frame

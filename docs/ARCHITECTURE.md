@@ -71,9 +71,12 @@ Cada pantalla es un componente independiente que **emite señales** (`start_requ
 Colores, tipografía y funciones de dibujo están en `core/ui/ui_theme.gd` (*design tokens*). Las mascotas, chips y fondos se dibujan por código. Ver [ADR 0004](adr/0004-sistema-visual.md) y la skill `.claude/skills/diseno-tv/`.
 
 ### Sonido y vibración
-Los efectos se sintetizan al iniciar (`core/audio/sfx.gd`, sin archivos de audio). Un juego llama `play_sfx("point")` para la TV y `notify_player(pid, "point")` para el celular de ese jugador; la TV lo reenvía como mensaje `feedback` con límite de frecuencia y el celular vibra (`Haptics`) y suena.
+Los efectos se sintetizan al iniciar (`core/audio/sfx.gd`); los de navegación de menús son clics CC0 (`core/audio/sfx_files.gd`). Un juego llama `play_sfx("point")` para la TV y `notify_player(pid, "point")` para el celular de ese jugador; la TV lo reenvía como mensaje `feedback` con límite de frecuencia y el celular vibra (`Haptics`) y suena.
 
 *Ejemplo:* en Esquivar, cuando un bloque te toca, la TV hace "¡pum!" y solo tu celular vibra fuerte (220 ms). Así sabés que quedaste afuera sin buscar tu mascota. Ver [ADR 0005](adr/0005-sonido-sintetizado.md).
+
+### Música y mezcla (solo TV)
+`core/audio/music.gd` pasa una pista CC0 en bucle por pantalla con fundido cruzado (lobby, grupo de juegos por energía, resumen, podio) y baja la música un instante con los efectos importantes (*ducking*). `HostMain` solo llama `Music.play("lobby")` y similares al cambiar de fase. Los buses `Music` y `SFX` (`core/audio/audio_mix.gd`) tienen volumen propio en la pausa. Los logos sonoros de IO-GAMES y PARTY-GAME se sintetizan (`core/audio/jingles.gd`). El celular no tiene música. Ver [ADR 0015](adr/0015-musica-y-mezcla.md) y [CREDITS.md](../CREDITS.md).
 
 ### Rendimiento
 Lo que no cambia no se redibuja en cada frame: el fondo y el campo de los juegos van en capas propias que se dibujan una vez, y las figuras se dibujan en lote. El celular baja a 30 fps y modo de bajo consumo mientras espera. Medición, presupuestos y detalles en [PERFORMANCE.md](PERFORMANCE.md) y [ADR 0006](adr/0006-rendimiento-capas-cacheadas.md).
@@ -120,6 +123,7 @@ Registradas en [adr/](adr/):
 - [0005 · Sonido sintetizado por código y vibración por eventos](adr/0005-sonido-sintetizado.md)
 - [0006 · Rendimiento: capas cacheadas, figuras en lote y bajo consumo](adr/0006-rendimiento-capas-cacheadas.md)
 - [0010 · Bots con reglas: jugadores virtuales que aprietan botones](adr/0010-bots.md)
+- [0015 · Música CC0, buses de mezcla y logos sonoros sintetizados](adr/0015-musica-y-mezcla.md)
 
 ## Límites conocidos (v0.1)
 

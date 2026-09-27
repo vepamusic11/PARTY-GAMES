@@ -24,12 +24,39 @@ Todo lo que el juego usa y **no** escribimos nosotros va anotado acá: código, 
 |---|---|---|---|---|
 | Fredoka (SemiBold y Bold) | The Fredoka Project Authors (Milena Brandão, Hafontia) | SIL Open Font License 1.1 | `assets/fonts/` ([OFL.txt](assets/fonts/OFL.txt)) | [google/fonts · ofl/fredoka](https://github.com/google/fonts/tree/main/ofl/fredoka) |
 
-## Sonido y música
+## Música
 
-*Todavía nada de terceros: los efectos se sintetizan por código ([ADR 0005](docs/adr/0005-sonido-sintetizado.md)).* Formato de fila: archivo · pack · autor · licencia · enlace.
+Juhani Junkala · <https://juhanijunkala.com/> · **CC0 1.0** (dominio público; el crédito es opcional y lo damos igual). Texto original de la licencia en `assets/audio/music/LICENSE-Juhani-Junkala-*.txt`.
 
-| Archivo | Pack | Autor | Licencia | Origen |
-|---|---|---|---|---|
+| Archivo | Tema original | Pack | Dónde suena |
+|---|---|---|---|
+| `assets/audio/music/lobby.ogg` | Stage Select | Chiptune Adventures | Lobby |
+| `assets/audio/music/game_calm.ogg` | Stage 1 | Chiptune Adventures | Reloj exacto, Ping Pong |
+| `assets/audio/music/game_play.ogg` | Stage 2 | Chiptune Adventures | Arena, Pintar el piso (y juegos nuevos sin grupo) |
+| `assets/audio/music/game_action.ogg` | Level 1 | Retro Game Music Pack (5 Action Chiptunes) | Esquivar, Empujones, Carrera de toques |
+| `assets/audio/music/summary.ogg` | Title Screen | Retro Game Music Pack (5 Action Chiptunes) | Resumen de la ronda |
+| `assets/audio/music/podium.ogg` | Ending | Retro Game Music Pack (5 Action Chiptunes) | Podio |
+
+Origen verificado (26/09/2026), con el `INFO.txt` del autor dentro de cada carpeta ("These music tracks have been released under CC0 creative commons license"):
+
+- Chiptune Adventures (OGG): repositorio [PacktPublishing/Game-Development-Patterns-with-Godot-4](https://github.com/PacktPublishing/Game-Development-Patterns-with-Godot-4), commit `1b68c8c`, carpeta `12.cross-fading-with-service-locator/01.start/Assets/Juhani Junkala [Chiptune Adventures] OGG/`.
+- Retro Game Music Pack (WAV): repositorio [excaliburjs/sample-tactics](https://github.com/excaliburjs/sample-tactics), commit `bfe18ba`, carpeta `res/5 Action Chiptunes By Juhani Junkala/`. Publicado originalmente en [OpenGameArt](https://opengameart.org/content/5-chiptunes-action).
+
+Cambios: nivel de sonoridad común, rampa de 6 ms en la costura del bucle y recodificado a OGG Vorbis (`tools/audio/prepare_audio.py`).
+
+## Efectos de sonido
+
+Kenney (<https://www.kenney.nl>) · pack **Interface Sounds** · **CC0 1.0**. Texto original en `assets/audio/sfx/LICENSE-Kenney-Interface-Sounds.txt`.
+
+| Archivo | Original | Reemplaza la receta |
+|---|---|---|
+| `assets/audio/sfx/ui_tick.ogg` | `tick_004.ogg` | `tick` (mover el foco) |
+| `assets/audio/sfx/ui_select.ogg` | `select_002.ogg` | `select` (confirmar) |
+| `assets/audio/sfx/ui_back.ogg` | `back_004.ogg` | `back` (volver) |
+
+Origen verificado (26/09/2026): repositorio [lavenderdotpet/CC0-Public-Domain-Sounds](https://github.com/lavenderdotpet/CC0-Public-Domain-Sounds), commit `f2b6264`, carpeta `kenney_interfacesounds/` con el `License.txt` de Kenney ("License: (Creative Commons Zero, CC0)"). Cambios: mono y volumen ajustado a los efectos sintetizados.
+
+El resto de los efectos y los jingles de marca (IO-GAMES, PARTY-GAME) están sintetizados por código en el proyecto (`core/audio/sfx.gd`, `core/audio/jingles.gd`).
 
 ## Imágenes e íconos
 

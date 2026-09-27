@@ -13,6 +13,7 @@ extends SceneTree
 ##   … -- --bots                     (los jugadores de los juegos son bots
 ##                                    "Normal" en vez de entradas inventadas:
 ##                                    mide cuánto cuestan los bots; ADR 0010)
+##   … -- --no-audio                 (sin música ni efectos, para comparar)
 ##
 ## Igual que tools/capture_screens.gd necesita una pantalla (real o xvfb):
 ## con --headless no se dibuja nada y los números no sirven.
@@ -72,6 +73,9 @@ var _restarts := 0
 var _late_sec := 0.0  ## > 0: adelantar el juego antes de medir (ver LATE_SCENES).
 var _use_bots := false  ## --bots: los jugadores los maneja un BotDriver.
 var _driver := BotDriver.new()
+## Como en la TV: música sonando y efectos (con ducking) durante la medición.
+var _audio := true
+var _music_tracks: Array = []
 
 
 func _initialize() -> void:
@@ -89,6 +93,8 @@ func _run() -> void:
 			_json_path = arg.trim_prefix("--json=")
 		elif arg == "--bots":
 			_use_bots = true
+		elif arg == "--no-audio":
+			_audio = false
 	_driver.auto_step = false
 	if DisplayServer.get_name() == "headless":
 		printerr("El benchmark necesita una pantalla: correlo con xvfb-run (ver el comentario del script).")
@@ -101,8 +107,12 @@ func _run() -> void:
 	RenderingServer.frame_pre_draw.connect(func() -> void: _pre_draw_us = Time.get_ticks_usec())
 	RenderingServer.frame_post_draw.connect(_on_frame_drawn)
 
-	print("\n=== Party Games · benchmark (%d frames por escena, %s%s) ===\n" % [_frames, _renderer_name(),
-		", juegos con bots" if _use_bots else ""])
+	if _audio:
+		root.add_child(Sfx.new())
+		root.add_child(Music.new())
+		_music_tracks = Music.TRACKS.keys()
+	print("\n=== Party Games · benchmark (%d frames por escena, %s%s%s) ===\n" % [_frames, _renderer_name(),
+		", juegos con bots" if _use_bots else "", "" if _audio else ", sin audio"])
 	await _bench("lobby", _make_lobby)
 	await _bench("game_intro", _make_intro)
 	await _bench("round_summary", _make_summary)
@@ -166,6 +176,8 @@ func _bench_game(info: Dictionary) -> void:
 
 
 func _measure(scene: String) -> void:
+	if _audio:  # Cambio de pista al entrar (fundido cruzado dentro del calentamiento).
+		Music.play(str(_music_tracks[_results.size() % _music_tracks.size()]))
 	await _frames_wait(WARMUP_FRAMES)
 	var process: Array[float] = []
 	var physics: Array[float] = []
@@ -178,6 +190,8 @@ func _measure(scene: String) -> void:
 	_measuring = true
 	var start_us := Time.get_ticks_usec()
 	for i in _frames:
+		if _audio and i % 60 == 0:
+			Sfx.play("go")  # Efecto importante: dispara el ducking de la música.
 		await process_frame
 		process.append(Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0)
 		physics.append(Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0)

@@ -36,7 +36,7 @@ Juegos cortos para **1 a 4 jugadores en el sillón**: la **TV es la pantalla** y
   - **Pintar el piso** (1–4) · joystick · pintá baldosas de tu color y robá las ajenas
 - Sistema visual propio: tipografía Fredoka, mascotas por jugador (distinguibles también sin color), marcadores hexagonales, fondos animados. Todo dibujado por código.
 - Toda la TV se maneja con el control remoto (D-pad), con menú de pausa en "Atrás". Antes de cada juego, una intro "¿Cómo se juega?" y transiciones animadas entre pantallas.
-- Sonido y vibración sintetizados por código; mascotas animadas (caminan, miran, parpadean, festejan).
+- Música chiptune CC0 por pantalla con fundido y *ducking*, efectos sintetizados, logos sonoros propios y vibración ([CREDITS.md](CREDITS.md)); mascotas animadas (caminan, miran, parpadean, festejan).
 - 575 verificaciones automáticas (unitarias + integración real de red + flujo completo de la TV), compilación de todos los scripts y prueba de humo visual en CI.
 
 ## Probarlo en 2 minutos (en tu PC)

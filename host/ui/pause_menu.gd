@@ -7,6 +7,7 @@ extends Control
 ##   Sonido: Sí/No         -> silencia la TV (se recuerda entre sesiones)
 ##   Movimiento: Normal/Reducido -> "Reducir movimiento" (accesibilidad): sin
 ##                            sacudidas ni zoom y menos partículas (se recuerda)
+##   ◀ Música ▶ / ◀ Efectos ▶ -> volumen de cada bus (VolumeStepper)
 ## Antes, "Atrás" cortaba la partida sin preguntar: un toque accidental
 ## arruinaba la ronda.
 
@@ -53,6 +54,9 @@ func _ready() -> void:
 	box.add_child(_sound)
 	_motion = _button("Movimiento: Normal", motion_toggled)
 	box.add_child(_motion)
+	# Volúmenes (ADR 0015): cada uno aplica y guarda su ajuste solo.
+	box.add_child(VolumeStepper.new(AudioMix.BUS_MUSIC, "Música"))
+	box.add_child(VolumeStepper.new(AudioMix.BUS_SFX, "Efectos"))
 
 
 func open(subtitle: String, can_skip: bool) -> void:

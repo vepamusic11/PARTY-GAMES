@@ -53,7 +53,7 @@ const RECIPES := {
 static var muted := false
 static var _instance: Sfx
 
-var _streams: Dictionary = {}              # nombre -> AudioStreamWAV
+var _streams: Dictionary = {}              # nombre -> AudioStream (receta o archivo)
 var _players: Array[AudioStreamPlayer] = []
 var _next := 0
 
@@ -70,8 +70,10 @@ func _exit_tree() -> void:
 func _ready() -> void:
 	for sound_name: String in RECIPES:
 		_streams[sound_name] = synth(RECIPES[sound_name])
+	_streams.merge(SfxFiles.load_streams(), true)  # Grabados CC0 (ADR 0015).
 	for i in VOICES:
 		var p := AudioStreamPlayer.new()
+		p.bus = AudioMix.sfx_bus()
 		add_child(p)
 		_players.append(p)
 
@@ -105,7 +107,7 @@ static func has_sound(sound_name: String) -> bool:
 
 
 func _play(sound_name: String, volume_db: float, pitch: float) -> void:
-	var stream: AudioStreamWAV = _streams.get(sound_name)
+	var stream: AudioStream = _streams.get(sound_name)
 	if stream == null:
 		return
 	var p := _players[_next]
@@ -114,6 +116,7 @@ func _play(sound_name: String, volume_db: float, pitch: float) -> void:
 	p.volume_db = volume_db
 	p.pitch_scale = clampf(pitch, 0.5, 2.0)
 	p.play()
+	Music.on_sfx(sound_name)  # Los efectos importantes bajan la música un instante.
 
 
 ## Convierte una receta en audio PCM de 16 bits mono. Pública y estática

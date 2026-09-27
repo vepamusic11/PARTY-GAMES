@@ -23,5 +23,5 @@ El juego no tenía sonido ni vibración, y en un party game el feedback físico 
 - **Que el celular decida cuándo vibrar según su input:** no sabe si sumó un punto; solo la TV (autoritativa) lo sabe.
 
 ## Consecuencias
-- Cuando haya música o sonidos de un diseñador, se reemplazan las recetas por `AudioStream` importados sin tocar las llamadas `Sfx.play`.
+- Cuando haya música o sonidos de un diseñador, se reemplazan las recetas por `AudioStream` importados sin tocar las llamadas `Sfx.play`. Hecho en parte en el [ADR 0015](0015-musica-y-mezcla.md): música CC0 y clics de menú grabados (`core/audio/sfx_files.gd`).
 - Android necesita el permiso `Vibrate` en el preset (ver `docs/BUILD.md`).

@@ -17,7 +17,10 @@ xvfb-run -a -s "-screen 0 1920x1080x24" godot --path . --rendering-driver opengl
 #   --frames=600            frames medidos por escena (default 300, más 45 de calentamiento)
 #   --only=lobby,dodge      solo algunas escenas
 #   --json=/tmp/bench.json  además guarda los resultados en JSON (para comparar)
+#   --no-audio              sin música ni efectos (por defecto suenan, como en la TV)
 ```
+
+Por defecto el benchmark agrega `Sfx` y `Music` como la TV: cada escena cambia de pista (fundido cruzado durante el calentamiento) y un `go` por segundo dispara el *ducking*. El presupuesto del audio es **≤ 0,3 ms de p95 de Scripts** frente a `--no-audio` ([ADR 0015](adr/0015-musica-y-mezcla.md)); el OGG se decodifica en el hilo de audio y no cuenta en Scripts.
 
 Escenas: `lobby` (4 jugadores), `game_intro` ("¿Cómo se juega?"), `round_summary`, `final` (podio con confeti), **cada juego del registry** con su máximo de jugadores (hasta 4) e inputs que cambian todo el tiempo (si un juego termina antes de juntar los frames, se reinicia), y el celular a 2340×1080: `ctrl_join`, `ctrl_wait` y `ctrl_joy`. Un juego nuevo en el registry entra solo. Los juegos que cambian mucho con el tiempo se miden además adelantados (`LATE_SCENES` en el script): `sumo_tarde` es Empujones a los 20 s, con la isla achicándose (con `--only=sumo` se miden las dos).
 
