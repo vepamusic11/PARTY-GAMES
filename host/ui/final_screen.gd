@@ -2,6 +2,13 @@ class_name FinalScreen
 extends Control
 ## Podio al terminar la competencia: 2° – 1° – 3° (el 1° más alto, en el
 ## centro), el 4° abajo, confeti y dos opciones:
+##          (corona)
+##  (mascota) (mascota) (mascota)
+##  (4P Juli) (3P Tomi) (2P Sofi)     <- chapita [1P | nombre], entre mascota y bloque
+##  [2° 380]  [1° 420]  [3° 370]      <- bloque con medalla y puntos en un visor oscuro
+##       (4P Pablo  4° · 330 pts)
+## Nombres y puntos van sobre placas propias (nunca sueltos sobre el cielo
+## claro ni encima de una mascota).
 ##   "Jugar otra vez"   -> misma selección de juegos y jugadores
 ##   "Cambiar juegos"   -> vuelve al lobby
 
@@ -46,10 +53,7 @@ func show_final(standings: Array[Dictionary], game_titles: Array[String]) -> voi
 			_podium.add_child(_podium_column(standings[idx], idx))
 	for i in range(3, standings.size()):
 		var s: Dictionary = standings[i]
-		var chip := PanelContainer.new()
-		chip.add_theme_stylebox_override("panel", UiTheme.panel_style(UiTheme.PAPER, 28, 16))
-		chip.add_child(UiTheme.label("%s  %s · %d pts" % [UiTheme.place_text(s.place), s.name, s.total], 30, UiTheme.INK, true))
-		_others.add_child(chip)
+		_others.add_child(NamePlate.make(s.slot, s.color, str(s.name), "%s · %d pts" % [UiTheme.place_text(s.place), s.total]))
 	_games.text = "Se jugó: " + " · ".join(game_titles) if not game_titles.is_empty() else ""
 	_confetti.burst()
 	Sfx.play("fanfare")
@@ -78,15 +82,17 @@ func _podium_column(s: Dictionary, index: int) -> Control:
 	col.add_child(avatar)
 	if s.place == 1:
 		avatar.ready.connect(func() -> void: avatar.hop(4))
-	var name_label := UiTheme.headline(s.name, 44)
-	name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	name_label.custom_minimum_size = Vector2(340, 64)
-	col.add_child(name_label)
-	var points := UiTheme.headline("%d pts" % s.total, 34, UiTheme.ACCENT)
-	col.add_child(points)
+	# Chapita [1P | nombre] (draw_string, texto plano) entre la mascota y el bloque.
+	var plate := NamePlate.make(s.slot, s.color, str(s.name))
+	plate.custom_minimum_size.x = 0.0  # Ocupa el ancho de la columna (recorta con "…").
+	col.add_child(plate)
+	var spacer := Control.new()
+	spacer.custom_minimum_size = Vector2(0, 10)
+	col.add_child(spacer)
 	var block := _Block.new()
 	block.color = s.color
 	block.place = s.place
+	block.points = "%d pts" % s.total
 	block.custom_minimum_size = Vector2(340, PODIUM_HEIGHTS[index])
 	col.add_child(block)
 	return col
@@ -115,6 +121,7 @@ func _build() -> void:
 	col.add_child(_podium)
 	_others = HBoxContainer.new()
 	_others.alignment = BoxContainer.ALIGNMENT_CENTER
+	_others.add_theme_constant_override("separation", 24)
 	col.add_child(_others)
 	_games = UiTheme.label("", 28, UiTheme.INK, true)
 	_games.add_theme_constant_override("outline_size", 8)
@@ -139,11 +146,14 @@ func _build() -> void:
 	buttons.add_child(lobby)
 
 
-## Bloque del podio con el puesto y los puntos totales.
+## Bloque del podio: medalla con el puesto a la izquierda y los puntos
+## totales en un visor oscuro (como el pozo del marcador): se leen igual con
+## cualquier color de jugador, incluidos blanco y negro.
 class _Block:
 	extends Control
 	var color := Color.WHITE
 	var place := 1
+	var points := ""
 
 	func _draw() -> void:
 		var r := Rect2(Vector2(10, 0), size - Vector2(20, 0))
@@ -151,10 +161,20 @@ class _Block:
 		UiTheme.draw_round_rect(self, r, color.darkened(0.2), 18)
 		UiTheme.draw_round_rect(self, Rect2(r.position, Vector2(r.size.x, r.size.y - 14)), color, 18)
 		UiTheme.draw_round_rect(self, Rect2(r.position + Vector2(0, 0), Vector2(r.size.x, 18)), color.lightened(0.25), 18)
-		var c := Vector2(r.get_center().x, r.position.y + (r.size.y - 14.0) / 2.0 + 4.0)
-		draw_circle(c, 44, UiTheme.INK)
-		draw_circle(c, 40, UiTheme.place_color(place))
-		UiTheme.draw_text(self, UiTheme.place_text(place), c + Vector2(2, 1), 40, UiTheme.INK)
+		var cy := r.position.y + (r.size.y - 14.0) / 2.0 + 4.0
+		var c := Vector2(r.position.x + 62.0, cy)
+		draw_circle(c, 40, UiTheme.INK)
+		draw_circle(c, 36, UiTheme.place_color(place))
+		UiTheme.draw_text(self, UiTheme.place_text(place), c + Vector2(2, 1), 36, UiTheme.INK)
+		if points.is_empty():
+			return
+		var h := UiTheme.PODIUM_WELL_H
+		var well := Rect2(c.x + 54.0, cy - h / 2.0, r.end.x - 18.0 - (c.x + 54.0), h)
+		# En bloques oscuros (jugador negro) el borde va claro: el visor se separa del bloque.
+		var rim := UiTheme.MASCOT_RIM if color.get_luminance() < 0.25 else UiTheme.INK
+		UiTheme.draw_round_rect(self, well.grow(4), rim, h / 2.0 + 4.0)
+		UiTheme.draw_round_rect(self, well, UiTheme.CHIP_DARK, h / 2.0)
+		UiTheme.draw_text(self, points, well.get_center(), UiTheme.PODIUM_SCORE_SIZE, UiTheme.ACCENT)
 
 
 ## Corona dibujada sobre el ganador.

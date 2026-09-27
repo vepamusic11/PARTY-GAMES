@@ -1184,3 +1184,32 @@ const MEMORY_RIM_LIGHT := Color("#4C55A0")   ## Brillo de arriba del aro.
 const MEMORY_STUD := Color("#FFF4C2")        ## Lucecitas del aro.
 const MEMORY_SOCKET := Color("#343A63")      ## Ficha vacía (todavía no la repetiste).
 const MEMORY_CARD := Color(1, 1, 1, 0.88)    ## Tarjeta de cada jugador y de la ayuda.
+
+
+# --- Pulido (agente) ---
+# Resumen de ronda y podio con el arte de los juegos (marcador en píldoras,
+# chapitas [1P | nombre] y puntos ganados en una placa que no pisa a la mascota).
+
+## Marcador de arriba del resumen (ScoreBar): el mismo de los juegos
+## (GameArt.paint_hud) con este aire arriba y abajo.
+const SUMMARY_BAR_PAD := 12.0
+const SUMMARY_BAR_H := HUD_CLOCK_H + 2.0 * SUMMARY_BAR_PAD
+## Placa de los puntos ganados en la ronda ("+70", PointsBadge).
+const POINTS_BADGE_SIZE := 64      ## Tamaño del número.
+const POINTS_BADGE_H := 92.0       ## Alto de la placa.
+const POINTS_BADGE_PAD := 30.0     ## Aire a cada lado del número.
+const POINTS_BADGE_GAP := 36.0     ## Separación mínima entre la placa y la mascota (orejas, antena).
+## Chapita del jugador fuera de los juegos: [1P | Nombre  extra] (NamePlate).
+const PLATE_H := 60.0
+const PLATE_NAME_SIZE := 34
+const PLATE_TAG_SIZE := 26
+const PLATE_EXTRA_SIZE := 26
+const PLATE_MAX_W := 460.0
+## Contorno de tinta de las placas y chapitas (más grueso que el de los
+## textos: separa la placa de cualquier fondo, incluida una mascota del mismo color).
+const PLATE_OUTLINE := 5.0
+const PLATE_LIP := 6.0             ## Canto de abajo (relieve).
+const PLATE_GLOSS := Color(1, 1, 1, 0.3)
+## Podio: puntos totales en un visor oscuro sobre el bloque.
+const PODIUM_SCORE_SIZE := 36
+const PODIUM_WELL_H := 58.0

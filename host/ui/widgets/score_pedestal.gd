@@ -36,9 +36,9 @@ func _draw() -> void:
 	# Pantalla
 	var screen := Rect2(r.position.x + 20, r.position.y + 44, r.size.x - 40, r.size.y - 76)
 	UiTheme.draw_round_rect(self, screen.grow(3), UiTheme.INK, 16)
-	UiTheme.draw_round_rect(self, screen, Color("#15182A"), 14)
-	UiTheme.draw_text(self, score_text, screen.get_center() - Vector2(0, 10), 58, UiTheme.ACCENT)
-	UiTheme.draw_text(self, unit, Vector2(screen.get_center().x, screen.end.y - 16), 20, Color(UiTheme.ACCENT, 0.7), 0, UiTheme.INK, false)
+	UiTheme.draw_round_rect(self, screen, UiTheme.CHIP_DARK, 14)
+	UiTheme.draw_text(self, score_text, screen.get_center() - Vector2(0, 12), 56, UiTheme.ACCENT)
+	UiTheme.draw_text(self, unit, Vector2(screen.get_center().x, screen.end.y - 17), 24, Color(UiTheme.ACCENT, 0.75), 0, UiTheme.INK, false)
 	# Medalla con el puesto
 	if place > 0:
 		var m := Vector2(r.position.x + 6, r.position.y + 4)

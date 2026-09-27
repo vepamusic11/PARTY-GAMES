@@ -60,22 +60,22 @@ const DEFAULT_SHOT := {
 }
 const SHOTS := {
 	"arena": {
-		"sec": 3.0, "crop": Rect2(0, 0, 680, 383), "items": "_stars", "chase": true, "follow": true,
+		"sec": 3.0, "crop": Rect2(0, 0, 520, 293), "items": "_stars", "chase": true, "follow": true, "seed": 1,
 		"wait": {"players": 2, "items": 1},
 	},
-	"pingpong": {"sec": 2.0, "crop": Rect2(1080, 700, 640, 360), "ball_in": Rect2(1100, 780, 190, 170)},
-	"tap_race": {"sec": 7.5, "crop": Rect2(900, 145, 920, 518)},
-	"stop_clock": {"sec": 4.6, "crop": Rect2(460, 109, 1000, 562)},
+	"pingpong": {"sec": 2.0, "crop": Rect2(1150, 720, 640, 360), "ball_in": Rect2(1170, 790, 140, 110)},
+	"tap_race": {"sec": 8.0, "crop": Rect2(1015, 135, 760, 428)},
+	"stop_clock": {"sec": 4.6, "crop": Rect2(620, 100, 820, 461)},
 	"dodge": {
-		"sec": 9.0, "crop": Rect2(0, 0, 560, 315), "items": "_blocks", "evade": true, "follow": true, "seed": 1,
+		"sec": 9.0, "crop": Rect2(0, 0, 480, 270), "items": "_blocks", "evade": true, "follow": true, "seed": 1,
 		"wait": {"players": 2, "items": 1},
 		"orbit": {"c": Vector2(960, 610), "r": Vector2(170, 80), "spread": Vector2.ZERO},
 	},
 	"paint": {
-		"sec": 9.0, "crop": Rect2(660, 420, 600, 338),
-		"orbit": {"c": Vector2(960, 620), "r": Vector2(90, 50), "spread": Vector2(140, 60)},
+		"sec": 9.0, "crop": Rect2(740, 406, 440, 248),
+		"orbit": {"c": Vector2(960, 600), "r": Vector2(50, 25), "spread": Vector2(120, 40)},
 	},
-	"sumo": {"sec": 5.5, "crop": Rect2(690, 420, 540, 304)},
+	"sumo": {"sec": 3.85, "crop": Rect2(692, 405, 480, 270)},
 	"karts": {"sec": 8.0, "crop": Rect2(0, 0, 620, 349), "follow": true},
 	"scroller": {
 		"sec": 6.5, "crop": Rect2(360, 200, 1000, 562), "seed": 3,

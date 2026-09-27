@@ -2,13 +2,17 @@ class_name RoundSummaryScreen
 extends Control
 ## Resumen al terminar cada minijuego de la competencia:
 ##
-##   [1P 130] [2P 180] [ Ronda 2/3 ] [3P 170] [4P 120]   <- totales (cuentan hacia arriba)
+##   [1P|mascota|130] [2P|…|180] (Ronda 2/3) [3P|…|170] [4P|…|120]  <- totales (cuentan)
 ##               ARENA DE ESTRELLAS
-##      +100        +70        +50        +30           <- puntos ganados esta ronda
+##     (+100)      (+70)      (+50)      (+30)          <- placa con los puntos de esta ronda
 ##      (mascota)   (mascota)  (mascota)  (mascota)
 ##      [1° | 12]   [2° | 9]   [3° | 7]   [4° | 3]       <- puesto y puntaje del juego
-##        Pablo       Sofi       Tomi       Juli
+##     (1P Pablo)  (2P Sofi)  (3P Tomi)  (4P Juli)      <- chapita del jugador
 ##   Siguiente: Ping Pong                  [Continuar · 12]
+##
+## El marcador de arriba es el de los juegos (ScoreBar → GameArt.paint_hud).
+## La placa de puntos queda siempre arriba de la mascota con un espacio
+## (POINTS_BADGE_GAP) que cubre orejas y antena: nunca se pisan.
 ##
 ## Revelado en orden inverso (del último al primero) para generar
 ## suspenso; al final salta el ganador y los totales se actualizan.
@@ -51,7 +55,8 @@ func show_summary(summary: Dictionary, standings: Array[Dictionary], next_title:
 	var bar_rows: Array[Dictionary] = []
 	var totals := {}
 	for s in standings:
-		bar_rows.append({"id": s.id, "slot": s.slot, "color": s.color, "total": s.total - int(gained.get(s.id, 0))})
+		bar_rows.append({"id": s.id, "slot": s.slot, "color": s.color, "style": PlayerAvatar.style_of(s),
+			"total": s.total - int(gained.get(s.id, 0))})
 		totals[s.id] = s.total
 	_bar.setup(bar_rows, "Ronda %d/%d" % [summary.round, summary.total_rounds])
 
@@ -117,11 +122,11 @@ func _reveal(columns: Array[Dictionary], totals: Dictionary) -> void:
 	var tw: Tween = _tween
 	var delay := 0.3
 	for col: Dictionary in order:
-		var delta_label: Label = col.delta
+		var badge: PointsBadge = col.delta
 		var pedestal: ScorePedestal = col.pedestal
-		delta_label.pivot_offset = delta_label.size / 2.0
-		tw.parallel().tween_property(delta_label, "modulate:a", 1.0, 0.15).set_delay(delay)
-		tw.parallel().tween_property(delta_label, "scale", Vector2.ONE, 0.35) \
+		badge.pivot_offset = badge.size / 2.0
+		tw.parallel().tween_property(badge, "modulate:a", 1.0, 0.15).set_delay(delay)
+		tw.parallel().tween_property(badge, "scale", Vector2.ONE, 0.35) \
 			.from(Vector2(0.2, 0.2)).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT).set_delay(delay)
 		tw.parallel().tween_callback(pedestal.light_up).set_delay(delay)
 		# Cuanto mejor el puesto, más agudo el "pop": se escucha la escalera.
@@ -144,17 +149,22 @@ func _make_column(row: Dictionary, unit: String, count: int, last_place: int) ->
 	_columns.add_child(col)
 
 	var color: Color = row.color
-	var delta := UiTheme.headline("+%d" % row.points, 96, color, UiTheme.PAPER)
-	delta.add_theme_color_override("font_shadow_color", UiTheme.INK)
-	delta.add_theme_constant_override("shadow_offset_y", 6)
+	# Placa de puntos, y debajo aire para orejas y antena: la mascota nunca
+	# queda detrás del número.
+	var delta := PointsBadge.make("+%d" % row.points, color)
+	delta.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	delta.modulate.a = 0.0
 	col.add_child(delta)
+	var gap := Control.new()
+	gap.custom_minimum_size = Vector2(0, UiTheme.POINTS_BADGE_GAP)
+	gap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	col.add_child(gap)
 
 	var avatar := PlayerAvatar.new()
 	avatar.slot = row.slot
 	avatar.style = PlayerAvatar.style_of(row)
 	avatar.color = color
-	avatar.custom_minimum_size = Vector2(250, 250)
+	avatar.custom_minimum_size = Vector2(230, 224)
 	if count > 1 and row.place == 1:
 		avatar.mood = PlayerAvatar.Mood.HAPPY
 	elif count > 1 and row.place == last_place:
@@ -166,13 +176,13 @@ func _make_column(row: Dictionary, unit: String, count: int, last_place: int) ->
 	pedestal.score_text = _format_score(row.score)
 	pedestal.unit = unit
 	pedestal.place = row.place
-	pedestal.custom_minimum_size = Vector2(280, 200)
+	pedestal.custom_minimum_size = Vector2(280, 184)
 	col.add_child(pedestal)
 
-	var name_label := UiTheme.headline(row.name, 40)  # Label: texto plano, sin BBCode.
-	name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	name_label.custom_minimum_size = Vector2(320, 64)
-	col.add_child(name_label)
+	# Chapita [1P | nombre]: draw_string, texto plano (sin BBCode).
+	var plate := NamePlate.make(row.slot, color, str(row.name))
+	plate.custom_minimum_size.x = 0.0  # Ocupa el ancho de la columna (recorta con "…").
+	col.add_child(plate)
 	return {"place": row.place, "delta": delta, "avatar": avatar, "pedestal": pedestal}
 
 
@@ -188,7 +198,7 @@ func _build() -> void:
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	for side in ["left", "right"]:
 		margin.add_theme_constant_override("margin_" + side, UiTheme.SAFE_MARGIN)
-	margin.add_theme_constant_override("margin_top", 52)
+	margin.add_theme_constant_override("margin_top", 40)  # El marcador ya trae su aire.
 	margin.add_theme_constant_override("margin_bottom", 58)
 	add_child(margin)
 	var col := VBoxContainer.new()

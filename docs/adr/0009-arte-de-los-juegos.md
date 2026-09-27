@@ -14,6 +14,7 @@ La maqueta `docs/design/referencia_juego_pintar.webp` ("Pintar el piso") muestra
 - **Globito 1P–4P y nombre** (`MiniGame.draw_player_tags`): todos los globitos en un lote y todas las letras después (contornos primero, rellenos después) para que el motor las junte. Si arriba lo taparía el marcador, el globito va al costado de la cabeza.
 - **Lo fijo de cada juego se dibuja una vez** (`MiniGame.draw_static(fn)`): mesa de Ping Pong, paneles y cajitas de Reloj exacto, tribunas de Empujones. Carrera de toques arma su lote fijo una vez y lo vuelve a mandar en cada frame (`TriBatch.draw`).
 - **Baldosas de Pintar el piso precalculadas** por jugador (`GameArt.tile_template`): relieve y patrón como triángulos locales; una fila entera es un `append_array` por baldosa y un draw call.
+- **Resumen de ronda y podio con el mismo lenguaje**: el marcador del resumen (`ScoreBar`) usa `GameArt.paint_hud`/`paint_hud_text` y `make_portrait` (no hay otro dibujo de píldoras). Nombres y puntos nunca van sueltos sobre el cielo: chapita `NamePlate` [1P | nombre] y placa `PointsBadge` ("+70") con contorno grueso de tinta y texto `UiTheme.text_on(color)`; la placa deja `POINTS_BADGE_GAP` de aire sobre la mascota (orejas y antena no la pisan). En el podio los puntos van en un visor oscuro sobre el bloque.
 - **Brillo de premios** (`GameArt.add_glow`): degradé radial y rayos que giran, con formas y colores cacheados.
 
 ## Motivos
