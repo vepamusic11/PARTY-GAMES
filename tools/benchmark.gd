@@ -37,6 +37,11 @@ const WARMUP_FRAMES := 45
 const TARGET_FPS := 60
 const PHONE := Vector2i(2340, 1080)
 const NAMES := ["Pablo", "Sofi", "Tomi", "Juli"]
+## Juegos que cambian mucho con el tiempo: además se miden adelantados estos
+## segundos (escena "<id>_tarde"), con los jugadores quietos para que el
+## juego no termine antes de tiempo. Ej. en Empujones la isla se achica desde los 15 s.
+## El juego tiene que tener step(delta) (como sumo, para los tests).
+const LATE_SCENES := {"sumo": 20.0}
 
 var _frames := DEFAULT_FRAMES
 var _only: Array[String] = []
@@ -61,6 +66,7 @@ var _game_layout := ""
 var _game_players: Array[Dictionary] = []
 var _game_t := 0.0
 var _restarts := 0
+var _late_sec := 0.0  ## > 0: adelantar el juego antes de medir (ver LATE_SCENES).
 
 
 func _initialize() -> void:
@@ -106,7 +112,7 @@ func _run() -> void:
 # --- Medición -------------------------------------------------------------------
 
 func _wanted(scene: String) -> bool:
-	return _only.is_empty() or scene in _only
+	return _only.is_empty() or scene in _only or scene.trim_suffix("_tarde") in _only
 
 
 ## Construye la escena, la deja estabilizarse y mide _frames frames.
@@ -131,6 +137,15 @@ func _bench_game(info: Dictionary) -> void:
 	await _measure(info.id)
 	if is_instance_valid(_game):
 		_game.queue_free()
+	if LATE_SCENES.has(info.id) and _wanted(info.id + "_tarde"):
+		await _frames_wait(3)
+		_late_sec = LATE_SCENES[info.id]
+		_restarts = -1
+		_start_game()
+		await _measure(info.id + "_tarde")
+		_late_sec = 0.0
+		if is_instance_valid(_game):
+			_game.queue_free()
 	_game = null
 	_game_id = ""
 	await _frames_wait(3)
@@ -288,6 +303,12 @@ func _start_game() -> void:
 	_game.setup(_game_players.duplicate(true))
 	_game_t = 0.0
 	_restarts += 1
+	if _late_sec > 0.0 and _game.has_method("step"):
+		for i in int(_late_sec * TARGET_FPS):
+			if _game.is_finished():
+				break
+			_feed_game_input()
+			_game.call("step", 1.0 / TARGET_FPS)
 
 
 ## Inputs "humanos" según el control del juego. Se mandan en cada frame
@@ -304,6 +325,8 @@ func _feed_game_input() -> void:
 		match _game_layout:
 			Protocol.LAYOUT_JOYSTICK:
 				axis = Vector2(cos(t * 1.3 + k * 1.7), sin(t * 0.9 + k * 2.3))
+				if _late_sec > 0.0:
+					axis = Vector2.ZERO  # Quietos: nadie se cae y el juego no termina.
 			Protocol.LAYOUT_SLIDER_H:
 				axis = Vector2(sin(t * 2.0 + k), 0.0)
 			Protocol.LAYOUT_ONE_BUTTON:

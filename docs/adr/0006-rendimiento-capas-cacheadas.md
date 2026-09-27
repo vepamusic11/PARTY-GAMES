@@ -9,6 +9,7 @@ Todo se dibuja por código (ADR 0004). El fondo de la TV y los juegos se redibuj
 ## Decisión
 - **Lo que no cambia va en un nodo hijo que no se redibuja**: `PartyBackground._front` (torres, piso, bordes); en `MiniGame`, `draw_sky()`/`draw_play_field()` registran la capa en un hijo interno `_backdrop` (detrás del juego) y `draw_hud()` en `_hud` (delante), que se redibujan solo si cambian sus datos. La API de los juegos no cambia.
 - **`UiTheme.ShapeBatch`**: junta figuras rellenas consecutivas en un solo `canvas_item_add_triangle_array` con la misma geometría que `draw_circle`/`draw_colored_polygon`. Se usa en mascotas (respetando el transform de *squash & stretch*), estrellas, chips, nubes y lunares. Los círculos se calculan con el mismo redondeo a float de 32 bits que el motor para dar los mismos vértices.
+- **Juegos con fondo propio** (Empujones, Pintar el piso): el mismo criterio dentro del juego, con capas que se redibujan solo cuando cambia lo que muestran (ver `docs/PERFORMANCE.md`).
 - **Nodos ocultos no animan** (`_process` apagado según `is_visible_in_tree()`).
 - **Celular**: sin control en pantalla, animaciones a 30 fps (la mascota de espera saluda: a menos se vería a saltos) y `OS.low_processor_usage_mode`; con un control activo, 60 fps normales.
 - Medir siempre con `tools/benchmark.gd` antes y después (ver `docs/PERFORMANCE.md`).
@@ -18,7 +19,7 @@ Todo se dibuja por código (ADR 0004). El fondo de la TV y los juegos se redibuj
 - Sin cambiar la API de `MiniGame` ni de `UiTheme`: los juegos existentes y nuevos se benefician solos.
 
 ## Alternativas descartadas
-- **Renderizar el fondo a una textura (SubViewport)**: 1 draw call en vez de ~160, pero con el estiramiento `canvas_items` hay que generarla a la resolución real (hasta 4K, ~33 MB) y componerla con alfa premultiplicado; riesgo de diferencias visuales. Queda como próximo paso si hace falta, igual que cachear la isla de Empujones y las baldosas de Pintar el piso (ver `docs/PERFORMANCE.md`).
+- **Renderizar el fondo a una textura (SubViewport)**: 1 draw call en vez de ~160, pero con el estiramiento `canvas_items` hay que generarla a la resolución real (hasta 4K, ~33 MB) y componerla con alfa premultiplicado; riesgo de diferencias visuales. Queda como próximo paso si hace falta.
 - **Mascotas y marcador como nodos con sprites**: cambia la estructura de todos los juegos; mejor cuando llegue arte definitivo.
 - **Bajar los fps del celular también durante el juego**: aumentaría la latencia del input.
 

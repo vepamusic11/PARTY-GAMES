@@ -1054,6 +1054,40 @@ func test_minigame_cached_layers() -> void:
 	await process_frame
 
 
+## Empujones y Pintar el piso: el fondo pesado (agua, isla, baldosas) va en
+## capas que solo se redibujan cuando cambia lo que muestran.
+func test_sumo_paint_cached_layers() -> void:
+	var sumo: Variant = MiniGameRegistry.create("sumo")
+	root.add_child(sumo)
+	sumo.setup(_fake_players(2))
+	for i in 3:
+		await process_frame
+	check(sumo._water != null and sumo._waves.show_behind_parent, "sumo: agua e isla en capas detrás del juego")
+	check(sumo._complete_rings() == 3, "sumo: 3 anillos enteros al empezar (%d)" % sumo._complete_rings())
+	var edge_key: Array = sumo._layer_keys[sumo._edge]
+	sumo._radius = 300.0
+	sumo.queue_redraw()
+	await process_frame
+	check(sumo._layer_keys[sumo._edge] != edge_key and sumo._complete_rings() == 2, "sumo: al achicarse cambia el borde y se pierde un anillo")
+	sumo.queue_free()
+	var paint: Variant = MiniGameRegistry.create("paint")
+	root.add_child(paint)
+	paint.setup(_fake_players(2))
+	await process_frame
+	check(paint._floor.size() == paint.ROWS, "paint: una capa por fila de baldosas")
+	paint._anim = 5.0
+	paint._paint_area(1, paint.cell_center(Vector2i(3, 2)), 0)
+	paint.queue_redraw()
+	await process_frame
+	check(paint._floor_tiles[2][3] == paint.EMPTY, "paint: la baldosa recién pintada no está en la capa (salta aparte)")
+	paint._anim = 6.0
+	paint.queue_redraw()
+	await process_frame
+	check(paint._floor_tiles[2][3] == 1, "paint: al terminar el salto pasa a la capa de su fila")
+	paint.queue_free()
+	await process_frame
+
+
 func test_rejects_raw_garbage() -> void:
 	var server := HostServer.new()
 	root.add_child(server)

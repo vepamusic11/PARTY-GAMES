@@ -334,15 +334,16 @@ func _live_scores() -> Dictionary:
 # --- Dibujo ------------------------------------------------------------------
 
 func _draw() -> void:
-	_draw_water()
 	var shake := Vector2.ZERO
 	if _shake_t > 0.0:
 		shake = Vector2(sin(_anim * 93.0), cos(_anim * 71.0)) * SHAKE_MAX * _shake_power * (_shake_t / SHAKE_SEC)
-	# Los que caen por el lado de atrás quedan detrás de la isla.
-	for p in players:
-		if _is_falling(p.id) and (_pos[p.id] as Vector2).y < CENTER.y:
-			_draw_falling(p, shake)
-	_draw_island(shake)
+	# Agua, los que caen por el lado de atrás e isla: capas propias (ver
+	# "Capas" más abajo), que quedan detrás de todo lo que se dibuja acá.
+	_update_layers(shake)
+	# Mientras se achica, el borde titila en rojo.
+	if _elapsed >= SHRINK_START_SEC and _radius > RADIUS_END and not _ending:
+		var blink := 0.35 + 0.35 * sin(_anim * 8.0)
+		draw_arc(CENTER + shake, _radius - 10.0, 0, TAU, 96, Color(UiTheme.DANGER, blink), 8.0, true)
 	var order := players.filter(func(p: Dictionary) -> bool:
 		return not _out_time.has(p.id) or (_is_falling(p.id) and (_pos[p.id] as Vector2).y >= CENTER.y))
 	order.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return (_pos[a.id] as Vector2).y < (_pos[b.id] as Vector2).y)
@@ -351,7 +352,7 @@ func _draw() -> void:
 			_draw_base_ring(p, shake)
 	for p in order:
 		if _out_time.has(p.id):
-			_draw_falling(p, shake)
+			_draw_falling(self, p, shake)
 		else:
 			_draw_player(p, shake)
 	_draw_effects(shake)
@@ -370,61 +371,194 @@ func _is_falling(pid: int) -> bool:
 	return _fall_t.has(pid) and float(_fall_t[pid]) < FALL_SEC
 
 
-## Agua: degradé de dos bloques de la paleta con olitas que se mueven.
-func _draw_water() -> void:
+# --- Capas ----------------------------------------------------------------------
+#
+# Rendimiento: el agua y la isla son cientos de figuras (≈ 120 olas y ≈ 50
+# bloques con sus costuras). Redibujarlas en cada frame costaba más que todo
+# el resto del juego. Van en nodos hijos (show_behind_parent: detrás de lo
+# que dibuja _draw, en este orden) que se redibujan solo cuando cambia lo
+# que muestran:
+#   _water   degradé del agua                     nunca
+#   _waves   olas (un solo lote)                  nunca: se mueven con position.x
+#   _back    los que caen por el lado de atrás    solo mientras alguien cae
+#   _island  espuma, costado y tapa               cada frame (la espuma late)
+#   _rings   anillos completos y centro           al perder un anillo o temblar
+#   _edge    anillo recortado y borde             al achicarse o temblar
+# Lo que se redibuja poco va en lotes (UiTheme.ShapeBatch: menos draw calls);
+# lo que cambia en cada frame usa las funciones del motor (menos CPU).
+# Mismo orden de dibujo que antes, así que se ve igual.
+
+var _water: Node2D
+var _waves: Node2D
+var _back: Node2D
+var _island: Node2D
+var _rings: Node2D
+var _edge: Node2D
+var _layer_keys: Dictionary = {}  # capa -> lo que mostraba la última vez
+var _shake_now := Vector2.ZERO
+
+
+func _make_layer(draw_fn: Callable) -> Node2D:
+	var layer := Node2D.new()
+	layer.show_behind_parent = true
+	layer.draw.connect(draw_fn)
+	add_child(layer, false, Node.INTERNAL_MODE_FRONT)
+	return layer
+
+
+## Pide redibujar `layer` solo si cambió `key`.
+func _refresh(layer: Node2D, key: Array) -> void:
+	if _layer_keys.get(layer, []) != key:
+		_layer_keys[layer] = key
+		layer.queue_redraw()
+
+
+func _update_layers(shake: Vector2) -> void:
+	if _water == null:
+		_water = _make_layer(_draw_water_layer)
+		_waves = _make_layer(_draw_waves_layer)
+		_back = _make_layer(_draw_back_layer)
+		_island = _make_layer(_draw_island_layer)
+		_rings = _make_layer(_draw_rings_layer)
+		_edge = _make_layer(_draw_edge_layer)
+	_shake_now = shake
+	# Las olas se desplazan con la capa entera (el patrón se repite cada 180 px).
+	_waves.position.x = fmod(_anim * 24.0, 180.0)
+	var back_key: Array = [shake]
+	for p in players:
+		if _is_falling(p.id) and (_pos[p.id] as Vector2).y < CENTER.y:
+			back_key.append_array([p.id, _pos[p.id], _fall_t[p.id]])
+	_refresh(_back, back_key)
+	_refresh(_island, [_radius, _anim, shake])
+	_refresh(_rings, [_complete_rings(), minf(_radius, RING_EDGES[0]), shake])
+	_refresh(_edge, [_radius, shake])
+
+
+## Cuántos anillos de bloques entran enteros en la isla.
+func _complete_rings() -> int:
+	var k := 0
+	while k < RING_EDGES.size() - 1 and RING_EDGES[k + 1] <= _radius:
+		k += 1
+	return k
+
+
+## Agua: degradé de dos bloques de la paleta.
+func _draw_water_layer() -> void:
 	var top: Color = UiTheme.BRICKS[4]
 	var bottom: Color = UiTheme.BRICKS[5]
-	draw_polygon(PackedVector2Array([Vector2.ZERO, Vector2(SCREEN.x, 0), SCREEN, Vector2(0, SCREEN.y)]),
+	_water.draw_polygon(PackedVector2Array([Vector2.ZERO, Vector2(SCREEN.x, 0), SCREEN, Vector2(0, SCREEN.y)]),
 		PackedColorArray([top, top, bottom, bottom]))
+
+
+## Olitas en un solo lote (cada draw_arc con antialiasing son 3 draw calls).
+## Se dibujan sin desplazamiento; la capa se mueve con position.x.
+func _draw_waves_layer() -> void:
+	var batch := UiTheme.ShapeBatch.new()
 	var wave := Color(UiTheme.PAPER, 0.28)
-	var drift := fmod(_anim * 24.0, 180.0)
 	var row := 0
 	var y := 130.0
 	while y < SCREEN.y:
-		var x := -180.0 + drift + (90.0 if row % 2 == 1 else 0.0)
+		var x := -180.0 + (90.0 if row % 2 == 1 else 0.0)
 		while x < SCREEN.x + 60.0:
-			draw_arc(Vector2(x, y), 24.0, PI * 1.15, PI * 1.85, 10, wave, 5.0, true)
+			batch.arc(Vector2(x, y), 24.0, PI * 1.15, PI * 1.85, 10, wave, 5.0)
 			x += 180.0
 		y += 96.0
 		row += 1
+	batch.flush(_waves)
 
 
-## Isla vista desde arriba: costado oscuro, espuma y anillos de bloques.
-func _draw_island(off: Vector2) -> void:
-	var c := CENTER + off
+## Los que caen por el lado de atrás quedan detrás de la isla.
+func _draw_back_layer() -> void:
+	for p in players:
+		if _is_falling(p.id) and (_pos[p.id] as Vector2).y < CENTER.y:
+			_draw_falling(_back, p, _shake_now)
+
+
+## Isla vista desde arriba: espuma alrededor, costado oscuro (relieve) y tapa.
+func _draw_island_layer() -> void:
+	var c := CENTER + _shake_now
 	var r := _radius
 	var side := c + Vector2(0, ISLAND_DEPTH)
-	# Espuma alrededor.
 	var foam := 16.0 + sin(_anim * 3.0) * 4.0
-	draw_circle(side, r + foam, Color(UiTheme.PAPER, 0.45))
-	# Costado (relieve).
-	draw_circle(side, r + 6.0, UiTheme.INK)
-	draw_circle(side, r, UiTheme.INK_SOFT)
-	# Tapa.
-	draw_circle(c, r + 6.0, UiTheme.INK)
-	draw_circle(c, minf(r, RING_EDGES[0]), UiTheme.PAPER)
+	var batch := UiTheme.ShapeBatch.new()
+	batch.circle(side, r + foam, Color(UiTheme.PAPER, 0.45))
+	batch.circle(side, r + 6.0, UiTheme.INK)
+	batch.circle(side, r, UiTheme.INK_SOFT)
+	batch.circle(c, r + 6.0, UiTheme.INK)
+	batch.flush(_island)
+
+
+## Círculo blanco del centro, anillos de bloques completos y círculo de sumo.
+func _draw_rings_layer() -> void:
+	var c := CENTER + _shake_now
+	var batch := UiTheme.ShapeBatch.new()
+	batch.circle(c, minf(_radius, RING_EDGES[0]), UiTheme.PAPER)
+	for ring in _complete_rings():
+		_add_ring(_rings, batch, c, ring, RING_EDGES[ring + 1], false)
+	# Círculo de sumo del centro (no toca ningún anillo: puede ir antes del recortado).
+	batch.arc(c, 58.0, 0, TAU, 48, Color(UiTheme.INK, 0.25), 5.0)
+	batch.flush(_rings)
+
+
+## Anillo recortado por el borde (si hay) y el borde de la isla. Mientras la
+## isla se achica se redibuja en cada frame: los arcos van con draw_arc del
+## motor (en C++), que acá conviene más que armarlos en el lote en GDScript.
+func _draw_edge_layer() -> void:
+	var c := CENTER + _shake_now
+	var batch := UiTheme.ShapeBatch.new()
+	var ring := _complete_rings()
+	if ring < RING_EDGES.size() - 1 and _radius > RING_EDGES[ring]:
+		_add_ring(_edge, batch, c, ring, _radius, true)
+	_edge.draw_arc(c, _radius, 0, TAU, 96, UiTheme.INK, 6.0, true)
+
+
+## Un anillo de bloques entre RING_EDGES[ring] y r_out, con el mismo
+## resultado que dibujando bloque, costura, bloque, costura… y al final la
+## línea del borde interior. Los bloques van en lote y las costuras (líneas,
+## que el motor ya agrupa en un draw call) aparte. Ningún bloque toca la
+## costura de otro salvo el último con la primera: alcanza con repetir ese
+## bloque después de la primera costura (es opaco, queda igual).
+## `engine_arc`: la línea del borde interior con draw_arc (más rápido de
+## armar) en vez de sumarla al lote (un draw call menos).
+func _add_ring(ci: CanvasItem, batch: UiTheme.ShapeBatch, c: Vector2, ring: int, r_out: float, engine_arc: bool) -> void:
+	var r_in: float = RING_EDGES[ring]
 	var seam := Color(UiTheme.INK, 0.35)
-	for ring in range(RING_EDGES.size() - 1):
-		var r_in: float = RING_EDGES[ring]
-		var r_out := minf(RING_EDGES[ring + 1], r)
-		if r_out <= r_in:
-			break
-		var segs := maxi(8, int(TAU * (r_in + r_out) / 2.0 / BRICK_LEN))
-		var turn := ring * 0.37
-		for s in segs:
-			var a0 := turn + TAU * s / segs
-			var a1 := turn + TAU * (s + 1) / segs
-			var col: Color = UiTheme.BRICKS[(s + ring * 3) % UiTheme.BRICKS.size()]
-			draw_colored_polygon(_sector(c, r_in, r_out, a0, a1), col.lightened(0.4))
-			draw_line(c + Vector2.from_angle(a0) * r_in, c + Vector2.from_angle(a0) * r_out, seam, 3.0, true)
-		draw_arc(c, r_in, 0, TAU, 72, seam, 3.0, true)
-	# Centro: círculo de sumo.
-	draw_arc(c, 58.0, 0, TAU, 48, Color(UiTheme.INK, 0.25), 5.0, true)
-	draw_arc(c, r, 0, TAU, 96, UiTheme.INK, 6.0, true)
-	# Mientras se achica, el borde titila en rojo.
-	if _elapsed >= SHRINK_START_SEC and r > RADIUS_END and not _ending:
-		var blink := 0.35 + 0.35 * sin(_anim * 8.0)
-		draw_arc(c, r - 10.0, 0, TAU, 96, Color(UiTheme.DANGER, blink), 8.0, true)
+	var segs := maxi(8, int(TAU * (r_in + r_out) / 2.0 / BRICK_LEN))
+	var turn := ring * 0.37
+	var last := PackedVector2Array()
+	var last_col := Color.WHITE
+	for s in segs:
+		var a0 := turn + TAU * s / segs
+		var a1 := turn + TAU * (s + 1) / segs
+		var col: Color = UiTheme.BRICKS[(s + ring * 3) % UiTheme.BRICKS.size()]
+		last = _sector(c, r_in, r_out, a0, a1)
+		last_col = col.lightened(0.4)
+		_add_sector(batch, last, last_col)
+	batch.flush(ci)
+	for s in segs:
+		var a0 := turn + TAU * s / segs
+		ci.draw_line(c + Vector2.from_angle(a0) * r_in, c + Vector2.from_angle(a0) * r_out, seam, 3.0, true)
+		if s == 0:
+			_add_sector(batch, last, last_col)
+			batch.flush(ci)
+	if engine_arc:
+		ci.draw_arc(c, r_in, 0, TAU, 72, seam, 3.0, true)
+	else:
+		batch.arc(c, r_in, 0, TAU, 72, seam, 3.0)
+
+
+## Sector de anillo como tira de cuadriláteros entre el arco de afuera y el
+## de adentro: cubre los mismos píxeles que el polígono de _sector().
+static func _add_sector(batch: UiTheme.ShapeBatch, sector: PackedVector2Array, col: Color) -> void:
+	var n := sector.size() >> 1  # puntos por arco
+	var pts := PackedVector2Array()
+	for i in n:
+		pts.append(sector[i])                        # afuera, de a0 a a1
+		pts.append(sector[sector.size() - 1 - i])    # adentro, en el mismo ángulo
+	var cols := PackedColorArray()
+	cols.resize(pts.size())
+	cols.fill(col)
+	batch.strip(pts, cols)
 
 
 static func _sector(c: Vector2, r_in: float, r_out: float, a0: float, a1: float) -> PackedVector2Array:
@@ -438,6 +572,8 @@ static func _sector(c: Vector2, r_in: float, r_out: float, a0: float, a1: float)
 
 
 ## Anillo en el piso con el color del jugador: marca el cuerpo para choques.
+## (Se dibuja en cada frame con draw_arc del motor: armarlo en un lote con
+## ShapeBatch.arc ahorra draw calls pero cuesta más CPU en GDScript.)
 func _draw_base_ring(p: Dictionary, off: Vector2) -> void:
 	var pos: Vector2 = _pos[p.id] + off
 	draw_circle(pos, BODY_RADIUS, UiTheme.SHADOW)
@@ -458,15 +594,15 @@ func _draw_player(p: Dictionary, off: Vector2) -> void:
 
 
 ## Caída: la mascota gira y se achica hasta desaparecer en el agua.
-func _draw_falling(p: Dictionary, off: Vector2) -> void:
+func _draw_falling(ci: CanvasItem, p: Dictionary, off: Vector2) -> void:
 	var k := clampf(float(_fall_t[p.id]) / FALL_SEC, 0.0, 1.0)
 	var s := 1.0 - k * k
 	if s <= 0.01:
 		return
 	var spin := k * PI * 1.5 * (1.0 if p.slot % 2 == 0 else -1.0)
-	draw_set_transform(_pos[p.id] + off, spin, Vector2(s, s))
-	PlayerAvatar.draw_mascot(self, Vector2(0, FEET_OFFSET), MASCOT_SCALE, p.color, p.slot, PlayerAvatar.Mood.SAD)
-	draw_set_transform(Vector2.ZERO)
+	ci.draw_set_transform(_pos[p.id] + off, spin, Vector2(s, s))
+	PlayerAvatar.draw_mascot(ci, Vector2(0, FEET_OFFSET), MASCOT_SCALE, p.color, p.slot, PlayerAvatar.Mood.SAD)
+	ci.draw_set_transform(Vector2.ZERO)
 
 
 ## "1P Pablo" y una estrellita por cada rival tirado. Sobre la isla va en

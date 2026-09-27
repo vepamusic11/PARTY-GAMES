@@ -507,6 +507,7 @@ class ShapeBatch:
 	extends RefCounted
 
 	const CIRCLE_SEGMENTS := 64
+	const FEATHER_SIZE := 1.25  ## Borde suavizado de las líneas (igual que el motor).
 
 	# Plantillas de índices por forma y su versión corrida a cada posición
 	# del lote (se reusan entre frames: el mismo dibujo arma el mismo lote).
@@ -519,7 +520,9 @@ class ShapeBatch:
 	var indices := PackedInt32Array()
 
 	## Círculo relleno, como CanvasItem.draw_circle (sin antialiasing).
-	func circle(center: Vector2, radius: float, color: Color) -> void:
+	## `offset`: como si antes se hubiera hecho draw_set_transform(offset)
+	## (se suma después, igual que lo haría ese transform).
+	func circle(center: Vector2, radius: float, color: Color, offset := Vector2.ZERO) -> void:
 		if _circle_unit.is_empty():
 			# Igual que RenderingServer.canvas_item_add_circle, que calcula en
 			# float de 32 bits: se redondea igual para obtener los mismos vértices.
@@ -530,7 +533,10 @@ class ShapeBatch:
 			_circle_unit.append(Vector2.ZERO)
 		# Transform2D * arreglo = radio * punto + centro para todos los puntos
 		# de una vez (en C++), con las mismas operaciones que draw_circle.
-		_add(Transform2D(0.0, Vector2(radius, radius), 0.0, center) * _circle_unit, color, -1)
+		var pts := Transform2D(0.0, Vector2(radius, radius), 0.0, center) * _circle_unit
+		if offset != Vector2.ZERO:
+			pts = Transform2D(0.0, offset) * pts
+		_add(pts, color, -1)
 
 	static func _f32(x: float) -> float:
 		return Vector2(x, 0.0).x  # Vector2 guarda float de 32 bits.
@@ -552,6 +558,151 @@ class ShapeBatch:
 		var with_center := pts.duplicate()
 		with_center.append(center)
 		_add(with_center, color, -pts.size())
+
+	## Línea gruesa con antialiasing, como CanvasItem.draw_polyline(..., true):
+	## mismo algoritmo que el motor (tira central + dos bordes que se
+	## desvanecen), pero dentro del lote. Una draw_polyline con antialiasing
+	## son TRES comandos (y tres draw calls); acá no suma ninguno.
+	## Las cuentas de vectores ya son en float de 32 bits (como el motor) y las
+	## demás se redondean igual; solo seno, coseno y atan2 pueden diferir en
+	## el último bit: a lo sumo 1/255 en algún píxel del borde suavizado.
+	func polyline(pts: PackedVector2Array, color: Color, width: float) -> void:
+		var n := pts.size()
+		if n < 2:
+			return
+		var loop := pts[0].is_equal_approx(pts[n - 1])
+		var first_dir := Vector2.ZERO
+		for i in range(1, n):
+			first_dir = (pts[i] - pts[i - 1]).normalized()
+			if not first_dir.is_zero_approx():
+				break
+		var last_dir := Vector2.ZERO
+		for i in range(n - 1, 0, -1):
+			last_dir = (pts[i] - pts[i - 1]).normalized()
+			if not last_dir.is_zero_approx():
+				break
+		var border_size := FEATHER_SIZE * (width if width < 1.0 else 1.0)
+		var clear := Color(color, 0.0)
+		var count := n * 2
+		var main := PackedVector2Array()
+		var left := PackedVector2Array()
+		var right := PackedVector2Array()
+		main.resize(count + (0 if loop else 4))
+		left.resize(count + (0 if loop else 5))
+		right.resize(count + (0 if loop else 5))
+		var main_c := PackedColorArray()
+		var left_c := PackedColorArray()
+		var right_c := PackedColorArray()
+		main_c.resize(main.size())
+		left_c.resize(left.size())
+		right_c.resize(right.size())
+		var prev_dir := Vector2.ZERO
+		for i in n:
+			var is_first := i == 0
+			var is_last := i == n - 1
+			var seg_dir := prev_dir
+			if not is_last:
+				seg_dir = (pts[i + 1] - pts[i]).normalized()
+				if seg_dir.is_zero_approx():
+					seg_dir = prev_dir
+			if is_first and loop:
+				prev_dir = last_dir
+			elif is_last and loop:
+				prev_dir = first_dir
+			var base_off: Vector2
+			if is_first and not loop:
+				base_off = first_dir.orthogonal()
+			elif is_last and not loop:
+				base_off = last_dir.orthogonal()
+			else:
+				base_off = ShapeBatch._edge_offset(seg_dir, prev_dir)
+			var edge := base_off * (width * 0.5)
+			var border := base_off * border_size
+			var pos := pts[i]
+			var j := i * 2 + (0 if loop else 2)
+			main[j] = pos + edge
+			main[j + 1] = pos - edge
+			left[j] = pos + edge
+			left[j + 1] = pos + edge + border
+			right[j] = pos - edge
+			right[j + 1] = pos - edge - border
+			main_c[j] = color
+			main_c[j + 1] = color
+			left_c[j] = color
+			left_c[j + 1] = clear
+			right_c[j] = color
+			right_c[j + 1] = clear
+			if is_first and not loop:
+				var begin := -seg_dir * border_size
+				main[0] = pos + edge + begin
+				main[1] = pos - edge + begin
+				left[0] = pos + edge + begin
+				left[1] = pos + edge + begin + border
+				right[0] = pos - edge + begin
+				right[1] = pos - edge + begin - border
+				for k in 2:
+					main_c[k] = clear
+					left_c[k] = clear
+					right_c[k] = clear
+			if is_last and not loop:
+				var end := prev_dir * border_size
+				var e := count + 2
+				main[e] = pos + edge + end
+				main[e + 1] = pos - edge + end
+				main_c[e] = clear
+				main_c[e + 1] = clear
+				left[e] = pos + edge
+				left[e + 1] = pos + edge + end + border
+				left[e + 2] = pos + edge + end
+				right[e] = pos - edge
+				right[e + 1] = pos - edge + end - border
+				right[e + 2] = pos - edge + end
+				left_c[e] = color
+				left_c[e + 1] = clear
+				left_c[e + 2] = clear
+				right_c[e] = color
+				right_c[e + 1] = clear
+				right_c[e + 2] = clear
+			prev_dir = seg_dir
+		strip(main, main_c)
+		strip(left, left_c)
+		strip(right, right_c)
+
+	## Tira de triángulos (como PRIMITIVE_TRIANGLE_STRIP) con color por vértice.
+	func strip(pts: PackedVector2Array, cols: PackedColorArray) -> void:
+		var base := points.size()
+		points.append_array(pts)
+		colors.append_array(cols)
+		for i in pts.size() - 2:
+			indices.append_array([base + i, base + i + 1, base + i + 2])
+
+	## Igual que compute_polyline_edge_offset_clamped del motor: dirección del
+	## borde en la unión de dos segmentos (con un tope en las puntas agudas).
+	static func _edge_offset(seg_dir: Vector2, prev_dir: Vector2) -> Vector2:
+		var length := 1.0
+		var bisector := (prev_dir * seg_dir.length() - seg_dir * prev_dir.length()).normalized()
+		# atan2f/sinf del motor: se redondea a float de 32 bits igual que él.
+		var sin_angle := _f32(sin(_f32(atan2(bisector.cross(prev_dir), bisector.dot(prev_dir)))))
+		if not is_zero_approx(sin_angle) and not seg_dir.is_equal_approx(prev_dir):
+			length = clampf(_f32(1.0 / sin_angle), -3.0, 3.0)
+		else:
+			bisector = seg_dir.orthogonal()
+		if bisector.is_zero_approx():
+			bisector = seg_dir.orthogonal()
+		return bisector * length
+
+	## Arco como CanvasItem.draw_arc(..., true): mismos puntos y polyline().
+	func arc(center: Vector2, radius: float, start: float, end: float, point_count: int, color: Color, width: float) -> void:
+		var pts := PackedVector2Array()
+		pts.resize(point_count)
+		# Mismas cuentas que el motor, en float de 32 bits (_f32 en cada paso).
+		start = _f32(start)
+		var delta := _f32(clampf(_f32(_f32(end) - start), -TAU, TAU))
+		var last := _f32(point_count - 1.0)
+		for i in point_count:
+			var theta := _f32(_f32(_f32(i / last) * delta) + start)
+			pts[i] = center + Vector2(cos(theta), sin(theta)) * radius
+		polyline(pts, color, width)
 
 	## Dibuja lo acumulado en `ci` (un solo comando) y vacía el lote.
 	func flush(ci: CanvasItem) -> void:

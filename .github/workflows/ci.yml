@@ -41,9 +41,10 @@ jobs:
 
   # Prueba de humo visual: recorre una competencia completa con una pantalla
   # virtual y sube las capturas como artefacto para revisar el diseño en el PR.
+  # Además corre el benchmark de rendimiento, solo como información.
   capturas:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -68,3 +69,30 @@ jobs:
         with:
           name: capturas
           path: ${{ runner.temp }}/capturas/*.png
+
+      # Informativo: nunca hace fallar el job. Un runner de GitHub (CPU
+      # compartida, GPU por software) no se parece a una TV; sirve para ver
+      # tendencias entre PRs, no para aprobar o rechazar (ver docs/PERFORMANCE.md).
+      - name: Benchmark de rendimiento (informativo)
+        continue-on-error: true
+        timeout-minutes: 6
+        run: |
+          xvfb-run -a -s "-screen 0 1920x1080x24" \
+            godot --path . --rendering-driver opengl3 --audio-driver Dummy \
+            -s res://tools/benchmark.gd -- --frames=150 --json="$RUNNER_TEMP/benchmark.json" \
+            | tee "$RUNNER_TEMP/benchmark.txt"
+          {
+            echo "### Benchmark de rendimiento (informativo)"
+            echo ""
+            echo "Runner de GitHub con render por software: comparar tendencias, no valores absolutos."
+            echo ""
+            grep '^|' "$RUNNER_TEMP/benchmark.txt" || echo "(sin tabla)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        continue-on-error: true
+        with:
+          name: benchmark
+          path: ${{ runner.temp }}/benchmark.*
+          if-no-files-found: ignore

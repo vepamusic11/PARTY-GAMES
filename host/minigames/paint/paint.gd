@@ -88,6 +88,8 @@ var _pattern: Dictionary = {}     # player_id -> Pattern
 var _stripes := PackedVector2Array()  # segmentos en coordenadas de una baldosa
 var _grid_lines := PackedVector2Array()
 var _dots := PackedVector2Array()
+var _floor: Array[Node2D] = []            # una capa por fila con las baldosas quietas (ver _draw_tiles)
+var _floor_tiles: Array[PackedInt32Array] = []  # lo que muestra cada fila: dueño por baldosa
 
 
 static func get_info() -> Dictionary:
@@ -339,7 +341,22 @@ func _draw() -> void:
 		draw_text_centered("¡Tiempo!", SCREEN / 2.0, 200, UiTheme.ACCENT, 22)
 
 
+## Rendimiento: las baldosas quietas están en capas propias, una por fila
+## (`_floor`), que se redibujan solo cuando cambia alguna baldosa de esa
+## fila; acá se dibujan nada más las que están "saltando" (recién pintadas).
+## Con 4 jugadores se pintan decenas de baldosas por segundo: por fila, cada
+## cambio redibuja 20 baldosas y no 220. Las baldosas no se superponen entre
+## sí, así que se ve igual que dibujando todas acá.
 func _draw_tiles() -> void:
+	if _floor.is_empty():
+		for y in ROWS:
+			var layer := Node2D.new()
+			layer.show_behind_parent = true  # Detrás de lo que dibuja _draw (grilla, mascotas…).
+			layer.draw.connect(_draw_floor_row.bind(y))
+			add_child(layer, false, Node.INTERNAL_MODE_FRONT)
+			_floor.append(layer)
+			_floor_tiles.append(PackedInt32Array())
+	var still := _owner.duplicate()
 	for y in ROWS:
 		for x in COLS:
 			var i := y * COLS + x
@@ -348,26 +365,55 @@ func _draw_tiles() -> void:
 				continue
 			# Al pintarse, la baldosa "salta" de chica a su tamaño.
 			var k := clampf((_anim - _painted_at[i]) / POP_SEC, 0.0, 1.0)
+			if k >= 1.0:
+				continue  # Quieta: la dibuja _floor.
+			still[i] = EMPTY
 			var s := lerpf(0.55, 1.0, 1.0 - (1.0 - k) * (1.0 - k))
 			var origin := FIELD.position + Vector2(x, y) * CELL + Vector2.ONE * CELL * (1.0 - s) / 2.0
 			draw_set_transform(origin, 0.0, Vector2(s, s))
-			_draw_pattern_local(pid)
+			_draw_pattern_local(self, pid)
 	draw_set_transform(Vector2.ZERO)
+	for y in ROWS:
+		var row := still.slice(y * COLS, (y + 1) * COLS)
+		if row != _floor_tiles[y]:
+			_floor_tiles[y] = row
+			_floor[y].queue_redraw()
+
+
+## Una fila de baldosas quietas (tamaño normal). Los puntos del patrón de
+## toda la fila van en un solo lote al final (no tocan otras baldosas).
+func _draw_floor_row(y: int) -> void:
+	var layer := _floor[y]
+	var tiles := _floor_tiles[y]
+	var dots := UiTheme.ShapeBatch.new()
+	for x in tiles.size():
+		var pid := tiles[x]
+		if pid == EMPTY:
+			continue
+		var origin := FIELD.position + Vector2(x, y) * CELL
+		layer.draw_set_transform(origin, 0.0, Vector2.ONE)
+		_draw_pattern_local(layer, pid, dots, origin)
+	layer.draw_set_transform(Vector2.ZERO)
+	dots.flush(layer)
 
 
 ## Una baldosa del jugador en coordenadas locales (0..CELL). Se usa con
-## draw_set_transform para ubicarla y escalarla.
-func _draw_pattern_local(pid: int) -> void:
+## draw_set_transform para ubicarla y escalarla. Con `dots`, los puntos van
+## a ese lote (ya corridos a `origin`) en vez de dibujarse uno por uno.
+func _draw_pattern_local(ci: CanvasItem, pid: int, dots: UiTheme.ShapeBatch = null, origin := Vector2.ZERO) -> void:
 	var mark: Color = _mark[pid]
-	draw_rect(Rect2(0, 0, CELL, CELL), _fill[pid])
+	ci.draw_rect(Rect2(0, 0, CELL, CELL), _fill[pid])
 	match _pattern[pid]:
 		Pattern.STRIPES:
-			draw_multiline(_stripes, mark, PATTERN_WIDTH)
+			ci.draw_multiline(_stripes, mark, PATTERN_WIDTH)
 		Pattern.DOTS:
 			for d in _dots:
-				draw_circle(d, DOT_RADIUS, mark)
+				if dots != null:
+					dots.circle(d, DOT_RADIUS, mark, origin)
+				else:
+					ci.draw_circle(d, DOT_RADIUS, mark)
 		Pattern.GRID:
-			draw_multiline(_grid_lines, mark, PATTERN_WIDTH)
+			ci.draw_multiline(_grid_lines, mark, PATTERN_WIDTH)
 
 
 ## Líneas finas entre baldosas: se ve la grilla también en las zonas pintadas.
@@ -474,7 +520,7 @@ func _draw_legend() -> void:
 		var r := Rect2(x + (HUD_CHIP_W - LEGEND_SIZE) / 2.0, LEGEND_Y, LEGEND_SIZE, LEGEND_SIZE)
 		draw_rect(r.grow(4.0), UiTheme.INK)
 		draw_set_transform(r.position, 0.0, Vector2(s, s))
-		_draw_pattern_local(pid)
+		_draw_pattern_local(self, pid)
 		draw_set_transform(Vector2.ZERO)
 		x += HUD_CHIP_W + HUD_GAP
 

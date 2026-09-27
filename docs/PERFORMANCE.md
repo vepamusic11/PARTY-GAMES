@@ -19,7 +19,7 @@ xvfb-run -a -s "-screen 0 1920x1080x24" godot --path . --rendering-driver opengl
 #   --json=/tmp/bench.json  además guarda los resultados en JSON (para comparar)
 ```
 
-Escenas: `lobby` (4 jugadores), `game_intro` ("¿Cómo se juega?"), `round_summary`, `final` (podio con confeti), **cada juego del registry** con su máximo de jugadores (hasta 4) e inputs que cambian todo el tiempo (si un juego termina antes de juntar los frames, se reinicia), y el celular a 2340×1080: `ctrl_join`, `ctrl_wait` y `ctrl_joy`. Un juego nuevo en el registry entra solo.
+Escenas: `lobby` (4 jugadores), `game_intro` ("¿Cómo se juega?"), `round_summary`, `final` (podio con confeti), **cada juego del registry** con su máximo de jugadores (hasta 4) e inputs que cambian todo el tiempo (si un juego termina antes de juntar los frames, se reinicia), y el celular a 2340×1080: `ctrl_join`, `ctrl_wait` y `ctrl_joy`. Un juego nuevo en el registry entra solo. Los juegos que cambian mucho con el tiempo se miden además adelantados (`LATE_SCENES` en el script): `sumo_tarde` es Empujones a los 20 s, con la isla achicándose (con `--only=sumo` se miden las dos).
 
 El benchmark corre con tope de 60 fps y sin vsync (como la TV): cada frame tiene un paso de física, igual que en el aparato. Usa los puertos de red solo el celular (descubrimiento UDP); si corrés varias instancias de Godot en paralelo, serializalas (ej. `flock /tmp/party-games-godot.lock …`).
 
@@ -63,8 +63,39 @@ Cómo leerla:
 
 - **TV**: la CPU por frame bajó a menos de la mitad en las pantallas de menú (lobby, intro, resumen, podio) y ~30 % en los juegos que usan el campo y el marcador comunes; los draw calls, entre 25 % y 56 %. En xvfb los fps casi no cambian porque el cuello de botella es la GPU por software (TIME_PROCESS y Render); en la TV el render lo hace la GPU real y lo que limita es la CPU.
 - **Juegos a menos de 60 fps**: en xvfb van a ~33 fps, así que hay 2 pasos de física por frame y el juego se dibuja dos veces. Por eso "Scripts" de los juegos está inflado acá; a 60 fps es más o menos la mitad.
-- **Pintar el piso y Empujones** mejoran menos porque la mayor parte de su dibujo es propio (baldosas pintadas, isla de bloques, agua con olas) y se redibuja en cada frame. **Empujones queda fuera del presupuesto** (p95 11,4 ms en xvfb): ver "Próximos pasos".
+- **Pintar el piso y Empujones** mejoraban menos porque la mayor parte de su dibujo es propio (baldosas pintadas, isla de bloques, agua con olas). Ver la sección siguiente: ahora también tienen capas propias.
 - **Celular**: esperando (unirse, "¡Mirá la TV!", resultado) dibuja **30 veces por segundo en vez de 44–60**. El costo por frame dibujado es parecido, pero la CPU total por segundo baja ~30 % (1,08 ms × 44 ≈ 48 ms/s → 1,08 ms × 30 ≈ 32 ms/s) y la GPU trabaja un tercio menos. Con un control en pantalla (`ctrl_joy`) todo sigue a 60 fps: la latencia del input no cambia.
+
+### Empujones y Pintar el piso
+
+Medido después, con el mismo benchmark sobre `530a33d` (ya con todo lo de arriba) y con las capas propias de cada juego, corridas una detrás de la otra:
+
+| Escena | Scripts prom. (ms) | Scripts p95 (ms) | Draw calls |
+|---|---:|---:|---:|
+| sumo | 8,75 → **3,13** (−64 %) | 12,18 → **4,31** | 585 → **133** (−77 %) |
+| sumo_tarde (isla achicándose) | 7,93 → **3,60** (−55 %) | 11,68 → **4,89** | 571 → **130** (−77 %) |
+| paint | 4,18 → **2,71** (−35 %) | 6,48 → **4,07** | 255 → **165** (−35 %) |
+
+Los dos quedan dentro de lo pedido para la TV (p95 ≤ 8 ms en el benchmark y ≤ 150 draw calls en Empujones; Pintar el piso queda en ~165 porque cada fila de baldosas es un lote). Recordá que en xvfb los juegos corren a ~25–30 fps y se dibujan dos veces por frame: a 60 fps el costo por frame es más o menos la mitad.
+
+**Empujones** (`host/minigames/sumo/sumo.gd`, sección "Capas"): seis nodos hijos con `show_behind_parent`, en el mismo orden en que se dibujaba todo antes:
+
+| Capa | Qué dibuja | Cuándo se redibuja |
+|---|---|---|
+| `_water` | degradé del agua | nunca |
+| `_waves` | ≈ 120 olas en **un** lote | nunca: la capa se mueve con `position.x` (el patrón se repite cada 180 px) |
+| `_back` | los que caen por el lado de atrás (quedan detrás de la isla) | solo mientras alguien cae |
+| `_island` | espuma, costado y tapa (4 círculos en un lote) | cada frame (la espuma late) |
+| `_rings` | círculo blanco, anillos enteros y círculo de sumo | al perder un anillo o al temblar |
+| `_edge` | anillo recortado por el borde y el borde | mientras la isla se achica o tiembla |
+
+- Cada `draw_arc` con antialiasing son **3 draw calls**; `UiTheme.ShapeBatch.arc/polyline` arma la misma línea (tira central + bordes que se desvanecen, mismo algoritmo que el motor) dentro del lote. Se usa en lo que se redibuja poco (olas, anillos enteros). En lo que cambia en cada frame (borde que se achica, anillos de los jugadores) se deja `draw_arc` del motor: en C++ cuesta menos CPU que armarlo en GDScript.
+- Los bloques de cada anillo van en lote como tiras de cuadriláteros (cubren los mismos píxeles que el polígono). Para respetar el orden bloque → costura → bloque…, el único bloque que tapa una costura ajena (el último, sobre la primera) se vuelve a dibujar después de ella: es opaco, así que queda igual.
+- El temblor no mueve las capas: cuando tiembla, las capas de la isla se redibujan con el desplazamiento (≈ 13 frames por golpe), así el resultado es idéntico.
+
+**Pintar el piso** (`host/minigames/paint/paint.gd`, `_draw_tiles`): las baldosas quietas van en **una capa por fila** (11), que se redibuja solo cuando cambia alguna baldosa de esa fila; las que están "saltando" (recién pintadas, 0,18 s) se dibujan en `_draw` como antes. Con 4 jugadores se pintan decenas de baldosas por segundo: con una sola capa para todo el piso se redibujaba casi en cada frame; por fila, cada cambio redibuja 20 baldosas y no 220. Los puntos del patrón de 3P van en un lote por fila (antes eran 5 draw calls por baldosa).
+
+Comparación visual: escenas deterministas de los dos juegos (estado fijo: cuenta regresiva; isla achicándose con temblor, efectos, uno cayendo y otro en la tribuna; final con la isla chica; piso con 140 baldosas, algunas saltando, power-up, brocha y velocidad; "¡Tiempo!"): **Pintar el piso 0 píxeles distintos**; **Empujones ≤ 3 píxeles de 2 millones con diferencia de 1/255** (redondeo de seno/coseno en el borde suavizado de los arcos). Las capturas de `capture_screens.gd` antes y después se ven iguales.
 
 ## Qué se cambió y por qué
 
@@ -109,6 +140,14 @@ Apenas la TV manda un control (`layout`), vuelve todo a 60 fps y se apaga el baj
 - Una hoja determinista extra (fondo con las nubes quietas, mascotas con caminata, mirada, saludo y *squash*, vacías, estrellas rotadas, elipses, chips del marcador, medalla, tarjetas del lobby y Carrera y Pintar el piso escalados): **0 píxeles distintos**.
 - `tools/capture_screens.gd` antes y después: solo cambia lo que depende del tiempo o del azar (nubes, respiración, parpadeo y saludo, estrellas y bloques al azar, código de sala, confeti). Dos corridas de la punta *sin* el cambio difieren entre sí en la misma medida.
 
+## En la CI
+
+El job `capturas` de `.github/workflows/ci.yml` (que ya tiene pantalla virtual) corre además el benchmark con `--frames=150`:
+
+- imprime la tabla en el log y en el resumen del job (*Summary* del run de GitHub Actions);
+- sube `benchmark.json` y `benchmark.txt` como artefacto `benchmark`;
+- es **informativo**: `continue-on-error`, nunca hace fallar el job. Un runner de GitHub (CPU compartida, GPU por software) no se parece a una TV y varía entre corridas; sirve para ver tendencias entre PRs (ej. un juego nuevo que duplica los draw calls), no para aprobar o rechazar. Para comparar en serio, correr antes y después en la misma máquina con `--json`.
+
 ## Presupuestos recomendados
 
 Para 60 fps el frame dura 16,7 ms. En la TV de gama baja (CPU ~4–5× más lenta que la máquina de desarrollo):
@@ -132,8 +171,7 @@ Reglas prácticas al dibujar:
 
 ## Próximos pasos posibles
 
-- **Empujones (sumo)**: ~600 draw calls y 8 ms de scripts por frame en xvfb, fuera del presupuesto. La isla son ~200 sectores de bloques + costuras + anillos que se redibujan en cada frame, y el agua ~100 arcos. La isla solo cambia al achicarse o al temblar: se puede dibujar en una capa propia y redibujarla solo cuando cambia el radio (el temblor se hace moviendo la capa con `position`), y el agua en otra capa que se mueva sola.
-- **Pintar el piso (paint)**: las baldosas pintadas se pueden cachear en una capa que se redibuje solo cuando se pinta una baldosa nueva.
+- **Empujones mientras se achica la isla**: el anillo recortado y el borde se redibujan en cada frame. Se podría redibujar por saltos (cada pocos px de radio), pero se vería distinto: se dejó exacto.
 - **Fondo de la TV como una sola textura**: las torres y bordes siguen siendo ~160 rectángulos redondeados (≈ 160 draw calls fijos en lobby, resumen y podio). Renderizarlos una vez a una textura bajaría a 1 draw call, pero con el estiramiento `canvas_items` hay que generarla a la resolución real de la pantalla (hasta 4K) y componerla con alfa premultiplicado para que se vea igual; se dejó afuera para no arriesgar diferencias visuales.
 - **Redibujar en `_process` en vez de `_physics_process`**: si la TV no llega a 60 fps, hay dos pasos de física por frame y los juegos se dibujan dos veces. Mover el `queue_redraw()` a `_process` evita ese trabajo extra justo cuando más falta hace.
 - **Mascotas como nodos**: en los juegos las mascotas se redibujan en cada frame aunque solo cambie su posición. Como nodos hijos con `position` no haría falta redibujarlas (cuando llegue arte con sprites, ver ADR 0004).
