@@ -2518,6 +2518,8 @@ func _memory_run(game: Variant) -> void:
 		if game.is_finished():
 			return
 		game.step(1.0 / 60.0)
+
+
 # --- Bots (ADR 0010) ------------------------------------------------------------
 
 ## Cada bot juega su juego entero (en todas las dificultades), sin errores,
@@ -2819,9 +2821,13 @@ func test_bots_freeze_on_pause() -> void:
 	host.add_bot(Bot.Difficulty.HARD)
 	host.start_tournament(["arena"] as Array[String])
 	host.skip_intro()
-	await _physics_frames(30)
 	var game: Variant = host._game
-	check((game._axis[2] as Vector2).length() > 0.1, "el bot se mueve durante el juego")
+	# El máximo en 1 s, no un instante: al juntar una estrella el bot puede frenar justo.
+	var bot_max := 0.0
+	for i in 60:
+		await _physics_frames(1)
+		bot_max = maxf(bot_max, (game._axis[2] as Vector2).length())
+	check(bot_max > 0.1, "el bot se mueve durante el juego (%.2f)" % bot_max)
 	var cancel := InputEventAction.new()
 	cancel.action = "ui_cancel"
 	cancel.pressed = true
@@ -2857,6 +2863,8 @@ func test_seat_card_bot() -> void:
 func _physics_frames(n: int) -> void:
 	for i in n:
 		await physics_frame
+
+
 # --- Layout joystick_ab (joystick + A y B, ver docs/adr/0014) -------------------
 
 func test_parse_input_button_b() -> void:
@@ -3270,6 +3278,8 @@ func test_karts_rubber_band() -> void:
 	_karts_put(game, 1, 2.0 * L + puddle.x * L, puddle.y)
 	game.step_fixed()
 	check(game._karts[1].slip > 0.0, "el charco hace patinar")
+
+
 # --- Carrera de obstáculos -----------------------------------------------------------
 
 const HURDLES := preload("res://host/minigames/hurdles/hurdles.gd")
@@ -3441,6 +3451,8 @@ func test_karts_deterministic() -> void:
 	for snap: Array in runs[0]:
 		lat_ok = lat_ok and absf(float(snap[8])) <= KARTS.HALF_WIDTH - KARTS.KART_RADIUS + 1.0
 	check(lat_ok, "todos siguen dentro de la pista")
+
+
 ## Tropiezos: la valla frena ~1 s con cara de susto (y se cae), el pozo
 ## demora y devuelve del otro lado, contra el escalón se tropieza y se trepa.
 ## Quien salta a tiempo no pierde nada.
@@ -3628,6 +3640,8 @@ func test_hurdles_determinism() -> void:
 	check(is_equal_approx(g1._runners[1].x, g2._runners[1].x), "pasos fijos: igual con frames de 1/60 que de 1/20 (%.3f, %.3f)" % [g1._runners[1].x, g2._runners[1].x])
 	g1.queue_free()
 	g2.queue_free()
+
+
 # --- Música y mezcla (ADR 0015) -------------------------------------------------
 
 func test_audio_buses_and_volumes() -> void:
