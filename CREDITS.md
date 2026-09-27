@@ -26,6 +26,8 @@ Todo lo que el juego usa y **no** escribimos nosotros va anotado acá: código, 
 
 ## Música
 
+### Retro (ADR 0015)
+
 Juhani Junkala · <https://juhanijunkala.com/> · **CC0 1.0** (dominio público; el crédito es opcional y lo damos igual). Texto original de la licencia en `assets/audio/music/LICENSE-Juhani-Junkala-*.txt`.
 
 | Archivo | Tema original | Pack | Dónde suena |
@@ -43,6 +45,34 @@ Origen verificado (26/09/2026), con el `INFO.txt` del autor dentro de cada carpe
 - Retro Game Music Pack (WAV): repositorio [excaliburjs/sample-tactics](https://github.com/excaliburjs/sample-tactics), commit `bfe18ba`, carpeta `res/5 Action Chiptunes By Juhani Junkala/`. Publicado originalmente en [OpenGameArt](https://opengameart.org/content/5-chiptunes-action).
 
 Cambios: nivel de sonoridad común, rampa de 6 ms en la costura del bucle y recodificado a OGG Vorbis (`tools/audio/prepare_audio.py`).
+
+### Estilos de música (ADR 0017)
+
+La TV elige el estilo en la pausa ("Estilo: …"). Retro es la tabla de arriba; **Fiesta** y **Latino** los compone y sintetiza el juego por código (`core/audio/music_gen.gd`): son propios, no usan archivos de nadie.
+
+#### Relajado · Abstraction (Benjamin Burnes / Tallbeard Studios) · **CC0 1.0**
+
+Del *Music Loop Bundle* de Abstraction · <https://abstractionmusic.com/> · <https://tallbeard.itch.io/music-loop-bundle>. Texto original de la licencia, copiado sin cambios (solo los finales de línea pasan a LF), en `assets/audio/music/relajado/LICENSE-Abstraction-Music-Loop-Bundle.txt` ("This asset bundle is licensed as Public Domain (CC-0 …)"). El autor aclara que, aunque la licencia lo permite, no avala su uso en proyectos de NFT, IA/aprendizaje automático o reventa de los archivos sin cambios: no es una restricción de CC0 y un juego no entra en esos casos.
+
+| Archivo | Tema original (etiquetas del autor) | Dónde suena |
+|---|---|---|
+| `assets/audio/music/relajado/lobby.ogg` | Sketchbook 2024-09-25 (Jazz / lo-fi) | Lobby |
+| `assets/audio/music/relajado/calm.ogg` | Sketchbook 2024-12-04 (Chillout) | Juegos tranquilos y resumen de la ronda |
+| `assets/audio/music/relajado/groove.ogg` | Sketchbook 2024-11-30 (New Age) | Juegos movidos y podio |
+| `assets/audio/music/relajado/action.ogg` | Sketchbook 2024-07-03 (Chillout) | Juegos de acción |
+
+Origen verificado (27/09/2026): release `music-v1` del repositorio [jfpx/cc0-media-library](https://github.com/jfpx/cc0-media-library) (commit `1494e02`), archivo `music-cc0.zip` (sha256 `f76258c8…172cc`, igual al de su `SHA256SUMS.txt`). El ZIP trae los OGG originales sin recodificar —con las etiquetas del autor adentro: ARTIST "Abstraction", COMPOSER "Benjamin Burnes"— y los avisos de licencia del autor byte a byte. Ids en el catálogo: `abstraction-4e6836606331898f144502c1`, `-d20307161d504210a0dd287e`, `-9ccab202734d1e91a94d3042`, `-f23d9e696a256a1881c5d216`. La web del autor (itch.io) está bloqueada desde el entorno de desarrollo; el CC0 del pack figura también en su página según buscadores. Cambios: sonoridad igualada (−14,5 LUFS), rampa de 6 ms en la costura y recodificado a OGG Vorbis de ~62 kbps (`tools/audio/prepare_audio.py`).
+
+#### PARTY-GAME · temas del dueño del proyecto (hechos con Suno)
+
+No son de terceros ni CC0. Aviso con autoría y condiciones en `assets/audio/music/original/NOTICE-PARTY-GAME-temas-del-dueno.txt`.
+
+| Archivo | Tema | Autor | Origen | Dónde suena |
+|---|---|---|---|---|
+| `assets/audio/music/original/breakpoint_rush.ogg` | Breakpoint Rush | 666monko6666 (el dueño) | Hecho con Suno · id `53a987a6-6cf1-477a-b3e2-264545df30ad` · <https://suno.com/song/53a987a6-6cf1-477a-b3e2-264545df30ad> | Juegos de acción (Esquivar, Empujones, Carrera de toques) |
+| `assets/audio/music/original/lobby.ogg` *(pendiente)* | Tema del lobby | 666monko6666 | Suno (anotar id y enlace al sumarlo) | Lobby; mientras falte, suena el de Fiesta |
+
+**Condición:** requiere que el tema se haya creado con plan pago de Suno para uso comercial (Pro o Premier: la canción es del usuario y se puede usar comercialmente). Con el plan gratis, Suno solo permite uso no comercial. Confirmar el plan de cada tema antes de vender el juego. Cambios: recorte desde 12,94 s, bucle de 80 compases que vuelve a los 33,08 s del original con fundido de 0,25 s, sonoridad −14,5 LUFS y OGG Vorbis de ~120 kbps (`tools/audio/prepare_audio.py`).
 
 ## Efectos de sonido
 

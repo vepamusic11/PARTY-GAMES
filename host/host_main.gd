@@ -66,6 +66,7 @@ func _ready() -> void:
 	Sfx.load_prefs(SETTINGS_PATH)
 	UiTheme.load_effects_prefs(SETTINGS_PATH)
 	AudioMix.load_prefs(SETTINGS_PATH)
+	MusicStyles.load_prefs(SETTINGS_PATH)
 	add_child(Sfx.new())
 	add_child(Music.new())
 	Music.sync_mute()

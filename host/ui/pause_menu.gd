@@ -22,6 +22,7 @@ extends Control
 ##                              sin rebotes, deslizamientos, sacudidas ni zoom
 ##                              y menos partículas. Lo guarda HostMain (ADR 0011).
 ##   ◀ Música ▶ / ◀ Efectos ▶ -> volumen de cada bus (VolumeStepper, ADR 0015)
+##   ◀ Estilo ▶               -> estilo de música (MusicStyleStepper, ADR 0017)
 ##
 ## "Atrás" con la confirmación abierta vuelve a la lista (no cierra el menú).
 
@@ -106,6 +107,7 @@ func _ready() -> void:
 	# Volúmenes (ADR 0015): cada uno aplica y guarda su ajuste solo.
 	_list.add_child(VolumeStepper.new(AudioMix.BUS_MUSIC, "Música"))
 	_list.add_child(VolumeStepper.new(AudioMix.BUS_SFX, "Efectos"))
+	_list.add_child(MusicStyleStepper.new())  # Estilo de música (ADR 0017).
 
 	_confirm = VBoxContainer.new()
 	_confirm.add_theme_constant_override("separation", 18)

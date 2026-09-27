@@ -128,6 +128,10 @@ func _run() -> void:
 
 	if _audio:
 		root.add_child(Sfx.new())
+		# Pistas en archivo (Retro), comparables con las mediciones anteriores. Los
+		# estilos generados se componen en un hilo aparte (ADR 0017) y su costo se
+		# mide con tools/render_music.gd.
+		MusicStyles.style = MusicStyles.RETRO
 		root.add_child(Music.new())
 		_music_tracks = Music.TRACKS.keys()
 	print("\n=== Party Games · benchmark (%d frames por escena, %s%s%s) ===\n" % [_frames, _renderer_name(),

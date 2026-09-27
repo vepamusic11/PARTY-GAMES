@@ -3,6 +3,7 @@
 - **Estado:** Aceptada
 - **Fecha:** 2026-09-27
 - **Amplía:** [ADR 0005](0005-sonido-sintetizado.md) (efectos sintetizados)
+- **Ampliada por:** [ADR 0017](0017-estilos-de-musica.md) — la música de este ADR pasa a ser el estilo "Retro"; se suman los temas del dueño (PARTY-GAME, por defecto), Fiesta y Latino (generador propio), Relajado (CC0) y "Sin música", a elegir en la pausa.
 
 ## Contexto
 La TV no tenía música: en el lobby, el silencio se siente como "esto no arrancó" ([CALIDAD.md §3](../CALIDAD.md#3-audio)). Tampoco había canales separados: efectos y (futura) música salían por el mismo bus, sin forma de bajar uno sin el otro ni de que el "¡YA!" se oiga claro por encima de un tema. Faltaba además una identidad sonora para el estudio (IO-GAMES) y el juego (PARTY-GAME).

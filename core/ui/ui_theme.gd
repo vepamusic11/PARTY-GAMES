@@ -1632,3 +1632,21 @@ const PROP_GEM := Color("#35C9E8")           ## Gema de premio.
 const PROP_TROPHY_BASE := Color("#2E3570")   ## Pie del trofeo.
 const PROP_JEWEL := Color("#F0524F")         ## Piedras de la corona.
 const PROP_BALL := Color("#FFFFFF")          ## Pelota de Ping Pong.
+
+
+# --- Estilos de música (agente) ---
+# Selector "◀ ● Estilo: Fiesta ▶" de la pausa (MusicStyleStepper, ADR 0017).
+
+const MUSIC_STYLE_DOT := 11.0      ## Radio del punto de color del estilo.
+const MUSIC_STYLE_DOT_GAP := 12.0  ## Espacio entre el punto y el nombre.
+
+
+## Color que identifica cada estilo de música (acompaña al nombre, nunca lo reemplaza).
+static func music_style_color(style_id: String) -> Color:
+	match style_id:
+		"original": return ACCENT
+		"fiesta": return BRICKS[7]
+		"latino": return BRICKS[1]
+		"relajado": return BRICKS[4]
+		"retro": return BRICKS[6]
+	return MUTED

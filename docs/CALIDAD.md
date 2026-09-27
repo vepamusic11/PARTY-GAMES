@@ -179,7 +179,9 @@ Fuente principal: [Game Accessibility Guidelines](https://gameaccessibilityguide
 
 **Antes:** 16 efectos sintetizados por código ([ADR 0005](adr/0005-sonido-sintetizado.md)) y vibración, **sin música**: el silencio en el lobby se sentía como "esto no arrancó".
 
-**Hecho ([ADR 0015](adr/0015-musica-y-mezcla.md)):** música CC0 de Juhani Junkala por pantalla y por energía del juego, con fundido cruzado; buses `Music` y `SFX` con volumen en la pausa; *ducking* de 6 dB con `go`, `win`, `fanfare`, `hit` y `lose`; logos sonoros propios de IO-GAMES y PARTY-GAME; clics de menú de Kenney (CC0). Créditos en [CREDITS.md](../CREDITS.md). Pendiente: *stinger* de intro, capa extra en los últimos 10 s, bus `UI` separado y normalización en LUFS.
+**Hecho ([ADR 0015](adr/0015-musica-y-mezcla.md)):** música CC0 de Juhani Junkala por pantalla y por energía del juego, con fundido cruzado; buses `Music` y `SFX` con volumen en la pausa; *ducking* de 6 dB con `go`, `win`, `fanfare`, `hit` y `lose`; logos sonoros propios de IO-GAMES y PARTY-GAME; clics de menú de Kenney (CC0). Créditos en [CREDITS.md](../CREDITS.md). Pendiente: *stinger* de intro, capa extra en los últimos 10 s y bus `UI` separado.
+
+**Hecho ([ADR 0017](adr/0017-estilos-de-musica.md)):** "Estilo" de música en la pausa: PARTY-GAME (temas del dueño, por defecto), Fiesta y Latino (compuestos por el juego, 0 MB), Relajado (CC0 de Abstraction), Retro y Sin música; se guarda en los ajustes de la TV. Estilos nuevos igualados en LUFS (≤ 1 dB de diferencia). Música total: 7,7 MB.
 
 ### 3.1 Música
 

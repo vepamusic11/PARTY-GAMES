@@ -42,6 +42,8 @@ Resumen; el detalle, con fechas y versiones, está en el [relevamiento](#1-addon
 
 **En uso** (27/09/2026, [ADR 0015](adr/0015-musica-y-mezcla.md)): 6 bucles de Juhani Junkala (Chiptune Adventures y Retro Game Music Pack) y 3 clics de Kenney Interface Sounds, todos CC0 verificados en el texto de licencia del autor. Las webs de los autores estaban bloqueadas desde el entorno de desarrollo: se tomaron de repositorios públicos de GitHub que incluyen el archivo de licencia original. Detalle y commits en [CREDITS.md](../CREDITS.md).
 
+**Estilos de música** (27/09/2026, [ADR 0017](adr/0017-estilos-de-musica.md)): 4 bucles de **Abstraction** (Benjamin Burnes / Tallbeard Studios, *Music Loop Bundle*, **CC0**) para el estilo Relajado, tomados del release `music-v1` de [jfpx/cc0-media-library](https://github.com/jfpx/cc0-media-library), que trae los OGG originales sin recodificar y el aviso de licencia del autor. Descartado [SoundSafari/CC0-1.0-Music](https://github.com/SoundSafari/CC0-1.0-Music): mezcla fuentes sin el aviso de cada autor (y parte es CC-BY). Fiesta y Latino no usan recursos: los compone el juego (`MusicGen`). Los temas del dueño hechos con Suno llevan un `NOTICE` con la condición de uso comercial (solo con plan pago).
+
 ## Proyectos parecidos (para leer, no para copiar)
 
 | Proyecto | Licencia | Qué aprender |

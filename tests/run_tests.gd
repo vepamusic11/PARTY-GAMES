@@ -3771,6 +3771,8 @@ func test_audio_buses_and_volumes() -> void:
 
 
 func test_music_crossfade() -> void:
+	var style_before := MusicStyles.style
+	MusicStyles.style = MusicStyles.RETRO  # Pistas en archivo (las generadas tienen su test).
 	var music := Music.new()
 	root.add_child(music)
 	await process_frame
@@ -3813,6 +3815,7 @@ func test_music_crossfade() -> void:
 	await process_frame
 	Music.play("lobby")  # Sin nodo: no hace nada ni rompe.
 	Music.duck()
+	MusicStyles.style = style_before
 
 
 ## Avanza la música de a pasos de 1/60 s; devuelve la mayor suma de volúmenes.
@@ -3827,6 +3830,8 @@ func _advance_music(music: Music, seconds: float) -> float:
 
 
 func test_music_ducking() -> void:
+	var style_before := MusicStyles.style
+	MusicStyles.style = MusicStyles.RETRO
 	var music := Music.new()
 	root.add_child(music)
 	await process_frame
@@ -3856,9 +3861,12 @@ func test_music_ducking() -> void:
 	sfx.queue_free()
 	music.queue_free()
 	await process_frame
+	MusicStyles.style = style_before
 
 
 func test_music_mute() -> void:
+	var style_before := MusicStyles.style
+	MusicStyles.style = MusicStyles.RETRO
 	var music := Music.new()
 	root.add_child(music)
 	await process_frame
@@ -3877,6 +3885,7 @@ func test_music_mute() -> void:
 	Music.sync_mute()
 	music.queue_free()
 	await process_frame
+	MusicStyles.style = style_before
 
 
 func test_music_tracks_and_jingles() -> void:
@@ -3903,27 +3912,41 @@ func test_music_tracks_and_jingles() -> void:
 
 
 ## Cada archivo de assets/audio tiene su licencia al lado y figura en CREDITS.md.
+## Licencias aceptadas (docs/RECURSOS.md): CC0 / dominio público o CC-BY en
+## archivos LICENSE*; los temas propios del dueño llevan un NOTICE* con su
+## autoría y la condición de uso comercial de Suno (plan pago).
 func test_audio_licenses() -> void:
 	var credits := FileAccess.get_file_as_string("res://CREDITS.md")
 	if not check_that(not credits.is_empty(), "existe CREDITS.md"):
 		return
 	var count := 0
+	var dirs: Array[String] = []
 	for sub in DirAccess.get_directories_at("res://assets/audio"):
+		dirs.append(sub)
+		for sub2 in DirAccess.get_directories_at("res://assets/audio/%s" % sub):
+			dirs.append("%s/%s" % [sub, sub2])
+	for sub in dirs:
 		var dir := "res://assets/audio/%s" % sub
-		var licenses: Array[String] = []
+		var notices: Array[String] = []
 		for f in DirAccess.get_files_at(dir):
-			if f.begins_with("LICENSE"):
-				licenses.append(f)
+			if f.begins_with("LICENSE") or f.begins_with("NOTICE"):
+				notices.append(f)
 		for f in DirAccess.get_files_at(dir):
 			if not (f.get_extension() in ["ogg", "wav", "mp3"]):
 				continue
 			count += 1
-			check(not licenses.is_empty(), "%s/%s tiene archivo de licencia al lado" % [sub, f])
+			check(not notices.is_empty(), "%s/%s tiene archivo de licencia al lado" % [sub, f])
 			check(credits.contains("assets/audio/%s/%s" % [sub, f]), "%s/%s figura en CREDITS.md" % [sub, f])
-		for lic in licenses:
+		for lic in notices:
 			var text := FileAccess.get_file_as_string("%s/%s" % [dir, lic])
-			check(text.contains("CC0"), "%s/%s es CC0" % [sub, lic])
-	check(count >= 9, "se revisaron los archivos de audio (%d)" % count)
+			if lic.begins_with("LICENSE"):
+				var free := text.contains("CC0") or text.contains("CC-0") or text.contains("creativecommons.org/licenses/by/")
+				check(free, "%s/%s es CC0 o CC-BY" % [sub, lic])
+				check(not text.contains("NonCommercial") and not text.contains("NoDerivatives"), "%s/%s no es NC ni ND" % [sub, lic])
+			else:
+				check(text.contains("Suno") and text.contains("plan pago"), "%s/%s dice autor y condición comercial" % [sub, lic])
+				check(credits.contains("plan pago de Suno"), "CREDITS.md anota la condición de Suno")
+	check(count >= 14, "se revisaron los archivos de audio (%d)" % count)
 
 
 func test_volume_stepper() -> void:
@@ -3958,6 +3981,205 @@ func test_controller_has_no_music() -> void:
 		has_sfx = has_sfx or child is Sfx
 	check(has_sfx and not has_music, "el celular tiene efectos pero no música")
 	ctrl.queue_free()
+
+
+## Estilos de música (ADR 0017): cada estilo cubre todas las pantallas, los
+## respaldos funcionan y "Sin música" es silencio.
+func test_music_styles_resolve() -> void:
+	check(MusicStyles.ORDER[0] == MusicStyles.DEFAULT and MusicStyles.DEFAULT == MusicStyles.ORIGINAL,
+		"PARTY-GAME es el estilo por defecto y el primero del selector")
+	check(MusicStyles.ORDER.size() >= 5 and MusicStyles.ORDER.has(MusicStyles.NONE), "hay al menos 4 estilos y \"Sin música\"")
+	var names := {}
+	for id in MusicStyles.ORDER:
+		check(MusicStyles.STYLES.has(id), "%s está definido" % id)
+		names[MusicStyles.display_name(id)] = true
+		for track in MusicStyles.TRACK_NAMES:
+			var src := MusicStyles.resolve(id, track)
+			if id == MusicStyles.NONE:
+				check(src.is_empty(), "Sin música: %s en silencio" % track)
+				continue
+			check(src.has("file") or src.has("generated"), "%s cubre %s (%s)" % [id, track, src])
+			if src.has("file"):
+				check(ResourceLoader.exists(str(src.file)), "%s/%s: existe %s" % [id, track, src.file])
+	check(names.size() == MusicStyles.ORDER.size(), "nombres distintos en el selector")
+	check(MusicStyles.STYLES[MusicStyles.RETRO].files == Music.TRACKS, "Retro son las pistas de siempre")
+	for track in Music.TRACKS:
+		check(MusicStyles.TRACK_NAMES.has(track), "%s es una pista de los estilos" % track)
+	# PARTY-GAME: Breakpoint Rush en los juegos de acción; lo que falta, de Fiesta.
+	check(MusicStyles.resolve(MusicStyles.ORIGINAL, "game_action") == {"file": "res://assets/audio/music/original/breakpoint_rush.ogg"},
+		"Breakpoint Rush suena en los juegos de acción")
+	var no_files := func(_path: String) -> bool: return false
+	var all_files := func(_path: String) -> bool: return true
+	check(MusicStyles.resolve(MusicStyles.ORIGINAL, "lobby", no_files) == {"generated": MusicStyles.FIESTA},
+		"sin el tema del lobby del dueño, suena el de Fiesta")
+	check(MusicStyles.resolve(MusicStyles.ORIGINAL, "lobby", all_files) == {"file": "res://assets/audio/music/original/lobby.ogg"},
+		"con original/lobby.ogg, el lobby suena con el tema del dueño")
+	check(MusicStyles.resolve(MusicStyles.RELAJADO, "podium", no_files).is_empty(), "archivo que falta sin respaldo: silencio, sin error")
+	check(MusicStyles.resolve("no-existe", "lobby").has("generated") or MusicStyles.resolve("no-existe", "lobby").has("file"),
+		"estilo desconocido usa el de por defecto")
+	check(MusicStyles.generated_needs(MusicStyles.ORIGINAL) == [MusicStyles.FIESTA], "PARTY-GAME necesita componer Fiesta")
+	check(MusicStyles.generated_needs(MusicStyles.RETRO).is_empty(), "Retro no compone nada")
+
+
+## El estilo se guarda en los ajustes de la TV y se elige con ◀ ▶ en la pausa.
+func test_music_style_prefs_and_selector() -> void:
+	var before := MusicStyles.style
+	var before_path := MusicStyles.prefs_path
+	var path := "user://test_music_style.cfg"
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	var cfg := ConfigFile.new()
+	cfg.set_value("audio", "music_volume", 0.4)  # Lo que ya había no se pisa.
+	cfg.save(path)
+	MusicStyles.load_prefs(path)
+	check(MusicStyles.style == before, "sin estilo guardado, queda el que había")
+	MusicStyles.style = MusicStyles.RETRO
+	Music.set_style(MusicStyles.LATINO)
+	check(MusicStyles.style == MusicStyles.LATINO, "set_style cambia el estilo")
+	MusicStyles.style = MusicStyles.RETRO
+	MusicStyles.load_prefs(path)
+	check(MusicStyles.style == MusicStyles.LATINO, "el estilo se recuerda")
+	cfg.load(path)
+	check(is_equal_approx(float(cfg.get_value("audio", "music_volume", 0.0)), 0.4), "guardar el estilo no pisa el volumen")
+	Music.set_style("cualquiera")
+	check(MusicStyles.style == MusicStyles.LATINO, "un estilo desconocido se ignora")
+	cfg.set_value("audio", "music_style", 42)
+	cfg.save(path)
+	MusicStyles.style = MusicStyles.FIESTA
+	MusicStyles.load_prefs(path)
+	check(MusicStyles.style == MusicStyles.FIESTA, "valor guardado inválido se ignora")
+	Music.set_style(MusicStyles.NONE)
+	MusicStyles.style = MusicStyles.RETRO
+	MusicStyles.load_prefs(path)
+	check(MusicStyles.style == MusicStyles.NONE, "\"Sin música\" también se recuerda")
+	# Selector de la pausa: ◀ ▶ recorren los estilos, sin pasarse de los extremos.
+	Music.set_style(MusicStyles.ORDER[0])
+	var stepper := MusicStyleStepper.new()
+	root.add_child(stepper)
+	check(stepper.focus_mode == Control.FOCUS_ALL and stepper.custom_minimum_size.y > 0, "navegable con el D-pad")
+	check(stepper.style_id() == MusicStyles.ORDER[0], "arranca en el estilo actual")
+	var right := InputEventAction.new()
+	right.action = "ui_right"
+	right.pressed = true
+	stepper._gui_input(right)
+	check(MusicStyles.style == MusicStyles.ORDER[1], "▶ pasa al estilo siguiente (%s)" % MusicStyles.style)
+	stepper.set_value(99)
+	check(MusicStyles.style == MusicStyles.NONE and stepper.value == MusicStyles.ORDER.size() - 1, "el último es \"Sin música\"")
+	stepper.set_value(-3)
+	check(MusicStyles.style == MusicStyles.ORDER[0], "no baja del primero")
+	var pause := PauseMenu.new()
+	root.add_child(pause)
+	var found := false
+	for node in pause.find_children("*", "", true, false):
+		found = found or node is MusicStyleStepper
+	check(found, "la pausa tiene el selector de estilo")
+	pause.queue_free()
+	stepper.queue_free()
+	await process_frame
+	MusicStyles.style = before
+	MusicStyles.prefs_path = before_path
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+
+
+## MusicGen: música propia compuesta por código, reproducible y en bucle.
+func test_music_generator() -> void:
+	for style: String in MusicGen.RECIPES:
+		check(MusicStyles.STYLES.has(style) and MusicStyles.STYLES[style].get("generated", false),
+			"%s es un estilo generado" % style)
+		for track in MusicStyles.TRACK_NAMES:
+			check(MusicGen.has_track(style, track), "%s compone %s" % [style, track])
+	check(MusicGen.render("no-existe", "lobby") == null and MusicGen.render("fiesta", "no-existe") == null, "receta desconocida")
+	# Una pista corta de cada receta (1 compás): todas las partes e instrumentos existen.
+	for style: String in MusicGen.RECIPES:
+		for track: String in MusicGen.RECIPES[style]:
+			var s := MusicGen.render(style, track, 1)
+			if not check_that(s != null and s.stereo and s.loop_mode == AudioStreamWAV.LOOP_FORWARD,
+					"%s/%s: estéreo en bucle" % [style, track]):
+				continue
+			var frames := s.data.size() / 4
+			check(s.loop_end == frames and absf(frames / float(MusicGen.MIX_RATE) - MusicGen.duration(style, track, 1)) < 0.01,
+				"%s/%s: el bucle dura un compás exacto" % [style, track])
+			var peak := 0
+			var sum := 0.0
+			for i in range(0, s.data.size(), 2):
+				var v := s.data.decode_s16(i)
+				peak = maxi(peak, absi(v))
+				sum += float(v) * v
+			var rms_db := linear_to_db(sqrt(sum / (s.data.size() / 2.0)) / 32767.0)
+			check(peak <= int(MusicGen.PEAK_MAX * 32767.0) + 1, "%s/%s: pico bajo el techo (%d)" % [style, track, peak])
+			check(absf(rms_db - MusicGen.TARGET_RMS_DB) < 2.5, "%s/%s: sonoridad pareja (%.1f dB)" % [style, track, rms_db])
+	# Misma semilla, mismas muestras; otra semilla, otra música.
+	var a := MusicGen.render("latino", "lobby", 2)
+	var b := MusicGen.render("latino", "lobby", 2)
+	var c := MusicGen.render("latino", "lobby", 2, 1)
+	check(a.data == b.data, "misma receta y semilla: mismas muestras")
+	check(a.data != c.data, "otra semilla: otra variación")
+	# Bucle sin costura: el salto del final al principio es como el de cualquier par de muestras vecinas.
+	var gen := MusicGen.new()
+	var s2 := gen.render_recipe(MusicGen.RECIPES["fiesta"]["summary"], 2)
+	var n := s2.data.size() / 4
+	var jump := absi(s2.data.decode_s16(0) - s2.data.decode_s16((n - 1) * 4))
+	var biggest := 0
+	for i in range(1, n):
+		biggest = maxi(biggest, absi(s2.data.decode_s16(i * 4) - s2.data.decode_s16((i - 1) * 4)))
+	check(jump <= biggest, "la costura del bucle no hace un salto nuevo (%d de %d)" % [jump, biggest])
+	check(gen.profile.get("total", 0) > 0 and not gen.lead_log.is_empty(), "mide el costo y deja la melodía para revisar")
+
+
+## Una pista generada se compone en un hilo: mientras tanto sigue lo que
+## sonaba y la nueva entra sola al estar lista. Cambiar de estilo cambia la
+## música en el momento; "Sin música" la baja.
+func test_music_generated_playback() -> void:
+	var before := MusicStyles.style
+	var path_before := MusicStyles.prefs_path
+	MusicStyles.prefs_path = ""  # No tocar los ajustes reales de la TV.
+	var bars_before := Music.gen_bars
+	Music.gen_bars = 1
+	MusicStyles.style = MusicStyles.RETRO
+	var music := Music.new()
+	root.add_child(music)
+	await process_frame
+	Music.play("lobby")
+	_advance_music(music, Music.FADE + 0.1)
+	var retro_stream := music._players[music._active].stream
+	Music.set_style(MusicStyles.LATINO)
+	check(music.is_waiting(), "el estilo nuevo se está componiendo")
+	check(music._players[music._active].stream == retro_stream and music.gains()[music._active] > 0.99,
+		"mientras tanto sigue sonando lo anterior")
+	var t0 := Time.get_ticks_msec()
+	while music.is_waiting() and Time.get_ticks_msec() - t0 < 30000:
+		await process_frame
+		music.advance(1.0 / 60.0)
+	check(not music.is_waiting(), "la pista generada llegó")
+	_advance_music(music, Music.FADE + 0.1)
+	var p := music._players[music._active]
+	check(p.stream is AudioStreamWAV and p.playing and is_equal_approx(music.gains()[music._active], 1.0),
+		"suena la versión Latino del lobby")
+	check(music.current == "lobby" and music.current_style == MusicStyles.LATINO, "misma pantalla, estilo nuevo")
+	Music.set_style(MusicStyles.NONE)
+	_advance_music(music, Music.FADE + 0.1)
+	check(music.gains()[0] == 0.0 and music.gains()[1] == 0.0, "Sin música: silencio")
+	Music.play("summary")
+	_advance_music(music, Music.FADE + 0.1)
+	check(music.gains()[0] == 0.0 and music.gains()[1] == 0.0 and not music.is_waiting(), "Sin música en todas las pantallas")
+	Music.set_style(MusicStyles.RETRO)
+	_advance_music(music, Music.FADE + 0.1)
+	check(music._players[music._active].stream is AudioStreamOggVorbis and is_equal_approx(music.gains()[music._active], 1.0),
+		"al volver a un estilo, la pantalla actual suena de nuevo")
+	music.queue_free()
+	await process_frame
+	Music.gen_bars = bars_before
+	MusicStyles.style = before
+	MusicStyles.prefs_path = path_before
+
+
+## Las canciones del dueño no vuelven al principio: el bucle salta a una frase.
+func test_music_song_loop() -> void:
+	var path := "res://assets/audio/music/original/breakpoint_rush.ogg"
+	if not check_that(ResourceLoader.exists(path), "está Breakpoint Rush"):
+		return
+	var s: AudioStreamOggVorbis = load(path)
+	check(s.loop and s.loop_offset > 10.0 and s.loop_offset < s.get_length() - 60.0,
+		"Breakpoint Rush vuelve a %.2f s (de %.1f s)" % [s.loop_offset, s.get_length()])
 # --- Pantallas: intro, pausa, avisos, selector (agente) -----------------------------
 
 ## Intro: pasos con ícono (uno por oración) y ready check: tocar el celular

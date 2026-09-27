@@ -20,9 +20,18 @@ extends Node
 ## `Music.jingle("studio")`. Sin nodo (tests, celular) no hace nada.
 ##
 ## Rendimiento: el decodificado OGG corre en el hilo de audio. Este script
-## solo trabaja (_process) mientras hay un fundido o ducking en curso; el
-## resto del tiempo está apagado (set_process(false)).
+## solo trabaja (_process) mientras hay un fundido, ducking o una pista
+## componiéndose; el resto del tiempo está apagado (set_process(false)).
+##
+## *Estilos* (ADR 0017): la misma pantalla suena distinto según el estilo
+## elegido en la pausa (MusicStyles: PARTY-GAME, Fiesta, Latino, Relajado,
+## Retro, Sin música). Los estilos "generados" los compone MusicGen en un hilo
+## de WorkerThreadPool, una pista por vez y empezando por la que se pidió;
+## mientras tanto sigue sonando lo anterior y la nueva entra con fundido
+## apenas está lista. `Music.set_style("latino")` cambia en el momento.
 
+## Pistas (una por pantalla o energía de juego) y sus archivos del estilo
+## Retro. Los otros estilos están en MusicStyles.
 const TRACKS := {
 	"lobby": "res://assets/audio/music/lobby.ogg",
 	"game_calm": "res://assets/audio/music/game_calm.ogg",
@@ -56,9 +65,14 @@ const JINGLE_DUCK_DB := -12.0 ## Si un jingle suena sobre una pista, la pista se
 const DUCK_SOUNDS := ["go", "win", "fanfare", "hit", "lose"]
 
 static var _instance: Music
+## Compases de las pistas generadas (-1 = MusicGen.BARS). Los tests lo bajan
+## para no esperar una composición entera.
+static var gen_bars := -1
 
 ## Pista que suena (o que va a sonar tras un jingle). "" = silencio.
 var current := ""
+## Estilo con el que se pidió `current`.
+var current_style := ""
 var _players: Array[AudioStreamPlayer] = []
 var _gains := PackedFloat32Array([0.0, 0.0])     # Volumen lineal de cada reproductor.
 var _targets := PackedFloat32Array([0.0, 0.0])
@@ -74,6 +88,11 @@ var _duck_db := 0.0
 var _duck_target := 0.0
 var _duck_hold := 0.0
 var _paused := false
+var _waiting := false                             # `current` espera a que MusicGen la componga.
+var _gen_queue: Array[String] = []                # "estilo|pista" pendientes, en orden.
+var _gen_key := ""                                # La que se está componiendo.
+var _gen_task := -1
+var _gen_done: Dictionary = {}                    # Lo que deja el hilo (con _mutex).
 
 
 func _enter_tree() -> void:
@@ -83,6 +102,9 @@ func _enter_tree() -> void:
 func _exit_tree() -> void:
 	for jingle_name: String in _jingle_tasks.keys():
 		_take_jingle(jingle_name)  # No liberar el nodo con un hilo escribiendo.
+	if _gen_task != -1:
+		WorkerThreadPool.wait_for_task_completion(_gen_task)
+		_gen_task = -1
 	if _instance == self:
 		_instance = null
 
@@ -104,6 +126,8 @@ func _ready() -> void:
 	# así el paso de la presentación al lobby no pierde frames.
 	for jingle_name: String in Jingles.SCORES:
 		_jingle_tasks[jingle_name] = WorkerThreadPool.add_task(_render_jingle.bind(jingle_name))
+	# Las pistas generadas del estilo elegido se componen desde ya, lobby primero.
+	_queue_style(MusicStyles.style, "lobby")
 
 
 # --- API estática (no hace nada sin nodo) --------------------------------------
@@ -156,6 +180,18 @@ static func instance() -> Music:
 	return _instance
 
 
+## Cambia el estilo de música (lo elige la pausa), lo guarda en los ajustes
+## y, si algo está sonando, pasa a la misma pantalla en el estilo nuevo.
+## Un id desconocido se ignora.
+static func set_style(id: String) -> void:
+	if not MusicStyles.is_valid(id) or id == MusicStyles.style:
+		return
+	MusicStyles.style = id
+	MusicStyles.save_prefs()
+	if _instance != null and _instance.is_inside_tree():
+		_instance._on_style_changed()
+
+
 # --- Estado (público para los tests) --------------------------------------------
 
 ## Volumen lineal actual de cada reproductor de pista.
@@ -172,10 +208,27 @@ func is_paused() -> bool:
 	return _paused
 
 
+## true mientras la pista pedida espera a que MusicGen la termine.
+func is_waiting() -> bool:
+	return _waiting
+
+
+## Pistas generadas listas en memoria ("estilo|pista").
+func generated_ready() -> Array:
+	return _streams.keys().filter(func(k: String) -> bool: return k.begins_with("gen:"))
+
+
 ## Avanza fundidos y ducking `delta` segundos. Lo llama _process; los tests
 ## lo llaman directo para no depender del reloj.
 func advance(delta: float) -> void:
 	var busy := false
+	if _poll_generation():
+		busy = true
+	if _waiting:
+		busy = true
+		if _stream(current) != null:
+			_waiting = false
+			_start_track()
 	if _pending_delay > 0.0:
 		_pending_delay -= delta
 		busy = true
@@ -205,10 +258,21 @@ func _process(delta: float) -> void:
 # --- Interno ----------------------------------------------------------------------
 
 func _play(track: String, intro_jingle: String) -> void:
-	if track == current:
+	if track == current and MusicStyles.style == current_style:
 		return
 	current = track if TRACKS.has(track) else ""
+	current_style = MusicStyles.style
 	_pending_delay = 0.0
+	_waiting = false
+	var src := MusicStyles.resolve(current_style, current) if not current.is_empty() else {}
+	if src.has("generated") and _stream(current) == null:
+		# Todavía se está componiendo: sigue lo que suena y entra al estar lista.
+		_request_generated(str(src.generated), current)
+		if Jingles.has_jingle(intro_jingle):
+			_jingle(intro_jingle)
+		_waiting = true
+		set_process(true)
+		return
 	# Lo que suena se va con fundido.
 	_targets[0] = 0.0
 	_targets[1] = 0.0
@@ -227,6 +291,8 @@ func _start_track() -> void:
 		return
 	var stream := _stream(current)
 	if stream == null:
+		_targets[0] = 0.0  # "Sin música" o archivo que falta: silencio.
+		_targets[1] = 0.0
 		return
 	# Si el anterior todavía se estaba yendo en el otro reproductor, se corta:
 	# su volumen ya es bajo y así nunca hay tres pistas.
@@ -269,14 +335,99 @@ func _set_paused(paused: bool) -> void:
 		p.stream_paused = paused
 
 
+## Stream de `track` en el estilo actual (o null: "Sin música", o una
+## pista generada que todavía no está). Los archivos se cachean por ruta: dos
+## pantallas que comparten tema usan el mismo stream.
 func _stream(track: String) -> AudioStream:
-	if not _streams.has(track):
-		var path: String = TRACKS.get(track, "")
-		var stream: AudioStream = load(path) if ResourceLoader.exists(path) else null
+	var src := MusicStyles.resolve(MusicStyles.style if current_style.is_empty() else current_style, track)
+	if src.has("generated"):
+		return _streams.get("gen:%s|%s" % [src.generated, track], null)
+	if not src.has("file"):
+		return null
+	var path := str(src.file)
+	if not _streams.has(path):
+		var stream: AudioStream = load(path)
 		if stream is AudioStreamOggVorbis:
+			# Bucle; las canciones vuelven a su loop_offset (del .import), no al principio.
 			(stream as AudioStreamOggVorbis).loop = true
-		_streams[track] = stream
-	return _streams[track]
+		_streams[path] = stream
+	return _streams[path]
+
+
+func _on_style_changed() -> void:
+	_queue_style(MusicStyles.style, current)
+	# Libera las pistas compuestas de estilos que ya no se usan (~3 MB c/u);
+	# la que suena la sigue teniendo su reproductor.
+	var keep := MusicStyles.generated_needs(MusicStyles.style)
+	for key: String in _streams.keys():
+		if key.begins_with("gen:") and not keep.has(key.trim_prefix("gen:").get_slice("|", 0)):
+			_streams.erase(key)
+	var track := current
+	current = ""
+	_play(track, "")
+
+
+## Encola las pistas generadas que necesita `style`: primero `first`, después
+## el resto en el orden en que suelen sonar.
+func _queue_style(style: String, first: String) -> void:
+	var order: Array[String] = []
+	if not first.is_empty():
+		order.append(first)
+	for track in ["lobby", "game_play", "game_calm", "game_action", "summary", "podium"]:
+		if not order.has(track):
+			order.append(track)
+	var wanted: Array[String] = []
+	for track in order:
+		var src := MusicStyles.resolve(style, track)
+		if src.has("generated"):
+			var key := "%s|%s" % [src.generated, track]
+			if not _streams.has("gen:" + key) and key != _gen_key and not wanted.has(key):
+				wanted.append(key)
+	_gen_queue = wanted  # Lo de otro estilo que no empezó, se descarta.
+	_poll_generation()
+	if not _gen_queue.is_empty() or _gen_task != -1:
+		set_process(true)
+
+
+## Pone `style|track` primera en la cola.
+func _request_generated(style: String, track: String) -> void:
+	var key := "%s|%s" % [style, track]
+	if _streams.has("gen:" + key) or key == _gen_key:
+		return
+	_gen_queue.erase(key)
+	_gen_queue.push_front(key)
+	_poll_generation()
+
+
+## Recoge la pista que terminó el hilo y lanza la siguiente. Devuelve true si
+## queda trabajo (para seguir llamándola desde _process).
+func _poll_generation() -> bool:
+	if _gen_task != -1:
+		if not WorkerThreadPool.is_task_completed(_gen_task):
+			return true
+		WorkerThreadPool.wait_for_task_completion(_gen_task)
+		_gen_task = -1
+		_mutex.lock()
+		var stream: Variant = _gen_done.get(_gen_key)
+		_gen_done.erase(_gen_key)
+		_mutex.unlock()
+		# Si mientras tanto se cambió a un estilo que no la usa, no se guarda.
+		if stream != null and MusicStyles.generated_needs(MusicStyles.style).has(_gen_key.get_slice("|", 0)):
+			_streams["gen:" + _gen_key] = stream
+		_gen_key = ""
+	if _gen_queue.is_empty():
+		return false
+	_gen_key = _gen_queue.pop_front()
+	_gen_task = WorkerThreadPool.add_task(_render_generated.bind(_gen_key))
+	return true
+
+
+## Corre en un hilo: compone una pista con MusicGen y la deja en _gen_done.
+func _render_generated(key: String) -> void:
+	var stream := MusicGen.render(key.get_slice("|", 0), key.get_slice("|", 1), gen_bars)
+	_mutex.lock()
+	_gen_done[key] = stream
+	_mutex.unlock()
 
 
 func _apply_volumes() -> void:
