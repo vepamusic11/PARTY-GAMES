@@ -68,7 +68,8 @@ static func lathe(key: String, profile: PackedVector2Array, segs := 28, depth :=
 	var n := profile.size()
 	for i in n:
 		for j in segs + 1:
-			var a := TAU * j / segs
+			# La costura (primer y último vértice de cada anillo) queda atrás, donde no se ve.
+			var a := PI + TAU * j / segs
 			var p := profile[i]
 			verts.append(Vector3(sin(a) * p.x, p.y, cos(a) * p.x * depth))
 	var idx := PackedInt32Array()
@@ -223,6 +224,30 @@ static func rounded_rect_outline(rx: float, ry: float, steps := 24, exponent := 
 		var a := TAU * i / steps
 		pts.append(Vector2(signf(cos(a)) * pow(absf(cos(a)), e) * rx, signf(sin(a)) * pow(absf(sin(a)), e) * ry))
 	return pts
+
+
+## Estrella de `points` puntas (radio 1 afuera, `inner` adentro), con la
+## primera punta hacia arriba. Para ojos de estrella y estrellitas de mareo.
+static func star_outline(points: int, inner: float) -> PackedVector2Array:
+	var pts := PackedVector2Array()
+	for i in points * 2:
+		var a := PI / 2.0 + PI * i / points
+		var r := 1.0 if i % 2 == 0 else inner
+		pts.append(Vector2(cos(a), sin(a)) * r)
+	return pts
+
+
+## Punto de la superficie de un elipsoide (semiejes r, centro en el origen)
+## que se ve en (x, y) de frente. Para apoyar ojos y bocas sobre la cabeza.
+static func ellipsoid_point(r: Vector3, p: Vector2) -> Vector3:
+	var k := 1.0 - (p.x / r.x) * (p.x / r.x) - (p.y / r.y) * (p.y / r.y)
+	return Vector3(p.x, p.y, r.z * sqrt(maxf(k, 0.0)))
+
+
+## Normal del elipsoide en el punto que se ve en (x, y) de frente.
+static func ellipsoid_normal(r: Vector3, p: Vector2) -> Vector3:
+	var q := ellipsoid_point(r, p)
+	return Vector3(q.x / (r.x * r.x), q.y / (r.y * r.y), q.z / (r.z * r.z)).normalized()
 
 
 ## Parche de la cara: la superficie de la cabeza (elipsoide de semiejes

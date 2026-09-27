@@ -11,9 +11,15 @@ extends SceneTree
 ##   --styles      todos los estilos en una paleta amplia (como character_sheet --styles)
 ##   --closeup     grandes (lobby, podio) arriba y chicas (juegos) abajo
 ##   --compare     maqueta vs. 2D actual vs. 3D, las 4 mascotas en dos poses
+##   --expressions todos los ánimos (enojada, mareada, dormida, ganadora, riendo…)
+##                 y, en fases, los tres bailes, la derrota y el saludo
+##   --ref=N       revisión de detalle de la mascota N (0–3) contra la maqueta:
+##                 grandes y a la misma escala, y abajo a tamaño de juego (116 px)
+##   --moods=N     los 9 ánimos grandes con el color N de la paleta (estilo N % 7)
 ##   --standard    material estándar de Godot (PBR + clearcoat) con luces reales
 ##   --width=1920  ancho de la imagen (default 1280, como la hoja 2D)
-##   --all=DIR     las cuatro hojas en DIR en una sola corrida
+##   --all=DIR     todas las hojas en DIR con los nombres de docs/img
+##                 (mascotas_3d.png, _estilos, _cerca, _comparacion, _expresiones, _detalle)
 ##
 ## Necesita pantalla (xvfb): con --headless no se renderiza nada.
 
@@ -28,6 +34,7 @@ const COLUMNS := [["Normal", "normal"], ["Parpadeo", "blink"], ["Mira", "look"],
 	["Salto", "jump"], ["Aterriza", "land"]]
 
 var _shading := Mascot3D.Shading.TOON
+var _ref_slot := 0
 
 
 ## Lienzo que dibuja una lista de sprites (textura, pies, sombra) y textos.
@@ -57,7 +64,7 @@ class _Canvas:
 			var lift: float = s[3]
 			if s[4]:  # Sombra difusa en el piso (se achica si está en el aire), como en 2D.
 				var k := clampf(1.0 - lift / (80.0 * cell / 144.0), 0.3, 1.0)
-				var sh := Vector2(64.0, 15.0) * cell / 144.0 * k
+				var sh := Vector2(86.0, 17.0) * cell / 144.0 * k
 				draw_texture_rect(shadow_tex, Rect2(feet - sh / 2.0 + Vector2(0, cell * 0.004), sh), false,
 					PlayerAvatar.SHADOW)
 			if tex:
@@ -82,6 +89,14 @@ func _run() -> void:
 			mode = "closeup"
 		elif arg == "--compare":
 			mode = "compare"
+		elif arg == "--expressions":
+			mode = "expressions"
+		elif arg.begins_with("--moods="):
+			mode = "moods"
+			_ref_slot = clampi(arg.trim_prefix("--moods=").to_int(), 0, Protocol.MASCOT_COLORS.size() - 1)
+		elif arg.begins_with("--ref="):
+			mode = "ref"
+			_ref_slot = clampi(arg.trim_prefix("--ref=").to_int(), 0, 3)
 		elif arg == "--standard":
 			_shading = Mascot3D.Shading.STANDARD
 		elif arg.begins_with("--all="):  # Todas las hojas en una carpeta (una sola corrida).
@@ -96,8 +111,12 @@ func _run() -> void:
 	if all_dir.is_empty():
 		await _render(mode, out, out_width)
 	else:
-		for m in ["sheet", "styles", "closeup", "compare"]:
-			await _render(m, all_dir.path_join("mascotas_3d_%s.png" % m), out_width)
+		var names := {"sheet": "mascotas_3d.png", "styles": "mascotas_3d_estilos.png", "closeup": "mascotas_3d_cerca.png",
+			"compare": "mascotas_3d_comparacion.png", "expressions": "mascotas_3d_expresiones.png",
+			"ref": "mascotas_3d_detalle.png"}
+		_ref_slot = 1  # Detalle: el oso (2P), el recorte más limpio de la maqueta.
+		for m: String in names:
+			await _render(m, all_dir.path_join(names[m]), out_width)
 	quit(0)
 
 
@@ -114,6 +133,12 @@ func _render(mode: String, out: String, out_width: int) -> void:
 			await _closeup(canvas)
 		"compare":
 			await _compare(canvas)
+		"ref":
+			await _ref(canvas, _ref_slot)
+		"expressions":
+			await _expressions(canvas)
+		"moods":
+			await _moods(canvas, _ref_slot)
 		_:
 			await _sheet(canvas)
 	var bake_ms := Time.get_ticks_msec() - t0
@@ -220,6 +245,123 @@ func _compare(c: _Canvas) -> void:
 			c.calls.append(func(ci: CanvasItem) -> void:
 				PlayerAvatar.draw_mascot(ci, feet2, u, Protocol.player_color(slot), slot, mood, 0.0, 0.0, false, anim))
 			c.sprites.append([tex.get(pose[0]), Vector2(x, rows_y[2]), float(px), 0.0, true])
+
+
+## Expresiones (todos los ánimos, en dos filas con estilos y colores
+## distintos, blanco y negro incluidos) y animaciones en fases: los tres
+## bailes, derrota y saludo. Mismo armado que character_sheet --expressions.
+func _expressions(c: _Canvas) -> void:
+	var M := PlayerAvatar.Mood
+	c.title = "Mascotas 3D · expresiones y bailes"
+	var moods := [["Normal", M.NORMAL], ["Feliz", M.HAPPY], ["Triste", M.SAD], ["Sorpresa", M.SURPRISED],
+		["Enojada", M.ANGRY], ["Mareada", M.DIZZY], ["Dormida", M.SLEEPY], ["Ganadora", M.WINNER], ["Risa", M.LAUGHING]]
+	var left := 210.0
+	var cell := (SIZE.x - left - 30.0) / moods.size()
+	for k in moods.size():
+		c.labels.append([moods[k][0], Vector2(left + cell * (k + 0.5), 116), 26, UiTheme.INK, 0])
+	var px := Mascot3DBaker.cell_for_u(1.0)
+	var rows := [[0, 0], [4, 7]]  # Primer estilo y color de cada fila.
+	for r in rows.size():
+		c.labels.append(["Expresión", Vector2(100, 225.0 + r * 160.0), 24, UiTheme.PAPER, 6])
+		for k in moods.size():
+			var st: int = (rows[r][0] + k) % PlayerAvatar.STYLE_NAMES.size()
+			var col: Color = PALETTE[(rows[r][1] + k * 3) % PALETTE.size()]
+			var pose := {"name": "p", "mood": moods[k][1], "anim": {"t": 1.3 + k * 0.21}}
+			var tex := await Mascot3DBaker.bake(root, {"color": col, "style": st}, [pose], px, _shading)
+			c.sprites.append([tex.get("p"), Vector2(left + cell * (k + 0.5), 290.0 + r * 160.0), float(px), 0.0, true])
+	# Animaciones en fases: una fila por baile + derrota y saludo.
+	var phases := 8
+	var pcell := (SIZE.x - left - 30.0) / phases
+	var spx := Mascot3DBaker.cell_for_u(0.82)
+	var dances := [
+		["Saltitos", PlayerAvatar.STYLE_BUNNY, 6, PlayerAvatar.DANCE_HOPS, 0.5],
+		["Giro", 1, 1, PlayerAvatar.DANCE_SPIN, 1.0],
+		["Brazos arriba", 2, 2, PlayerAvatar.DANCE_ARMS, 1.0],
+	]
+	for r in dances.size():
+		var y := 600.0 + r * 125.0
+		c.labels.append([dances[r][0], Vector2(100, y - 40.0), 24, UiTheme.PAPER, 6])
+		var poses: Array = []
+		for k in phases:
+			# La vuelta del giro ocupa la primera mitad de su ciclo.
+			var span: float = dances[r][4] * (0.5 if r == 1 else 1.0)
+			# Sin el salto horneado: se suma en 2D (como lo haría un juego) y la sombra se achica.
+			poses.append({"name": "d%d" % k, "mood": M.WINNER if r == 1 else M.HAPPY,
+				"anim": {"t": 10.0 + span * k / phases, "dance": 1.0, "dance_kind": dances[r][3], "lift": false}})
+		var tex := await Mascot3DBaker.bake(root, {"color": PALETTE[dances[r][2]], "style": dances[r][1]}, poses, spx, _shading)
+		for k in phases:
+			var p: Dictionary = poses[k]
+			var lift := Mascot3D.pose_lift(p.mood, p.anim, dances[r][1]) * spx / 144.0
+			c.sprites.append([tex.get("d%d" % k), Vector2(left + pcell * (k + 0.5), y), float(spx), lift, true])
+	var yd := 975.0
+	c.labels.append(["Derrota · saludo", Vector2(100, yd - 40.0), 24, UiTheme.PAPER, 6])
+	for k in phases:
+		var anim := {"t": 20.0 + k * 0.09}
+		var mood: int = M.SAD
+		if k < 4:
+			anim["defeat"] = k / 3.0
+		else:
+			anim["greet"] = 1.0
+			mood = M.HAPPY
+		var tex := await Mascot3DBaker.bake(root, {"color": PALETTE[k % 4 + 3 * int(k >= 4)],
+			"style": (k + 3) % PlayerAvatar.STYLE_NAMES.size()}, [{"name": "p", "mood": mood, "anim": anim}], spx, _shading)
+		c.sprites.append([tex.get("p"), Vector2(left + pcell * (k + 0.5), yd), float(spx), 0.0, true])
+
+
+## Los 9 ánimos grandes (u = 2,1) de un color y estilo: para revisar caras y efectos de cerca.
+func _moods(c: _Canvas, index: int) -> void:
+	var names := ["Normal", "Feliz", "Triste", "Sorpresa", "Enojada", "Mareada", "Dormida", "Ganadora", "Risa"]
+	var st := index % PlayerAvatar.STYLE_NAMES.size()
+	c.title = "Ánimos · %s %s" % [Protocol.MASCOT_COLOR_NAMES[index], PlayerAvatar.STYLE_NAMES[st]]
+	var px := Mascot3DBaker.cell_for_u(2.1)
+	var poses: Array = []
+	for m in names.size():
+		poses.append({"name": names[m], "mood": m, "anim": {"t": 1.3 + m * 0.21}})
+	var tex := await Mascot3DBaker.bake(root, {"color": PALETTE[index], "style": st}, poses, px, _shading)
+	for m in names.size():
+		var col := m % 5
+		var row := m / 5
+		var x := 200.0 + col * 380.0 + row * 190.0
+		var feet := Vector2(x, 470.0 + row * 470.0)
+		c.labels.append([names[m], feet + Vector2(0, 40), 28, UiTheme.INK, 0])
+		c.sprites.append([tex.get(names[m]), feet, float(px), 0.0, true])
+
+
+## Celda de la maqueta (1688×932): columna col (0 Normal … 9 Aterriza) y fila slot (1P–4P).
+static func ref_cell(col: int, slot: int) -> Rect2:
+	return Rect2(92.0 + col * 153.4, 158.0 + slot * 181.0, 145.0, 170.0)
+
+
+## Revisión de detalle de una mascota: arriba, maqueta y 3D grandes y a la
+## misma escala (Normal y Feliz); abajo, las 4 a tamaño de juego (celda de 116 px).
+## En la maqueta, de la coronilla a la suela hay ~136 px de 170: la 3D se
+## escala para medir lo mismo (9,6 unidades del mundo).
+func _ref(c: _Canvas, slot: int) -> void:
+	c.title = "Maqueta vs. 3D · %s" % UiTheme.player_tag(slot)
+	var ref := Image.load_from_file(ProjectSettings.globalize_path(REFERENCE))
+	var ref_tex: Texture2D = ImageTexture.create_from_image(ref)
+	var k := 3.0                        # Escala de los recortes grandes.
+	var feet_y := 120.0 + 157.0 * k     # Suela de la maqueta en el recorte (157 de 170).
+	var px := int(round(136.0 * k * Mascot3DBaker.CELL_WORLD / 9.6))
+	var tex := await Mascot3DBaker.bake(root, {"color": Protocol.player_color(slot), "style": slot}, ["normal", "happy"], px, _shading)
+	var cols := [[0, "normal"], [3, "happy"]]
+	for i in 2:
+		var src := ref_cell(cols[i][0], slot)
+		var x0 := 20.0 + i * 950.0
+		var dst := Rect2(x0, 120.0, src.size.x * k, src.size.y * k)
+		c.calls.append(func(ci: CanvasItem) -> void: ci.draw_texture_rect_region(ref_tex, dst, src))
+		c.sprites.append([tex.get(cols[i][1]), Vector2(x0 + dst.size.x + 240.0, feet_y), float(px), 0.0, true])
+	# Tamaño de juego: maqueta achicada a la misma altura que la 3D en una celda de 116 px.
+	var small := 116
+	var ks := (9.6 * small / Mascot3DBaker.CELL_WORLD) / 136.0
+	for s in 4:
+		var st := await Mascot3DBaker.bake(root, {"color": Protocol.player_color(s), "style": s}, ["normal", "happy"], small, _shading)
+		for i in 2:
+			var src := ref_cell(cols[i][0], s)
+			var x := 60.0 + (s * 2 + i) * 230.0
+			var dst := Rect2(x, 915.0 - 157.0 * ks, src.size.x * ks, src.size.y * ks)
+			c.calls.append(func(ci: CanvasItem) -> void: ci.draw_texture_rect_region(ref_tex, dst, src))
+			c.sprites.append([st.get(cols[i][1]), Vector2(x + dst.size.x + 50.0, 915.0), float(small), 0.0, true])
 
 
 ## Mancha redonda que se desvanece hacia el borde (sombra en el piso).

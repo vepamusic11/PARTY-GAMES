@@ -23,14 +23,14 @@ Comparación directa (mismas 4 mascotas, "Normal" y "Feliz"; arriba recortes de 
 
 | Archivo | Qué hace |
 |---|---|
-| `mascot_3d.gd` (`Mascot3D`) | Arma la mascota con primitivas: cabeza (esfera achatada), cara blanca (almohadilla que sigue la superficie de la cabeza), ojos ovalados con dos reflejos, cuerpo (superficie de revolución más ancha abajo) con gema, brazos cápsula, piernas y zapatos, y los 7 accesorios (antena, oso, gato, brote, robot, cuernos, conejo). `apply(mood, anim)` recibe las mismas claves que `PlayerAvatar.draw_mascot` (`t`, `walk`, `look`, `squash`, `wave`) más `blink` y `bob`. Ojos y bocas de cada ánimo son mallas que se prenden y apagan. |
-| `mascot3d_meshes.gd` | Recetas de mallas por código: esfera, torno (`lathe`), tubo con radio variable (antena, cuernos que se afinan, arcos de los ojos felices, cejas), figura plana con espesor (bocas) y la almohadilla de la cara. En caché: todas las mascotas comparten buffers. |
-| `toy_plastic.gdshader` | Plástico de juguete: rampa sombra→color→luz (mismos colores que la 2D), relleno, rebote del piso, contraluz, brillo nítido y brillo de barniz. Sin luces reales. |
-| `ink_outline.gdshader` | Contorno por casco invertido, inflado en el plano de la pantalla y medido en unidades del mundo: 3 u como en 2D, a cualquier resolución. |
-| `mascot3d_baker.gd` (`Mascot3DBaker`) | `bake(host, look, poses, cell_px) -> Dictionary[String, Texture2D]`: hornea las poses en un atlas (una grilla, un render, supersampling 2×). `POSES` y `GAME_POSES` traen las poses con nombre; `feet_offset()` dice dónde quedan los pies en la celda. `Job`: el mismo horneado repartido en cuadros (lo usa `MascotAtlas`). |
+| `mascot_3d.gd` (`Mascot3D`) | Arma la mascota con primitivas: cabeza (esfera achatada) con la cara blanca pintada en su material, ojos negros brillantes con dos reflejos, cuerpo (superficie de revolución más ancha abajo) con la gema que brilla, brazos, piernas y zapatos, y los 7 accesorios (antena, oso, gato, brote, robot, cuernos, conejo). `apply(mood, anim)` recibe las mismas claves que `PlayerAvatar.draw_mascot` (`t`, `walk`, `look`, `squash`, `wave`, `dance` + `dance_kind`, `defeat`, `greet`, `flop`) más `blink`, `bob` y `lift`, con los 9 ánimos. `pose()` / `pose_lift()` dan los números de la pose sin armar la mascota. Ojos, bocas y efectos de cada ánimo son mallas que se prenden y apagan. |
+| `mascot3d_meshes.gd` | Recetas de mallas por código: esfera, torno (`lathe`), tubo con radio variable (antena, cuernos que se afinan, arcos de los ojos felices, cejas, espirales, la Z de dormir), figura plana con espesor (bocas, dientes, estrellas) y puntos/normales del elipsoide de la cabeza para apoyar la cara. En caché: todas las mascotas comparten buffers. |
+| `toy_plastic.gdshader` | Plástico de juguete: rampa sombra→color→luz con sombras de color, relleno, rebote del piso, borde profundo, contraluz celeste, reflejo del cielo, reflejo nítido "pintado" y brillo de barniz; la cara pintada en la cabeza y la sombra de la cabeza sobre el pecho. Sin luces reales. |
+| `ink_outline.gdshader` | Contorno por casco invertido, inflado en el plano de la pantalla y medido en unidades del mundo (~2 u), más fino del lado de la luz y más grueso del de la sombra, con un mínimo en píxeles para las mascotas chicas. |
+| `mascot3d_baker.gd` (`Mascot3DBaker`) | `bake(host, look, poses, cell_px) -> Dictionary[String, Texture2D]`: hornea las poses en un atlas (una grilla, un render, supersampling 2×). `POSES` y `GAME_POSES` traen las poses con nombre; `feet_offset()` dice dónde quedan los pies en la celda. |
 | `mascot_atlas.gd` (`MascotAtlas`) | Caché de cuadros horneados por apariencia (color + estilo) y tamaño, con presupuesto de memoria. `PlayerAvatar.draw_mascot` le pide el cuadro de cada pose y, si no está, dibuja la 2D. Ver "Integración". |
 | `mascot3d_live.gd` (`Mascot3DLive`) | Camino "en vivo": `Sprite2D` con su propio `SubViewport` 3D que se renderiza en cada cuadro. |
-| `tools/mascot3d_sheet.gd` | Hojas: mismas columnas que `tools/character_sheet.gd` (y `--styles`, `--closeup`, `--compare`, `--standard`, `--all=DIR`). |
+| `tools/mascot3d_sheet.gd` | Hojas: mismas columnas que `tools/character_sheet.gd` (y `--styles`, `--closeup`, `--compare`, `--expressions`, `--moods=N`, `--ref=N`, `--standard`, `--all=DIR`). |
 | `tools/mascot3d_benchmark.gd` | Mide 2D vs 3D en vivo vs horneado, y el horneado. |
 
 El juego ya lo usa en todas las pantallas (ver "Integración"). El test `test_mascot3d_prototype` arma todas las combinaciones de estilo y ánimo y ejerce el horneado (sin pantalla solo verifica que arma la escena); los `test_mascot_atlas_*` cubren el caché, las poses, los tamaños y el encuadre.
@@ -56,11 +56,49 @@ Convención con `Mascot3D` (para quien cambie el modelo): el baker pasa en `anim
 - **Contornos que siguen la pose:** los brazos por delante del cuerpo, la oreja por detrás de la cabeza, sin reordenar nada a mano.
 - **Consistencia:** los 7 estilos × 10 colores salen del mismo material; blanco y negro se leen gracias al contraluz y al borde de la cara.
 
-### Lo que todavía no alcanza a la maqueta
+### Calidad: al nivel de la maqueta (27/09/2026)
 
-- La maqueta tiene reflejos "pintados" (bandas de luz, reflejo del cielo) y una textura de plástico que un shader simple no copia del todo.
-- Los ojos y la boca felices son tubos: se ven bien, pero un ilustrador los dibujaría con más intención (grosor variable).
-- Sin sombras propias (la cabeza no oscurece el cuerpo): se aproxima con el rebote y la rampa. Se podría hornear oclusión ambiental más adelante.
+Después de aceptar el ADR 0012 ("las mascotas en 3D como en las maquetas o mejor") se comparó la 3D con la maqueta recorte por recorte, grande y a tamaño de juego, y se ajustaron material, contorno, mallas, proporciones, cara y poses.
+
+| Imagen | Qué muestra |
+|---|---|
+| `docs/img/mascotas_3d_detalle.png` | Maqueta y 3D a la misma escala (2P, Normal y Feliz) y abajo las 4 a tamaño de juego (celda de 116 px) |
+| `docs/img/mascotas_3d_comparacion.png` | Maqueta · 2D actual · 3D, las 4 mascotas en Normal y Feliz |
+| `docs/img/mascotas_3d.png` | Hoja de personajes (mismas columnas que la maqueta) |
+| `docs/img/mascotas_3d_expresiones.png` | Los 9 ánimos y, en fases, los tres bailes, la derrota y el saludo |
+| `docs/img/mascotas_3d_estilos.png` | 7 estilos × 10 colores (blanco, negro y grafito incluidos) |
+| `docs/img/mascotas_3d_cerca.png` | Grandes (lobby, podio) y chicas (juegos) |
+
+La versión anterior de las imágenes quedó en el historial (commit `6c4e5c2`).
+
+**Qué cambió y por qué** (cada punto, contra algo concreto de la maqueta):
+
+- **Colores vivos y sombras de color** (`Mascot3D.vivid`, `plastic_ramp`). La maqueta es un juguete saturado: su rojo iluminado es ~#F53047 y el nuestro era #E24B4A apagado. Ahora el plástico sube saturación y brillo sin cambiar el tono (el jugador sigue siendo "el rojo"), la sombra es un carmín más saturado y un poco más frío, y la parte iluminada sigue saturada: el blanco queda solo para los reflejos. *Ejemplo:* medido en la hoja, el costado iluminado de la cabeza roja pasó de rosa lavado (#FFBCB7) a rojo vivo.
+- **Reflejo "pintado" y barniz.** El reflejo nítido tiene borde recortado (como lo pinta un ilustrador) y se estira siguiendo la curva de la pieza; el barniz es un brillo ancho y suave aparte. Se sumaron el **reflejo del cielo** (una banda clara pegada al borde, abajo a la derecha) y el **borde profundo** (hacia la silueta el plástico se vuelve más oscuro y saturado): eso da la sensación de "barniz grueso" de la maqueta.
+- **Cara pintada en la cabeza.** Antes la cara era otra malla apoyada sobre la cabeza y su borde se veía serruchado de cerca (dos superficies facetadas que se cruzan). Ahora es una zona del material de la cabeza: una elipse vista de frente, recortada por píxel. *Ejemplo:* en `mascotas_3d_detalle.png` el borde de la cara es una curva limpia a 600 px. Tiene la sombra de la capucha arriba y un labio de luz afuera, como la maqueta, y es una malla menos por mascota.
+- **Proporciones de la maqueta** (medidas sobre el recorte del oso): cabeza de ~3/4 del alto y casi el doble de ancha que el cuerpo; cara más ancha que alta y más baja; ojos más grandes y más separados; cuerpo más bajo, con la sombra de la cabeza en el pecho; zapatos más chicos, casi escondidos.
+- **Ojos, cachetes, boca y gema.** Ojos negros con el reflejo del shader más dos reflejos blancos pintados; cachetes rosados que se funden con la cara (el color pasa a blanco hacia el borde del cachete, sin transparencias); boca en D con borde de tinta, interior rojo oscuro y lengua; gema de un tono vecino al del jugador (rojo -> dorada, azul -> celeste, como en la maqueta) con centro claro y un halo que tiñe el plástico de alrededor.
+- **Contorno más fino, con intención y que no se pierde de chico.** ~2 u en vez de 3, más fino del lado de la luz y más grueso del de la sombra (lo que hace un ilustrador a mano), con un mínimo en píxeles: a 116 px sigue midiendo ~1,3 px.
+- **Brazos que saludan hacia afuera.** En la maqueta, al festejar, las manos quedan afuera de la cabeza a la altura del mentón. Los brazos levantados ahora van hacia afuera y se estiran un poco; si igual quedarían tapados, pasan por delante (`_aim_arm`).
+- **Paridad total con `PlayerAvatar`:** los 9 ánimos (enojada con venita, mareada con espirales y estrellitas, dormida con Z y globito, ganadora con ojos de estrella y destellos, riendo con lágrimas) y todas las claves de `anim`. *Pose por capas*: `Mascot3D.pose()` calcula los mismos números que la 2D (inclinación, brazos, salto, giro…) y `apply()` los lleva a los nodos. En 3D el baile "Giro" da una vuelta de verdad (se ve la nuca) y la inercia (`flop`) dobla orejas, antena y hojas desde su base.
+- **Caras perezosas:** ojos y bocas de los ánimos nuevos se arman la primera vez que se piden. Un horneado de juego (`GAME_POSES`) no los usa y no los paga.
+
+**Lo que queda distinto (a propósito):** los tonos de amarillo (#EF9F27, más naranja) y verde (#1D9E75, más turquesa) son los de la paleta del juego (`Protocol.MASCOT_COLORS`, ADR 0007), no los de la maqueta: cambiarlos es una decisión de identidad, no del render. Tampoco hay sombras proyectadas reales (la sombra del pecho está "pintada").
+
+**Para el horneado** (`mascot3d_baker.gd`, lo integra otro PR): el salto propio de algunas poses (saltitos, giro, risa) va dentro del cuadro; con `anim["lift"] = false` se hornea sin él y `Mascot3D.pose_lift()` dice cuánto sumar en 2D (y cuánto achicar la sombra), como hace `--expressions`. Con `anim["in_place"] = true` tampoco se hornea nada que mueva la mascota entera (squash & stretch, inclinación, respiración, rebote del paso) y con `anim["fx"] = false` se apagan los efectos alrededor de la cabeza (`fx_*`: estrellitas, Z y globito, destellos, venita): los dibuja la 2D encima del sprite. Así, la mascota entra en ~11,1 × 12,2 unidades del mundo con contorno (el ancho máximo es el gato derrotado, con las orejas caídas hacia afuera). La sombra en el piso sigue siendo 2D (mancha difusa; en las hojas, un poco más ancha que antes).
+
+**Costo** (`tools/mascot3d_benchmark.gd`, mismo contenedor, antes y después en la misma sesión):
+
+| | Antes | Después |
+|---|---:|---:|
+| Horneado de juego, 4 jugadores (21 poses × 116 px) | 0,84–0,88 s | 0,97–1,02 s |
+| … de eso, armar la escena / render | 0,16–0,18 / 0,62–0,64 s | 0,20–0,22 / 0,71–0,73 s |
+| Horneado de lobby, 4 jugadores (10 × 519 px) | 2,07 s | 2,31 s |
+| Memoria de los atlas | 7,0 / 49,3 MB | igual |
+| Horneado: CPU de scripts por cuadro (4 mascotas) | 0,34 ms | 0,32 ms |
+| En vivo: scripts por cuadro / draw calls | 0,81 ms / 142 | 1,06 ms / 145 |
+
+El horneado cuesta ~15 % más (la cabeza tiene más polígonos para que el borde se vea redondo de cerca y el shader hace más cuentas por píxel), y sigue siendo una vez por jugador al empezar la partida. Jugando no cambia nada: se dibuja un sprite. Las mallas siguen compartidas entre todas las mascotas, sin luces reales y con un solo shader de plástico.
 
 ## Rendimiento
 

@@ -1107,6 +1107,50 @@ func test_tick_countdown() -> void:
 	game.free()
 
 
+## Mascota 3D: paridad con PlayerAvatar en todos los ánimos y animaciones
+## (cara de cada ánimo, bailes, derrota, saludo) y datos raros que no rompen.
+func test_mascot3d_all_moods() -> void:
+	var M := PlayerAvatar.Mood
+	var faces := {M.ANGRY: ["brows_angry", "eyes_angry", "fx_angry", "mouth_angry"],
+		M.DIZZY: ["eyes_dizzy", "fx_dizzy", "mouth_dizzy"], M.SLEEPY: ["eyes_sleepy", "fx_sleepy", "mouth_sleepy"],
+		M.WINNER: ["eyes_winner", "fx_winner", "mouth_big"], M.LAUGHING: ["eyes_laugh", "mouth_big", "tears_laugh"]}
+	var m := Mascot3D.new().setup(Protocol.MASCOT_COLORS[7], PlayerAvatar.STYLE_BUNNY)
+	root.add_child(m)
+	var base := m.mesh_count()
+	for mood: int in faces:
+		m.apply(mood, {"t": 0.7})
+		check(m.visible_features() == faces[mood], "ánimo %d: cara %s" % [mood, m.visible_features()])
+	check(m.mesh_count() > base, "las caras de los ánimos nuevos se arman recién cuando se piden")
+	m.apply(M.ANGRY, {"t": 3.3 * 3.0 + 0.05 - PlayerAvatar.STYLE_BUNNY * 1.37})  # Justo en un parpadeo.
+	check("eyes_blink" in m.visible_features() and "brows_angry" in m.visible_features(), "enojada también parpadea")
+	# Bailes: saltitos sube, giro da vuelta la mascota, brazos arriba levanta las manos.
+	var hops := {"t": 10.25, "dance": 1.0, "dance_kind": PlayerAvatar.DANCE_HOPS}
+	check(Mascot3D.pose_lift(M.HAPPY, hops, 6) > 10.0, "saltitos: la pose sube (%.1f u)" % Mascot3D.pose_lift(M.HAPPY, hops, 6))
+	m.apply(M.HAPPY, hops)
+	var up: float = (m.get_child(0).get_child(0) as Node3D).position.y
+	m.apply(M.HAPPY, hops.merged({"lift": false}))
+	check(up > 1.0 and (m.get_child(0).get_child(0) as Node3D).position.y < 0.5, "lift = false deja el salto para el 2D")
+	m.apply(M.HAPPY, hops.merged({"in_place": true}))
+	var sq_node := m.get_child(0) as Node3D
+	check(sq_node.basis.is_equal_approx(Basis.IDENTITY) and (sq_node.get_child(0) as Node3D).position.y == 0.0,
+		"in_place: ni salto ni squash (los pone la 2D)")
+	m.apply(M.DIZZY, {"t": 0.5, "fx": false})
+	check(m.visible_features() == ["eyes_dizzy", "mouth_dizzy"], "fx = false: sin estrellitas (%s)" % [m.visible_features()])
+	var spin := Mascot3D.pose(M.WINNER, {"t": 0.25, "dance": 1.0, "dance_kind": PlayerAvatar.DANCE_SPIN}, 1)
+	check(spin.spin > 1.0, "giro: da vuelta de verdad (%.2f rad)" % spin.spin)
+	var arms := Mascot3D.pose(M.HAPPY, {"t": 0.3, "dance": 1.0, "dance_kind": PlayerAvatar.DANCE_ARMS}, 2)
+	check(arms.arm_l > 1.6 and arms.arm_r > 1.6, "brazos arriba")
+	var sad := Mascot3D.pose(M.SAD, {"t": 1.0, "defeat": 1.0}, 0)
+	check(sad.head_dy > 3.0 and sad.arm_l < 0.2 and sad.look.y > 0.5, "derrota: cabeza gacha, brazos caídos, mira al piso")
+	var hello := Mascot3D.pose(M.HAPPY, {"t": 1.0, "greet": 1.0}, 0)
+	check(hello.arm_r > 1.5 and hello.arm_l < 1.0, "saludo con una sola mano")
+	# Todo junto y datos raros: no rompe ni da vuelta la mascota.
+	m.apply(99, {"t": -3.0, "dance": 7.0, "dance_kind": 42, "defeat": -1.0, "greet": 9.0, "flop": 99.0, "squash": -9.0})
+	var sy: float = (m.get_child(0) as Node3D).scale.y
+	check(sy > 0.5 and sy < 1.5, "ánimo y valores fuera de rango se recortan")
+	m.free()
+
+
 # --- Competencia ------------------------------------------------------------------
 
 func test_tournament_rank() -> void:
