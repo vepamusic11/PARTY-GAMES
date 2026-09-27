@@ -2149,7 +2149,7 @@ func test_bot_skill() -> void:
 	var t := 0.0
 	while not game.is_finished() and t < 400.0:
 		driver.step(BotMatch.STEP)
-		game._physics_process(BotMatch.STEP)
+		game.simulate_frame(BotMatch.STEP)
 		t += BotMatch.STEP
 	var points: int = game._score[1] + game._score[2]
 	var returns: int = taps[1] + taps[2]
@@ -2196,7 +2196,7 @@ func test_bot_driver_only_moves_bots() -> void:
 	check(driver.bots.size() == 1 and driver.bots[0].player_id == 2, "un bot, solo para el jugador bot")
 	for i in 60:
 		driver.step(BotMatch.STEP)
-		game._physics_process(BotMatch.STEP)
+		game.simulate_frame(BotMatch.STEP)
 	check(game._axis[1] == Vector2.ZERO, "la persona no se mueve sola")
 	check((game._axis[2] as Vector2).length() > 0.2, "el bot mueve su joystick")
 	driver.stop()
@@ -2337,7 +2337,7 @@ func test_competition_one_human_three_bots() -> void:
 			var input := Protocol.parse_input({"seq": seq, "axis": [cos(t), sin(t * 1.3)], "btn": int(t * 6.0) % 2})
 			host._on_input(1, input)
 			host.bots.step(BotMatch.STEP)
-			game._physics_process(BotMatch.STEP)
+			game.simulate_frame(BotMatch.STEP)
 			t += BotMatch.STEP
 		rounds += 1
 		if not check_that(host._summary.visible, "resumen de la ronda %d (%.0f s)" % [rounds, t]):

@@ -113,6 +113,17 @@ static func result_from_scores(scores: Dictionary, summary: String = "") -> Dict
 	return {"winners": winners, "scores": scores.duplicate(), "summary": summary}
 
 
+## Un cuadro completo sin depender del reloj del motor: la lógica
+## (_physics_process) y lo que avanza con el tiempo de pantalla (_process: la
+## cuenta del festejo final, animaciones). Lo usan las simulaciones de bots y
+## los tests, que avanzan el juego a mano y más rápido que el tiempo real;
+## si solo llamaran a _physics_process, un juego con finish_after() no
+## terminaría nunca.
+func simulate_frame(delta: float) -> void:
+	_physics_process(delta)
+	_process(delta)
+
+
 func _process(delta: float) -> void:
 	anim_time += delta
 	if _finale_left >= 0.0:

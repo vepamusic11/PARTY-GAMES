@@ -53,7 +53,7 @@ static func run(parent: Node, game_id: String, players: Array[Dictionary], max_s
 		var t0 := Time.get_ticks_usec()
 		driver.step(STEP)
 		bot_ms.append((Time.get_ticks_usec() - t0) / 1000.0)
-		game._physics_process(STEP)
+		game.simulate_frame(STEP)
 		t += STEP
 	var out := {
 		"finished": game.is_finished(), "seconds": t, "result": result,
