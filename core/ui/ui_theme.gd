@@ -1108,3 +1108,43 @@ const MASCOT_SHOE := Color("#262B4D")        ## Zapatos.
 const MASCOT_EAR_INNER := Color("#EE5A32")   ## Interior de las orejas de gato.
 const MASCOT_BUNNY_INNER := Color("#FFB3C7") ## Interior de las orejas de conejo.
 const MASCOT_METAL := Color("#C3CADB")       ## Piezas de metal del robot.
+
+# --- Juegos (agente) ------------------------------------------------------------
+# Tokens del arte de los minijuegos (host/minigames/game_art.gd): escenario de
+# juguetes desenfocado, tablero con volumen, marcador con píldoras por jugador,
+# globito 1P–4P sobre la mascota y brillo de los power-ups.
+
+## Escenario detrás del tablero (se dibuja una vez y se desenfoca).
+const STAGE_FLOOR := Color("#5FA8EE")
+const STAGE_FLOOR_ALT := Color("#86C3F6")
+const STAGE_CLOUD := Color("#F2F9FF")
+## Tablero: sombra proyectada, marco de bloques con bisel y baldosas con relieve.
+const BOARD_SHADOW := Color(0.03, 0.1, 0.32, 0.42)
+const BOARD_FRAME := 40.0        ## Grosor del marco de bloques.
+const BOARD_DEPTH := 16.0        ## Canto de abajo (el tablero "flota").
+const BOARD_CORNER := 64.0       ## Bloque con estrella de cada esquina.
+const BOARD_BRICK := 112.0       ## Largo aproximado de cada bloque del marco.
+const TILE_GROUT := Color("#C9D2E6")   ## Junta entre baldosas.
+const TILE_GAP := 2.0
+const TILE_LIP := 5.0            ## Cara de abajo de la baldosa (relieve).
+const TILE_CHAMFER := 4.0      ## Esquinas ochavadas de las baldosas.
+const TILE_SHINE := Color(1, 1, 1, 0.7)
+const TILE_SHADE := 0.08         ## Cuánto se oscurece la cara de abajo de una baldosa.
+## Marcador de los juegos: píldora [1P | mascota | puntaje] y reloj central.
+const HUD_PILL := Vector2(264, 70)
+const HUD_CLOCK_H := 78.0
+const HUD_TOP := 14.0
+const HUD_GAP := 18.0
+const HUD_TAG_SIZE := 32
+const HUD_SCORE_SIZE := 40
+const HUD_CLOCK_SIZE := 46
+const HUD_PORTRAIT := Vector2(84, 104)   ## Mascota dentro de la píldora (px lógicos).
+## Globito con la etiqueta 1P–4P sobre la cabeza de la mascota.
+const TAG_BUBBLE := Vector2(62, 38)
+const PLAYER_NAME_SIZE := 26     ## Etiqueta del globito y nombre (mismo tamaño: se dibujan juntos).
+const TAG_OUTLINE := 6
+## Brillo y halo de power-ups y premios.
+const GLOW := Color("#FFD84A")
+## Mesa de Ping Pong.
+const TABLE_BLUE := Color("#2F6FDB")
+const TABLE_BLUE_DARK := Color("#1F4FB0")

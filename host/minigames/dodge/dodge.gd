@@ -267,11 +267,6 @@ func _draw() -> void:
 		if b.t >= b.fall:
 			var fade := clampf(1.0 - (b.t - b.fall - LINGER_SEC) / FADE_SEC, 0.0, 1.0)
 			_draw_block(self, _ground_rect(b), b.color, fade)
-	# Nombres de los eliminados a opacidad completa: la mascota va translúcida
-	# (capa _ghosts), pero el nombre tiene que seguir leyéndose.
-	for p in players:
-		if _out_time.has(p.id):
-			draw_text_centered(p.name, (_pos[p.id] as Vector2) + Vector2(0, NAME_OFFSET), 26, UiTheme.PAPER, 6)
 	# Mascotas en pie: de arriba hacia abajo (la de más abajo queda adelante).
 	var order := players.filter(func(p: Dictionary) -> bool: return not _out_time.has(p.id))
 	order.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return (_pos[a.id] as Vector2).y < (_pos[b.id] as Vector2).y)
@@ -283,8 +278,11 @@ func _draw() -> void:
 			mood = PlayerAvatar.Mood.SURPRISED
 		PlayerAvatar.draw_mascot(self, feet, MASCOT_SCALE, p.color, PlayerAvatar.style_of(p), mood, 0.0, 0.0, false,
 			mascot_anim(p.id, _axis[p.id]))
-		draw_text_centered(p.name, feet + Vector2(0, NAME_OFFSET), 26, UiTheme.PAPER, 6)
-	draw_hud(_live_scores(), clock_text(DURATION_SEC - _elapsed))
+	# Globitos y nombres de todos, también de los eliminados y a opacidad
+	# completa: la mascota va translúcida (capa _ghosts), pero quién es tiene
+	# que seguir leyéndose.
+	draw_player_tags(players.map(func(p: Dictionary) -> Array: return [p, _pos[p.id], MASCOT_SCALE, NAME_OFFSET]))
+	draw_hud(_live_scores(), clock_text(DURATION_SEC - _elapsed), "clock")
 	if _countdown > 0.0:
 		draw_text_centered("%d" % ceili(_countdown), SCREEN / 2.0, 260, UiTheme.PAPER, 22)
 	elif _countdown > -GO_SEC:

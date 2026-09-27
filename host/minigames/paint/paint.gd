@@ -54,12 +54,8 @@ const POP_SEC := 0.18             ## Animación al pintar una baldosa.
 const PAINT_SOFTEN := 0.5         ## Cuánto se aclara el color del jugador.
 const PATTERN_WIDTH := 7.0
 const DOT_RADIUS := 7.5
-## Muestra del patrón debajo de cada chip del marcador (mismas medidas que draw_hud).
-const HUD_CHIP_W := 230.0
-const HUD_CENTER_W := 250.0
-const HUD_GAP := 16.0
-const LEGEND_Y := 92.0
-const LEGEND_SIZE := 44.0
+## Muestra del patrón debajo de cada píldora del marcador.
+const LEGEND_SIZE := 40.0
 
 var _state := State.COUNTDOWN
 var _countdown := COUNTDOWN_SEC
@@ -85,9 +81,9 @@ var _rng := RandomNumberGenerator.new()
 var _fill: Dictionary = {}        # player_id -> Color suave
 var _mark: Dictionary = {}        # player_id -> Color del patrón
 var _pattern: Dictionary = {}     # player_id -> Pattern
-var _stripes := PackedVector2Array()  # segmentos en coordenadas de una baldosa
-var _grid_lines := PackedVector2Array()
-var _dots := PackedVector2Array()
+## Baldosa de cada jugador ya armada (relieve + patrón) como triángulos en
+## coordenadas locales: [PackedVector2Array, PackedColorArray] (GameArt.tile_template).
+var _tile: Dictionary = {}        # player_id -> Array
 var _floor: Array[Node2D] = []            # una capa por fila con las baldosas quietas (ver _draw_tiles)
 var _floor_tiles: Array[PackedInt32Array] = []  # lo que muestra cada fila: dueño por baldosa
 
@@ -155,7 +151,7 @@ func setup(p_players: Array[Dictionary]) -> void:
 		_fill[pid] = col.lerp(UiTheme.PAPER, PAINT_SOFTEN)
 		_mark[pid] = col
 		_pattern[pid] = posmod(p.slot, 4)
-	_build_patterns()
+		_tile[pid] = GameArt.tile_template(CELL, _fill[pid], col, _pattern[pid], PATTERN_WIDTH, DOT_RADIUS)
 
 
 func on_input(player_id: int, input: Dictionary) -> void:
@@ -290,40 +286,10 @@ func _check_pickup() -> void:
 
 # --- Dibujo ---------------------------------------------------------------------
 
-## Patrones en coordenadas de una baldosa (0..CELL), calculados una sola vez.
-func _build_patterns() -> void:
-	var inset := PATTERN_WIDTH / 2.0 + 1.0
-	var a := inset
-	var b := CELL - inset
-	var span := b - a
-	# Rayas diagonales: rectas x + y = c recortadas al cuadrado [a, b].
-	_stripes.clear()
-	for k in range(1, 8):
-		var c := span * k / 4.0
-		if c <= span:
-			_stripes.append(Vector2(a + c, a))
-			_stripes.append(Vector2(a, a + c))
-		else:
-			_stripes.append(Vector2(b, a + c - span))
-			_stripes.append(Vector2(a + c - span, b))
-	# Cuadritos: dos líneas verticales y dos horizontales (cuadriculado).
-	_grid_lines.clear()
-	for t in [CELL / 3.0, CELL * 2.0 / 3.0]:
-		_grid_lines.append(Vector2(t, a))
-		_grid_lines.append(Vector2(t, b))
-		_grid_lines.append(Vector2(a, t))
-		_grid_lines.append(Vector2(b, t))
-	# Puntos: el cinco del dado.
-	_dots.clear()
-	for p in [Vector2(0.25, 0.25), Vector2(0.75, 0.25), Vector2(0.5, 0.5), Vector2(0.25, 0.75), Vector2(0.75, 0.75)]:
-		_dots.append(p * CELL)
-
-
 func _draw() -> void:
 	draw_sky()
 	draw_play_field(FIELD, CELL)
 	_draw_tiles()
-	_draw_grid()
 	if not _powerup.is_empty():
 		_draw_powerup()
 	# Mascotas de arriba hacia abajo (la de más abajo queda adelante).
@@ -332,8 +298,9 @@ func _draw() -> void:
 	var best := _best_score()
 	for p in order:
 		_draw_player(p, best)
-	draw_hud(_tiles, clock_text(_time_left))
-	_draw_legend()
+	# Globitos 1P–4P y nombres encima de todas las mascotas.
+	draw_player_tags(order.map(func(p: Dictionary) -> Array: return [p, _pos[p.id], MASCOT_SCALE, NAME_OFFSET]))
+	draw_hud(_tiles, clock_text(_time_left), "clock")
 	if _state == State.COUNTDOWN:
 		draw_text_centered("%d" % ceili(_countdown), SCREEN / 2.0, 260, UiTheme.PAPER, 22)
 	elif _state == State.PLAYING and _countdown > -GO_SEC:
@@ -352,12 +319,13 @@ func _draw_tiles() -> void:
 	if _floor.is_empty():
 		for y in ROWS:
 			var layer := Node2D.new()
-			layer.show_behind_parent = true  # Detrás de lo que dibuja _draw (grilla, mascotas…).
+			layer.show_behind_parent = true  # Detrás de lo que dibuja _draw (power-up, mascotas…).
 			layer.draw.connect(_draw_floor_row.bind(y))
 			add_child(layer, false, Node.INTERNAL_MODE_FRONT)
 			_floor.append(layer)
 			_floor_tiles.append(PackedInt32Array())
 	var still := _owner.duplicate()
+	var popping := GameArt.TriBatch.new()
 	for y in ROWS:
 		for x in COLS:
 			var i := y * COLS + x
@@ -371,9 +339,8 @@ func _draw_tiles() -> void:
 			still[i] = EMPTY
 			var s := lerpf(0.55, 1.0, 1.0 - (1.0 - k) * (1.0 - k))
 			var origin := FIELD.position + Vector2(x, y) * CELL + Vector2.ONE * CELL * (1.0 - s) / 2.0
-			draw_set_transform(origin, 0.0, Vector2(s, s))
-			_draw_pattern_local(self, pid)
-	draw_set_transform(Vector2.ZERO)
+			_add_tile(popping, pid, Transform2D(0.0, Vector2(s, s), 0.0, origin))
+	popping.flush(self)
 	for y in ROWS:
 		var row := still.slice(y * COLS, (y + 1) * COLS)
 		if row != _floor_tiles[y]:
@@ -381,52 +348,22 @@ func _draw_tiles() -> void:
 			_floor[y].queue_redraw()
 
 
-## Una fila de baldosas quietas (tamaño normal). Los puntos del patrón de
-## toda la fila van en un solo lote al final (no tocan otras baldosas).
+## Una fila de baldosas quietas (tamaño normal): toda la fila en un solo
+## lote de triángulos (un draw call), armado con las baldosas precalculadas.
 func _draw_floor_row(y: int) -> void:
-	var layer := _floor[y]
 	var tiles := _floor_tiles[y]
-	var dots := UiTheme.ShapeBatch.new()
+	var batch := GameArt.TriBatch.new()
 	for x in tiles.size():
 		var pid := tiles[x]
-		if pid == EMPTY:
-			continue
-		var origin := FIELD.position + Vector2(x, y) * CELL
-		layer.draw_set_transform(origin, 0.0, Vector2.ONE)
-		_draw_pattern_local(layer, pid, dots, origin)
-	layer.draw_set_transform(Vector2.ZERO)
-	dots.flush(layer)
+		if pid != EMPTY:
+			_add_tile(batch, pid, Transform2D(0.0, FIELD.position + Vector2(x, y) * CELL))
+	batch.flush(_floor[y])
 
 
-## Una baldosa del jugador en coordenadas locales (0..CELL). Se usa con
-## draw_set_transform para ubicarla y escalarla. Con `dots`, los puntos van
-## a ese lote (ya corridos a `origin`) en vez de dibujarse uno por uno.
-func _draw_pattern_local(ci: CanvasItem, pid: int, dots: UiTheme.ShapeBatch = null, origin := Vector2.ZERO) -> void:
-	var mark: Color = _mark[pid]
-	ci.draw_rect(Rect2(0, 0, CELL, CELL), _fill[pid])
-	match _pattern[pid]:
-		Pattern.STRIPES:
-			ci.draw_multiline(_stripes, mark, PATTERN_WIDTH)
-		Pattern.DOTS:
-			for d in _dots:
-				if dots != null:
-					dots.circle(d, DOT_RADIUS, mark, origin)
-				else:
-					ci.draw_circle(d, DOT_RADIUS, mark)
-		Pattern.GRID:
-			ci.draw_multiline(_grid_lines, mark, PATTERN_WIDTH)
-
-
-## Líneas finas entre baldosas: se ve la grilla también en las zonas pintadas.
-func _draw_grid() -> void:
-	var line := Color(UiTheme.INK, 0.08)
-	for x in range(1, COLS):
-		var px := FIELD.position.x + x * CELL
-		draw_line(Vector2(px, FIELD.position.y), Vector2(px, FIELD.end.y), line, 2.0)
-	for y in range(1, ROWS):
-		var py := FIELD.position.y + y * CELL
-		draw_line(Vector2(FIELD.position.x, py), Vector2(FIELD.end.x, py), line, 2.0)
-	draw_rect(FIELD, UiTheme.INK, false, 4.0)
+## Baldosa del jugador (relieve y patrón, ver GameArt.tile_template) ubicada con `xform`.
+func _add_tile(batch: GameArt.TriBatch, pid: int, xform: Transform2D) -> void:
+	var tile: Array = _tile[pid]
+	batch.template(tile[0], tile[1], xform)
 
 
 func _draw_powerup() -> void:
@@ -434,14 +371,26 @@ func _draw_powerup() -> void:
 	if life < 1.5 and fmod(_anim, 0.3) < 0.12:
 		return  # Parpadea antes de desaparecer.
 	var c := cell_center(_powerup.cell) + Vector2(0, sin(_anim * 5.0) * 4.0)
-	draw_arc(c, POWER_BADGE + 10.0 + sin(_anim * 8.0) * 3.0, 0.0, TAU, 40, UiTheme.ACCENT, 5.0, true)
-	_draw_power_badge(_powerup.kind, c, 1.0)
+	_draw_power_badge(_powerup.kind, c, 1.0, true)
 
 
-## Círculo blanco con el ícono del power-up: brocha o rayo.
-func _draw_power_badge(kind: int, c: Vector2, u: float) -> void:
-	draw_circle(c, (POWER_BADGE + 4.0) * u, UiTheme.INK)
-	draw_circle(c, POWER_BADGE * u, UiTheme.PAPER)
+## Ficha dorada con el ícono del power-up (brocha o rayo). Con `glow`, halo
+## que late y rayos que giran: se ve de lejos que es un premio.
+func _draw_power_badge(kind: int, c: Vector2, u: float, glow: bool = false) -> void:
+	var r := POWER_BADGE * u
+	var batch := GameArt.TriBatch.new()
+	if glow:
+		GameArt.add_glow(batch, c, r + 44.0, UiTheme.GLOW, _anim)
+	batch.feather_circle(c + Vector2(0, 4.0 * u), r + 9.0 * u, UiTheme.INK)
+	batch.feather_circle(c, r + 9.0 * u, UiTheme.INK)
+	batch.circle(c + Vector2(0, 4.0 * u), r + 9.0 * u, UiTheme.INK, 32)
+	batch.circle(c, r + 9.0 * u, UiTheme.INK, 32)
+	batch.circle(c, r + 6.0 * u, UiTheme.GOLD.darkened(0.2), 32)
+	batch.circle(c + Vector2(0, -1.5 * u), r + 4.5 * u, UiTheme.GOLD, 32)
+	batch.circle(c, r - 1.0 * u, UiTheme.PAPER_DIM, 32)
+	batch.circle(c + Vector2(0, -2.0 * u), r - 3.0 * u, UiTheme.PAPER, 32)
+	batch.ellipse(c + Vector2(-r * 0.45, -r * 0.62), r * 0.3, r * 0.14, Color(1, 1, 1, 0.8), -0.6)
+	batch.flush(self)
 	draw_set_transform(c, -0.6 if kind == PowerUp.BRUSH else 0.0, Vector2(u, u))
 	if kind == PowerUp.BRUSH:
 		_draw_brush_icon()
@@ -498,32 +447,29 @@ func _draw_player(p: Dictionary, best: int) -> void:
 	var anim := mascot_anim(pid, axis)
 	anim["wave"] = mood == PlayerAvatar.Mood.HAPPY
 	PlayerAvatar.draw_mascot(self, feet, MASCOT_SCALE, p.color, PlayerAvatar.style_of(p), mood, 0.0, 0.0, false, anim)
-	draw_text_centered(p.name, feet + Vector2(0, NAME_OFFSET), 26, UiTheme.PAPER, 6)
 	# Power-up activo: ícono chico al costado con el tiempo que le queda.
 	var active := maxf(brush, speed)
 	if active > 0.0:
-		var c := feet + Vector2(50, -70)
-		draw_arc(c, POWER_BADGE * 0.55 + 7.0, -PI / 2.0, -PI / 2.0 + TAU * active / POWER_SEC, 32, UiTheme.ACCENT, 6.0, true)
+		var c := feet + Vector2(56, -64)
 		_draw_power_badge(PowerUp.BRUSH if brush >= speed else PowerUp.SPEED, c, 0.55)
+		# Cuánto le queda: arco blanco sobre el aro dorado.
+		draw_arc(c, POWER_BADGE * 0.55 + 3.0, -PI / 2.0, -PI / 2.0 + TAU * active / POWER_SEC, 32, UiTheme.PAPER, 4.0, true)
 
 
-## Debajo de cada chip del marcador, una muestra del patrón del jugador:
-## así "2P" se asocia a las rayas aunque no se distinga el color.
-func _draw_legend() -> void:
-	var n := players.size()
-	var x := (SCREEN.x - (n * HUD_CHIP_W + HUD_CENTER_W + n * HUD_GAP)) / 2.0
-	var half := ceili(n / 2.0)
+## Debajo de cada píldora del marcador, una muestra del patrón del jugador:
+## así "2P" se asocia a las rayas aunque no se distinga el color. Va en la
+## capa cacheada del marcador (MiniGame._draw_hud_extra): no cuesta por frame.
+func _draw_hud_extra(ci: CanvasItem, player: Dictionary, pill: Rect2) -> void:
+	var pid: int = player.id
+	if not _tile.has(pid):
+		return
 	var s := LEGEND_SIZE / CELL
-	for i in n:
-		if i == half:
-			x += HUD_CENTER_W + HUD_GAP
-		var pid: int = players[i].id
-		var r := Rect2(x + (HUD_CHIP_W - LEGEND_SIZE) / 2.0, LEGEND_Y, LEGEND_SIZE, LEGEND_SIZE)
-		draw_rect(r.grow(4.0), UiTheme.INK)
-		draw_set_transform(r.position, 0.0, Vector2(s, s))
-		_draw_pattern_local(self, pid)
-		draw_set_transform(Vector2.ZERO)
-		x += HUD_CHIP_W + HUD_GAP
+	var r := Rect2(pill.get_center().x - LEGEND_SIZE / 2.0, pill.end.y + 9.0, LEGEND_SIZE, LEGEND_SIZE)
+	var batch := GameArt.TriBatch.new()
+	batch.round_rect(r.grow(4.0), 8.0, UiTheme.INK)
+	batch.rect(r.grow(-1.0), UiTheme.TILE_GROUT)
+	_add_tile(batch, pid, Transform2D(0.0, Vector2(s, s), 0.0, r.position))
+	batch.flush(ci)
 
 
 func _best_score() -> int:

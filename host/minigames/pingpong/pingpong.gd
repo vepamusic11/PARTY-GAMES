@@ -120,16 +120,7 @@ func _reset_ball(dir: int) -> void:
 
 func _draw() -> void:
 	draw_sky()
-	draw_rect(Rect2(0, SCREEN.y * 0.84, SCREEN.x, SCREEN.y * 0.16), Color("#F4F6FB"))
-	# Mesa con patas y sombra
-	UiTheme.draw_round_rect(self, TABLE.grow(22).grow_side(SIDE_BOTTOM, 18), UiTheme.INK, 30)
-	UiTheme.draw_round_rect(self, TABLE.grow(18), Color("#1F4FB0"), 26)
-	draw_rect(TABLE, Color("#2F6FDB"))
-	draw_rect(TABLE, Color.WHITE, false, 6.0)
-	draw_line(Vector2(TABLE.get_center().x, TABLE.position.y), Vector2(TABLE.get_center().x, TABLE.end.y), Color(1, 1, 1, 0.5), 3.0)
-	var net_y := TABLE.get_center().y
-	draw_line(Vector2(TABLE.position.x - 24, net_y), Vector2(TABLE.end.x + 24, net_y), UiTheme.INK, 10.0)
-	draw_line(Vector2(TABLE.position.x - 24, net_y), Vector2(TABLE.end.x + 24, net_y), Color.WHITE, 5.0)
+	draw_static(_draw_table)
 	for pid: int in [_top_id, _bottom_id]:
 		var p := player_by_id(pid)
 		var top := pid == _top_id
@@ -138,17 +129,44 @@ func _draw() -> void:
 		UiTheme.draw_round_rect(self, rect.grow(4), UiTheme.INK, 14)
 		UiTheme.draw_round_rect(self, rect, p.color, 11)
 		# Mascota y nombre al costado de su lado de la mesa
-		var side := Vector2(TABLE.end.x + 250, TABLE.position.y + 260 if top else TABLE.end.y - 90)
+		var side := _mascot_feet(top)
 		# Siguen la pelota con la mirada.
 		var look := (_ball - (side + Vector2(0, -80))).normalized()
 		PlayerAvatar.draw_mascot(self, side, 1.6, p.color, PlayerAvatar.style_of(p),
 			PlayerAvatar.Mood.HAPPY if _score[pid] > _score[_other(pid)] else PlayerAvatar.Mood.NORMAL,
 			0.0, 0.0, false, {"t": anim_time + p.slot, "look": look})
-		draw_text_centered(p.name, side + Vector2(0, 40), 40, UiTheme.PAPER, 8)
 	UiTheme.draw_ellipse(self, _ball + Vector2(6, 10), BALL_RADIUS, BALL_RADIUS * 0.7, Color(0, 0, 0, 0.25))
 	draw_circle(_ball, BALL_RADIUS + 3.0, UiTheme.INK)
 	draw_circle(_ball, BALL_RADIUS, Color.WHITE)
-	draw_hud(_score, "Gana: %d" % POINTS_TO_WIN)
+	draw_hud(_score, "Gana: %d" % POINTS_TO_WIN, "star")
+
+
+## Lo fijo (se dibuja una vez, ver MiniGame.draw_static): la mesa con canto
+## y sombra proyectada (flota sobre el escenario, como el tablero), sus líneas
+## y la red, y el globito 1P–2P y el nombre de cada mascota (no se mueven).
+func _draw_table(ci: CanvasItem) -> void:
+	GameArt.draw_drop_shadow(ci, TABLE.grow(22).grow_side(SIDE_BOTTOM, 18))
+	UiTheme.draw_round_rect(ci, TABLE.grow(22).grow_side(SIDE_BOTTOM, 18), UiTheme.INK, 30)
+	UiTheme.draw_round_rect(ci, TABLE.grow(18).grow_side(SIDE_BOTTOM, 10), UiTheme.TABLE_BLUE_DARK.darkened(0.35), 26)
+	UiTheme.draw_round_rect(ci, TABLE.grow(18), UiTheme.TABLE_BLUE_DARK, 26)
+	ci.draw_rect(TABLE, UiTheme.TABLE_BLUE)
+	ci.draw_rect(TABLE, UiTheme.PAPER, false, 6.0)
+	ci.draw_line(Vector2(TABLE.get_center().x, TABLE.position.y), Vector2(TABLE.get_center().x, TABLE.end.y), Color(UiTheme.PAPER, 0.5), 3.0)
+	var net_y := TABLE.get_center().y
+	ci.draw_line(Vector2(TABLE.position.x - 24, net_y), Vector2(TABLE.end.x + 24, net_y), UiTheme.INK, 10.0)
+	ci.draw_line(Vector2(TABLE.position.x - 24, net_y), Vector2(TABLE.end.x + 24, net_y), UiTheme.PAPER, 5.0)
+	var tags: Array = []
+	for pid: int in [_top_id, _bottom_id]:
+		var p := player_by_id(pid)
+		var side := _mascot_feet(pid == _top_id)
+		tags.append([p.slot, p.color, p.name, side, 1.6, -1.0, 1.0])
+		UiTheme.draw_text(ci, p.name, side + Vector2(0, 40), 40, UiTheme.PAPER, 8, UiTheme.INK)
+	GameArt.draw_player_tags(ci, tags)
+
+
+## Dónde apoya la mascota de cada lado: al costado de su mitad de la mesa.
+static func _mascot_feet(top: bool) -> Vector2:
+	return Vector2(TABLE.end.x + 250, TABLE.position.y + 260 if top else TABLE.end.y - 90)
 
 
 func _other(pid: int) -> int:

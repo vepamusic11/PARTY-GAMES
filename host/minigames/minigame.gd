@@ -24,11 +24,14 @@ var _walk: Dictionary = {}   # player_id -> fase de caminata (vueltas)
 
 # Capas cacheadas (ver "Capas cacheadas" más abajo): fondo y marcador.
 var _backdrop: Node2D          # detrás del juego: cielo y campo
-var _backdrop_ops: Array = []  # capas pedidas, en orden: ["sky"], ["field", rect, cell]
+var _backdrop_ops: Array = []  # capas pedidas, en orden: ["sky"], ["field", rect, cell], ["static", fn]
 var _backdrop_used := 0        # cuántas se pidieron en el _draw en curso
-var _hud: Node2D               # delante del juego: marcador superior
+var _hud: Node2D               # delante del juego: marcador superior (píldoras, mascotas, reloj)
+var _hud_text: Node2D          # hijo de _hud: solo los números y el texto del reloj
 var _hud_state: Array = []     # lo que muestra el marcador (vacío = nada)
+var _hud_shape: Array = []     # lo que dibuja _hud (sin números): cambia casi nunca
 var _hud_requested := false    # se llamó a draw_hud() en el _draw en curso
+var _portraits: Dictionary = {}  # [color, estilo] -> textura de la mascota del marcador
 
 
 ## Metadatos del juego. Sobrescribir en cada juego.
@@ -150,41 +153,103 @@ func draw_text_centered(text: String, pos: Vector2, size: int, color: Color = Co
 	UiTheme.draw_text(self, text, pos, size, color, outline, UiTheme.INK)
 
 
-## Marcador superior común a todos los juegos, como en las consolas:
-##   [1P 12] [2P 9] [ 0:28 ] [3P 7] [4P 3]
+## Globito con la etiqueta 1P–4P (del color del jugador) sobre la cabeza de
+## su mascota y el nombre debajo de los pies, con contorno. `u`: escala con la
+## que se dibujó la mascota. Llamarlo después de dibujar las mascotas (queda
+## encima). Ver GameArt.draw_player_tag.
+func draw_player_tag(p: Dictionary, feet: Vector2, u: float = 0.8, name_offset: float = 26.0, alpha: float = 1.0) -> void:
+	draw_player_tags([[p, feet, u, name_offset, alpha]])
+
+
+## Como draw_player_tag para varios jugadores a la vez (menos draw calls):
+## entries = [[jugador, pies, u, name_offset, alpha], ...] (u, name_offset y
+## alpha opcionales).
+func draw_player_tags(entries: Array) -> void:
+	var tags: Array = []
+	for e: Array in entries:
+		var p: Dictionary = e[0]
+		tags.append([int(p.get("slot", 0)), p.get("color", UiTheme.PAPER), str(p.get("name", "")), e[1],
+			e[2] if e.size() > 2 else 0.8, e[3] if e.size() > 3 else 26.0, e[4] if e.size() > 4 else 1.0])
+	GameArt.draw_player_tags(self, tags)
+
+
+## Marcador superior común a todos los juegos, como en la maqueta:
+##   [1P mascota 12] [2P mascota 9] [reloj 0:28] [3P mascota 7] [4P mascota 3]
+## Una píldora del color de cada jugador con su etiqueta, su mascota y el
+## puntaje, y en el medio el reloj (píldora oscura con borde arcoíris).
 ## scores: {player_id: número}. center: tiempo, ronda o lo que el juego quiera.
+## icon: "clock" (cronómetro), "flag" (meta), "star" o "" (sin ícono). Por
+## defecto "clock" si center tiene forma de reloj ("0:28") y si no "star".
 ##
 ## Se cachea (ver "Capas cacheadas"): lo dibuja una capa propia, delante de
-## todo lo del juego, y solo se redibuja cuando cambia algún número o el
-## texto del centro (≈ 1 vez por segundo en vez de 60).
-func draw_hud(scores: Dictionary, center: String) -> void:
-	var state: Array = [center]
+## todo lo del juego. Las píldoras, las mascotas y el reloj casi nunca
+## cambian; los números y el texto del centro van en una capa hija que se
+## redibuja solo cuando cambia alguno (≈ 1 vez por segundo en vez de 60).
+func draw_hud(scores: Dictionary, center: String, icon: String = "auto") -> void:
+	if icon == "auto":
+		icon = "clock" if _looks_like_clock(center) else "star"
+	var state: Array = [[center, icon]]
 	for p in players:
 		state.append_array([p.slot, p.color, str(roundi(float(scores.get(p.id, 0))))])
 	_layers_ready()
 	_hud_requested = true
 	if state != _hud_state:
 		_hud_state = state
-		_hud.queue_redraw()
+		_hud_text.queue_redraw()
+		var shape: Array = [icon, GameArt.hud_center_width(center, icon)]
+		for i in range(1, state.size(), 3):
+			shape.append_array([state[i], state[i + 1]])
+		if shape != _hud_shape:
+			_hud_shape = shape
+			_hud.queue_redraw()
+
+
+static func _looks_like_clock(text: String) -> bool:
+	var parts := text.split(":")
+	return parts.size() == 2 and parts[0].is_valid_int() and parts[1].length() == 2 and parts[1].is_valid_int()
 
 
 func _draw_hud_layer() -> void:
 	if _hud_state.is_empty():
 		return
-	const CHIP := Vector2(230, 58)
-	const CENTER_W := 250.0
-	const GAP := 16.0
+	var head: Array = _hud_state[0]
 	var n := floori((_hud_state.size() - 1) / 3.0)
-	var x := (SCREEN.x - (n * CHIP.x + CENTER_W + n * GAP)) / 2.0
-	var half := ceili(n / 2.0)
-	for i in n + 1:
-		if i == half:
-			UiTheme.draw_hex_chip(_hud, Rect2(x, 24, CENTER_W, CHIP.y), "", Color.WHITE, _hud_state[0], true)
-			x += CENTER_W + GAP
-		if i < n:
-			var k := 1 + i * 3
-			UiTheme.draw_hex_chip(_hud, Rect2(Vector2(x, 24), CHIP), UiTheme.player_tag(_hud_state[k]), _hud_state[k + 1], _hud_state[k + 2])
-			x += CHIP.x + GAP
+	var entries: Array = []
+	for i in n:
+		var k := 1 + i * 3
+		var p: Dictionary = players[i] if i < players.size() else {}
+		entries.append({
+			"tag": UiTheme.player_tag(_hud_state[k]), "color": _hud_state[k + 1],
+			"portrait": _portrait(_hud_state[k + 1], PlayerAvatar.style_of(p)) if not p.is_empty() else null,
+		})
+	var pills := GameArt.paint_hud(_hud, entries, head[0], head[1])
+	for i in mini(n, players.size()):
+		_draw_hud_extra(_hud, players[i], pills[i])
+
+
+func _draw_hud_text_layer() -> void:
+	if _hud_state.is_empty():
+		return
+	var head: Array = _hud_state[0]
+	var scores: Array[String] = []
+	for i in range(1, _hud_state.size(), 3):
+		scores.append(_hud_state[i + 2])
+	GameArt.paint_hud_text(_hud_text, scores, head[0], head[1])
+
+
+## Para que un juego agregue algo a la píldora de un jugador (se dibuja en la
+## capa cacheada del marcador). Ej. Pintar el piso muestra su patrón debajo.
+func _draw_hud_extra(_ci: CanvasItem, _player: Dictionary, _pill: Rect2) -> void:
+	pass
+
+
+## Mascota de la píldora del marcador: una textura por color y estilo que se
+## dibuja una sola vez (GameArt.make_portrait).
+func _portrait(col: Color, style: int) -> Texture2D:
+	var key := [col, style]
+	if not _portraits.has(key):
+		_portraits[key] = GameArt.make_portrait(_hud, col, style)
+	return _portraits[key]
 
 
 ## "0:28": segundos restantes en formato reloj.
@@ -193,16 +258,30 @@ static func clock_text(seconds: float) -> String:
 	return "%d:%02d" % [s / 60, s % 60]
 
 
-## Fondo de cielo que usan todos los juegos (coherente con el lobby).
+## Fondo que usan todos los juegos: cielo con un escenario de bloques y
+## juguetes desenfocado alrededor (coherente con el lobby).
 ## Se cachea (ver "Capas cacheadas"): llamarla al principio de _draw().
 func draw_sky() -> void:
 	_backdrop_request(["sky"])
 
 
-## Campo de juego: piso a cuadros dentro de un marco de bloques de colores.
-## Se cachea igual que draw_sky().
+## Campo de juego: tablero con volumen (sombra proyectada, marco de bloques
+## con bisel y estrellas en las esquinas) y baldosas con relieve de lado
+## `cell`. Se cachea igual que draw_sky().
 func draw_play_field(rect: Rect2, cell: float = 80.0) -> void:
 	_backdrop_request(["field", rect, cell])
+
+
+## Dibujo fijo del juego que no cambia en toda la partida (la mesa de Ping
+## Pong, paneles, tribunas, carteles…): se cachea igual que draw_sky() (va en
+## la capa de fondo, detrás de todo lo que dibuja _draw) y se dibuja una sola
+## vez. `fn` recibe el CanvasItem donde dibujar. Llamarla al principio de
+## _draw(), después de draw_sky()/draw_play_field(). Ojo: lo que cambie con
+## el juego no puede ir acá (no se volvería a dibujar), y `fn` tiene que ser
+## un método (una func anónima nueva en cada frame no se reconoce como la
+## misma y se redibujaría siempre).
+func draw_static(fn: Callable) -> void:
+	_backdrop_request(["static", fn])
 
 
 # --- Capas cacheadas ----------------------------------------------------------
@@ -224,12 +303,18 @@ func _layers_ready() -> void:
 	_backdrop = Node2D.new()
 	_backdrop.name = "Backdrop"
 	_backdrop.show_behind_parent = true
+	_backdrop.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR  # Escenario estirado: suave.
 	_backdrop.draw.connect(_draw_backdrop)
 	add_child(_backdrop, false, Node.INTERNAL_MODE_FRONT)
 	_hud = Node2D.new()
 	_hud.name = "Hud"
+	_hud.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR  # Mascotas del marcador (al doble): suaves.
 	_hud.draw.connect(_draw_hud_layer)
 	add_child(_hud, false, Node.INTERNAL_MODE_BACK)
+	_hud_text = Node2D.new()
+	_hud_text.name = "HudText"
+	_hud_text.draw.connect(_draw_hud_text_layer)
+	_hud.add_child(_hud_text)
 	# `draw` se emite justo antes de cada _draw() del juego. Este primer
 	# _draw ya empezó, así que se abre a mano.
 	draw.connect(_layers_begin_draw)
@@ -248,7 +333,9 @@ func _layers_end_draw() -> void:
 		_backdrop.queue_redraw()
 	if not _hud_requested and not _hud_state.is_empty():
 		_hud_state = []
+		_hud_shape = []
 		_hud.queue_redraw()
+		_hud_text.queue_redraw()
 
 
 ## Compara la capa pedida con la que ya está dibujada en esa posición y
@@ -265,48 +352,21 @@ func _backdrop_request(op: Array) -> void:
 
 
 func _draw_backdrop() -> void:
+	# Lo que tapa el tablero (si hay) no hace falta pintarlo en el escenario.
+	var cover := Rect2()
+	for op: Array in _backdrop_ops:
+		if op[0] == "field":
+			cover = GameArt.board_cover(op[1])
 	for op: Array in _backdrop_ops:
 		match op[0]:
 			"sky":
-				_paint_sky(_backdrop)
+				GameArt.paint_stage(_backdrop, cover)
 			"field":
 				_paint_play_field(_backdrop, op[1], op[2])
+			"static":
+				(op[1] as Callable).call(_backdrop)
 
 
-static func _paint_sky(ci: CanvasItem) -> void:
-	ci.draw_polygon(PackedVector2Array([Vector2.ZERO, Vector2(SCREEN.x, 0), SCREEN, Vector2(0, SCREEN.y)]),
-		PackedColorArray([UiTheme.SKY_TOP, UiTheme.SKY_TOP, UiTheme.SKY_BOTTOM, UiTheme.SKY_BOTTOM]))
-
-
+## Tablero con volumen: ver GameArt.paint_board.
 static func _paint_play_field(ci: CanvasItem, rect: Rect2, cell: float) -> void:
-	const FRAME := 26.0
-	var frame := rect.grow(FRAME)
-	UiTheme.draw_round_rect(ci, frame.grow(4), UiTheme.INK, 30)
-	# Bloques de colores alrededor: filas arriba/abajo y columnas a los lados.
-	var i := 0
-	var x := frame.position.x
-	while x < frame.end.x:
-		var w := minf(96.0, frame.end.x - x)
-		var c: Color = UiTheme.BRICKS[i % UiTheme.BRICKS.size()]
-		ci.draw_rect(Rect2(x, frame.position.y, w, FRAME), c)
-		ci.draw_rect(Rect2(x, rect.end.y, w, FRAME), UiTheme.BRICKS[(i + 4) % UiTheme.BRICKS.size()])
-		x += 96.0
-		i += 1
-	var y0 := rect.position.y
-	while y0 < rect.end.y:
-		var h := minf(96.0, rect.end.y - y0)
-		ci.draw_rect(Rect2(frame.position.x, y0, FRAME, h), UiTheme.BRICKS[i % UiTheme.BRICKS.size()])
-		ci.draw_rect(Rect2(rect.end.x, y0, FRAME, h), UiTheme.BRICKS[(i + 3) % UiTheme.BRICKS.size()])
-		y0 += 96.0
-		i += 1
-	ci.draw_rect(rect, UiTheme.FLOOR)
-	var row := 0
-	var y := rect.position.y
-	while y < rect.end.y:
-		var cx := rect.position.x + (0.0 if row % 2 == 0 else cell)
-		while cx < rect.end.x:
-			ci.draw_rect(Rect2(cx, y, minf(cell, rect.end.x - cx), minf(cell, rect.end.y - y)), UiTheme.FIELD_TILE)
-			cx += cell * 2.0
-		y += cell
-		row += 1
-	ci.draw_rect(rect, UiTheme.INK, false, 4.0)
+	GameArt.paint_board(ci, rect, cell)

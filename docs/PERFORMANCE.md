@@ -118,6 +118,27 @@ Los juegos no cambian (el fondo está oculto mientras se juega). El celular espe
 - **`Transition`**: cada fila de bloques es un nodo que se dibuja una vez (un lote, 1 draw call) y durante el barrido solo se mueve; antes eran ≈ 290 comandos redibujados en cada frame.
 - **`Confetti`**: todas las piezas (papelitos, estrellas, serpentinas, puntos, destellos) en **un** triangle array por frame; antes, un draw call por papelito. Cada tipo tiene una plantilla de puntos (las serpentinas, una por cuadro de su ondeo) que se transforma en C++; índices y colores se arman una vez en `burst()`.
 
+### Arte de los juegos (ADR 0009)
+
+Escenario desenfocado, tablero con volumen, marcador con mascotas, globito 1P–4P y brillo de premios (`host/minigames/game_art.gd`). Medido intercalando la punta sin el cambio (`c4f8755`) y con el cambio, dos corridas de cada uno una detrás de la otra (promedio de las dos); `lobby` no cambia y sirve de control del ruido de la máquina:
+
+| Escena | Scripts prom. (ms) | Scripts p95 (ms) | Draw calls | Render (ms) |
+|---|---:|---:|---:|---:|
+| lobby (control) | 2,19 → 2,33 | 2,95 → 3,18 | 599 → 599 | 66,2 → 66,9 |
+| arena | 2,73 → 2,92 | 3,83 → 4,28 | 78 → **66** | 29,0 → 28,3 |
+| pingpong | 1,34 → 1,49 | 1,96 → 2,17 | 55 → 58 | 23,9 → 27,8 |
+| tap_race | 2,61 → 2,71 | 3,69 → 3,89 | 82 → **68** | 28,1 → 28,9 |
+| stop_clock | 3,11 → 3,08 | 4,22 → 4,56 | 99 → 97 | 28,8 → 34,7 |
+| dodge | 3,04 → 3,24 | 4,40 → 4,62 | 88 → **80** | 30,4 → 29,4 |
+| paint | 3,30 → 3,23 | 4,93 → 4,71 | 172 → **81** | 32,1 → 30,7 |
+| sumo | 3,87 → 4,17 | 5,37 → 6,12 | 140 → 136 | 35,2 → 38,5 |
+| sumo_tarde | 4,55 → 4,65 | 6,50 → 6,51 | 138 → 132 | 34,0 → 36,4 |
+
+- Todo dentro del presupuesto (p95 ≤ 8 ms, ≤ 150 draw calls). Las diferencias de Scripts (−5 % a +14 % en p95) son del orden del ruido (el control varió +8 %).
+- **Qué cuesta por frame**: los globitos 1P–4P y los nombres (≈ 75 µs para 4 jugadores; el globito se arma una vez por color y en cada frame solo se ubica) y el brillo de los premios (más barato que las estrellas de antes: formas y colores cacheados). Todo lo demás es fijo y va en capas cacheadas: escenario, tablero, píldoras del marcador (los números van en una capa hija, `_hud_text`), mesa de Ping Pong, paneles de Reloj exacto y tribunas de Empujones (`MiniGame.draw_static`).
+- **Render en xvfb**: sube en los juegos sin tablero (Ping Pong, Reloj exacto: el escenario es una textura estirada a pantalla completa y llvmpipe paga cada muestra). Con tablero, el escenario se pinta solo alrededor y el piso no tiene capas que se tapen (cada baldosa es cara + labio + brillo sin superponerse; la junta va solo en las rendijas): queda igual o menos que antes. Una primera versión con baldosas y bloques redondeados (~36 triángulos cada uno) y una sombra `StyleBoxFlat` del tamaño del tablero duplicaba el render: ver [ADR 0009](adr/0009-arte-de-los-juegos.md).
+- **Pintar el piso**: cada fila de baldosas es un lote de triángulos armado con la baldosa precalculada de cada jugador (`GameArt.tile_template`): 172 → 81 draw calls.
+
 ## Qué se cambió y por qué
 
 ### 1. Capas estáticas que se dibujan una sola vez

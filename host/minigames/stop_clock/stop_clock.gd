@@ -153,27 +153,65 @@ func _physics_process(delta: float) -> void:
 
 func _draw() -> void:
 	draw_sky()
+	draw_static(_draw_panels)
 	_draw_big_clock()
-	var n := players.size()
-	var slot_w := (SCREEN.x - 2.0 * UiTheme.SAFE_MARGIN) / 4.0
-	var left := (SCREEN.x - slot_w * n) / 2.0
 	var sc := scores()
 	var best := 0
 	for pid: int in sc:
 		best = maxi(best, int(sc[pid]))
-	for i in n:
+	for i in players.size():
 		var p: Dictionary = players[i]
-		_draw_player(p, Vector2(left + slot_w * (i + 0.5), ROW_FEET_Y), int(sc.get(p.id, 0)), best)
+		_draw_player(p, _feet_of(i), int(sc.get(p.id, 0)), best)
 	# Durante el juego el marcador muestra ceros: un puntaje parcial delataría
 	# cuánto falta para 10.00 a los que todavía no frenaron.
-	draw_hud(sc if is_revealing() else {}, "Meta: %s" % format_time(TARGET))
+	draw_hud(sc if is_revealing() else {}, "Meta: %s" % format_time(TARGET), "clock")
+
+
+## Dónde apoya la mascota del jugador `i` (arriba de su cajita).
+func _feet_of(i: int) -> Vector2:
+	var slot_w := (SCREEN.x - 2.0 * UiTheme.SAFE_MARGIN) / 4.0
+	var left := (SCREEN.x - slot_w * players.size()) / 2.0
+	return Vector2(left + slot_w * (i + 0.5), ROW_FEET_Y)
+
+
+## Lo fijo (se dibuja una vez, ver MiniGame.draw_static): el marco del
+## cronómetro grande y la cajita de cada jugador con su mini pantalla, su
+## etiqueta 1P–4P y su nombre.
+func _draw_panels(ci: CanvasItem) -> void:
+	UiTheme.draw_round_rect(ci, LCD_RECT.grow(10), UiTheme.INK, 48, 0, UiTheme.INK, true)
+	UiTheme.draw_round_rect(ci, LCD_RECT.grow(-18), UiTheme.CHIP_DARK, 30)
+	for i in players.size():
+		var p: Dictionary = players[i]
+		var box := _box_of(_feet_of(i))
+		# Con relieve, como las píldoras del marcador: labio oscuro abajo y brillo arriba.
+		UiTheme.draw_round_rect(ci, box.grow(4).grow_side(SIDE_BOTTOM, 3), UiTheme.INK, 26, 0, UiTheme.INK, true)
+		var bevel := GameArt.TriBatch.new()
+		bevel.round_rect(box, 22.0, p.color.darkened(0.3))
+		bevel.round_rect(Rect2(box.position, box.size - Vector2(0, 8)), 22.0, p.color)
+		bevel.capsule(Rect2(box.position + Vector2(24, 6), Vector2(box.size.x - 48, 10)), Color(1, 1, 1, 0.3))
+		bevel.flush(ci)
+		var mini := _mini_of(box)
+		UiTheme.draw_round_rect(ci, mini.grow(4), UiTheme.INK, 18)
+		UiTheme.draw_round_rect(ci, mini, UiTheme.CHIP_DARK, 14)
+		# Etiqueta 1P–4P + nombre (no depender solo del color).
+		var line_y := mini.end.y + 44
+		var tag_rect := Rect2(box.position.x + 22, line_y - 22, 64, 44)
+		UiTheme.draw_round_rect(ci, tag_rect, UiTheme.INK, 14)
+		UiTheme.draw_text(ci, UiTheme.player_tag(p.slot), tag_rect.get_center(), 28, UiTheme.PAPER)
+		var name_x := tag_rect.end.x + 14
+		UiTheme.draw_text_left(ci, p.name, Vector2(name_x, line_y), 32, UiTheme.text_on(p.color), box.end.x - 20 - name_x)
+
+
+static func _box_of(feet: Vector2) -> Rect2:
+	return Rect2(feet.x - BOX_SIZE.x / 2.0, feet.y, BOX_SIZE.x, BOX_SIZE.y)
+
+
+static func _mini_of(box: Rect2) -> Rect2:
+	return Rect2(box.position.x + 26, box.position.y + 22, box.size.x - 52, 92)
 
 
 func _draw_big_clock() -> void:
-	var r := LCD_RECT
-	UiTheme.draw_round_rect(self, r.grow(10), UiTheme.INK, 48, 0, UiTheme.INK, true)
-	var screen := r.grow(-18)
-	UiTheme.draw_round_rect(self, screen, UiTheme.CHIP_DARK, 30)
+	var screen := LCD_RECT.grow(-18)
 	var digits_center := screen.get_center() + Vector2(0, -34)
 	var status_center := Vector2(screen.get_center().x, screen.end.y - 52)
 	if _t < COUNTDOWN:
@@ -218,28 +256,15 @@ func _draw_player(p: Dictionary, feet: Vector2, score: int, best: int) -> void:
 	var hop := 0.0
 	if is_revealing() and mood == PlayerAvatar.Mood.HAPPY:
 		hop = absf(sin((REVEAL_TIME - _reveal_left) * 7.0)) * 18.0
-	# Cajita del color del jugador con una mini pantalla.
-	var box := Rect2(feet.x - BOX_SIZE.x / 2.0, feet.y, BOX_SIZE.x, BOX_SIZE.y)
-	UiTheme.draw_round_rect(self, box.grow(4), UiTheme.INK, 26, 0, UiTheme.INK, true)
-	UiTheme.draw_round_rect(self, box, p.color, 22)
-	var mini := Rect2(box.position.x + 26, box.position.y + 22, box.size.x - 52, 92)
-	UiTheme.draw_round_rect(self, mini.grow(4), UiTheme.INK, 18)
-	UiTheme.draw_round_rect(self, mini, UiTheme.CHIP_DARK, 14)
+	# Cajita del color del jugador (fija: ver _draw_panels); acá, lo que cambia.
+	var box := _box_of(feet)
+	var mini := _mini_of(box)
 	var text := "--.--"
 	var color := UiTheme.MUTED
 	if has_stopped(pid):
 		color = UiTheme.ACCENT
 		text = "??.??" if is_blackout() else format_time(stop_time(pid))
 	_draw_lcd_text(text, mini.get_center(), MINI_DIGIT_SIZE, color)
-
-	# Etiqueta 1P–4P + nombre (no depender solo del color).
-	var line_y := mini.end.y + 44
-	var tag := UiTheme.player_tag(p.slot)
-	var tag_rect := Rect2(box.position.x + 22, line_y - 22, 64, 44)
-	UiTheme.draw_round_rect(self, tag_rect, UiTheme.INK, 14)
-	UiTheme.draw_text(self, tag, tag_rect.get_center(), 28, UiTheme.PAPER)
-	var name_x := tag_rect.end.x + 14
-	UiTheme.draw_text_left(self, p.name, Vector2(name_x, line_y), 32, UiTheme.text_on(p.color), box.end.x - 20 - name_x)
 
 	# Al revelar: cuánto se pasó o le faltó.
 	if is_revealing():

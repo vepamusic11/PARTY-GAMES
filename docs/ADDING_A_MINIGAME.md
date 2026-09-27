@@ -52,12 +52,17 @@ func _draw() -> void:
 	draw_play_field(Rect2(160, 140, 1600, 860))       # piso con marco de bloques
 	for p in players:
 		PlayerAvatar.draw_mascot(self, _pos[p.id], 0.8, p.color, p.slot)
-	draw_hud(_survived, clock_text(_time_left))     # marcador superior [1P 12] [0:28]
+	# Globito 1P–4P sobre cada mascota y nombre abajo (todos juntos: menos draw calls).
+	draw_player_tags(players.map(func(p: Dictionary) -> Array: return [p, _pos[p.id], 0.8]))
+	draw_hud(_survived, clock_text(_time_left))     # marcador: [1P mascota 12] [reloj 0:28] ...
 ```
 
 Todo el dibujo sale del sistema visual (`UiTheme`): sin colores sueltos. Ver `.claude/skills/diseno-tv/`.
+El arte común de los juegos (escenario desenfocado, tablero con volumen, marcador con mascotas, globito
+1P–4P, brillo de premios) está en `host/minigames/game_art.gd` (`GameArt`, ver [ADR 0009](adr/0009-arte-de-los-juegos.md)): usá
+`GameArt.TriBatch` para tus figuras (un draw call por lote) y `GameArt.add_glow` para lo que brilla.
 
-Rendimiento (ver `docs/PERFORMANCE.md`): `draw_sky()`, `draw_play_field()` y `draw_hud()` están cacheados en capas propias y no cuestan nada si no cambian. Llamá `draw_sky()`/`draw_play_field()` al **principio** de `_draw()` (quedan siempre detrás de todo) y `draw_hud()` una vez por `_draw()` (queda siempre delante). Para varias figuras seguidas usá `UiTheme.ShapeBatch`. Medí el juego nuevo con `tools/benchmark.gd -- --only=<id>`.
+Rendimiento (ver `docs/PERFORMANCE.md`): `draw_sky()`, `draw_play_field()` y `draw_hud()` están cacheados en capas propias y no cuestan nada si no cambian. Llamá `draw_sky()`/`draw_play_field()` al **principio** de `_draw()` (quedan siempre detrás de todo) y `draw_hud()` una vez por `_draw()` (queda siempre delante). Lo que no cambia en toda la partida (una mesa, paneles, carteles) va en `draw_static(_draw_mesa)`, con `func _draw_mesa(ci: CanvasItem)` dibujando en `ci`: se dibuja una sola vez, detrás de lo demás (pasale un método, no una `func` anónima: una nueva en cada frame no se cachea). Para varias figuras seguidas usá `GameArt.TriBatch` (o `UiTheme.ShapeBatch`). Medí el juego nuevo con `tools/benchmark.gd -- --only=<id>`.
 
 ## 2. Registrarlo
 

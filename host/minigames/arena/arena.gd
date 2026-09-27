@@ -80,9 +80,14 @@ func _random_star() -> Vector2:
 func _draw() -> void:
 	draw_sky()
 	draw_play_field(ARENA)
-	var spin := Time.get_ticks_msec() / 1000.0
+	# Estrellas con halo: todas en un lote (un draw call), halos primero.
+	var batch := GameArt.TriBatch.new()
 	for i in _stars.size():
-		UiTheme.draw_star(self, _stars[i], STAR_RADIUS + 6.0, UiTheme.GOLD, sin(spin * 2.0 + i) * 0.25)
+		GameArt.add_glow(batch, _stars[i], STAR_RADIUS + 26.0, UiTheme.GLOW, anim_time + i * 0.7, 8)
+	for i in _stars.size():
+		var bob := Vector2(0, sin(anim_time * 3.0 + i) * 3.0)
+		batch.star(_stars[i] + bob, STAR_RADIUS + 6.0, UiTheme.GOLD, sin(anim_time * 2.0 + i) * 0.25)
+	batch.flush(self)
 	# Se dibuja de arriba hacia abajo: el que está más abajo queda "adelante".
 	var order := players.duplicate()
 	order.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return (_pos[a.id] as Vector2).y < (_pos[b.id] as Vector2).y)
@@ -90,5 +95,6 @@ func _draw() -> void:
 		var pos: Vector2 = _pos[p.id]
 		PlayerAvatar.draw_mascot(self, pos + Vector2(0, RADIUS), 0.8, p.color, PlayerAvatar.style_of(p), PlayerAvatar.Mood.NORMAL,
 			0.0, 0.0, false, mascot_anim(p.id, _axis[p.id]))
-		draw_text_centered(p.name, pos + Vector2(0, RADIUS + 24), 26, UiTheme.PAPER, 6)
-	draw_hud(_score, clock_text(_time_left))
+	# Globitos 1P–4P y nombres encima de todas las mascotas.
+	draw_player_tags(order.map(func(p: Dictionary) -> Array: return [p, (_pos[p.id] as Vector2) + Vector2(0, RADIUS), 0.8, 24.0]))
+	draw_hud(_score, clock_text(_time_left), "clock")

@@ -340,6 +340,7 @@ func _draw() -> void:
 	# Agua, los que caen por el lado de atrás e isla: capas propias (ver
 	# "Capas" más abajo), que quedan detrás de todo lo que se dibuja acá.
 	_update_layers(shake)
+	draw_static(_draw_stand_panels)  # Paneles y bancos de las tribunas: fijos.
 	# Mientras se achica, el borde titila en rojo.
 	if _elapsed >= SHRINK_START_SEC and _radius > RADIUS_END and not _ending:
 		var blink := 0.35 + 0.35 * sin(_anim * 8.0)
@@ -355,6 +356,15 @@ func _draw() -> void:
 			_draw_falling(self, p, shake)
 		else:
 			_draw_player(p, shake)
+	# Globitos 1P–4P y nombres de los que siguen en la isla, todos juntos.
+	var tags: Array = []
+	for p in order:
+		if not _out_time.has(p.id):
+			tags.append([p, (_pos[p.id] as Vector2) + shake + Vector2(0, FEET_OFFSET), MASCOT_SCALE, NAME_OFFSET])
+	draw_player_tags(tags)
+	for p in order:
+		if not _out_time.has(p.id):
+			_draw_kos(self, p, (_pos[p.id] as Vector2) + shake + Vector2(0, FEET_OFFSET + NAME_OFFSET), p.name)
 	_draw_effects(shake)
 	_draw_stands()
 	draw_hud(_live_scores(), clock_text(DURATION_SEC - _elapsed))
@@ -590,7 +600,6 @@ func _draw_player(p: Dictionary, off: Vector2) -> void:
 	var anim := mascot_anim(p.id, (_vel[p.id] as Vector2) / MAX_SPEED)
 	anim["wave"] = mood == PlayerAvatar.Mood.HAPPY
 	PlayerAvatar.draw_mascot(self, feet, MASCOT_SCALE, p.color, PlayerAvatar.style_of(p), mood, 0.0, 0.0, false, anim)
-	_draw_name(self, p, feet + Vector2(0, NAME_OFFSET))
 
 
 ## Caída: la mascota gira y se achica hasta desaparecer en el agua.
@@ -607,14 +616,17 @@ func _draw_falling(ci: CanvasItem, p: Dictionary, off: Vector2) -> void:
 	ci.draw_set_transform(Vector2.ZERO)
 
 
-## "1P Pablo" y una estrellita por cada rival tirado. Sobre la isla va en
-## blanco con contorno; sobre el panel claro de la tribuna, en tinta.
-func _draw_name(ci: CanvasItem, p: Dictionary, center: Vector2, on_paper: bool = false) -> void:
+## En el panel claro de la tribuna: "1P Pablo" en tinta y una estrellita
+## por cada rival tirado. (Sobre la isla van el globito 1P–4P y el nombre,
+## como en los demás juegos: ver _draw.)
+func _draw_name(ci: CanvasItem, p: Dictionary, center: Vector2) -> void:
 	var text := "%s %s" % [UiTheme.player_tag(p.slot), p.name]
-	if on_paper:
-		UiTheme.draw_text(ci, text, center, NAME_SIZE, UiTheme.INK)
-	else:
-		UiTheme.draw_text(ci, text, center, NAME_SIZE, UiTheme.PAPER, 6, UiTheme.INK)
+	UiTheme.draw_text(ci, text, center, NAME_SIZE, UiTheme.INK)
+	_draw_kos(ci, p, center, text)
+
+
+## Una estrellita por cada rival tirado, a la derecha de `text` (centrado en `center`).
+func _draw_kos(ci: CanvasItem, p: Dictionary, center: Vector2, text: String) -> void:
 	var kos := int(_kos.get(p.id, 0))
 	if kos <= 0:
 		return
@@ -651,23 +663,41 @@ func _draw_effects(off: Vector2) -> void:
 
 ## Tribunas a los costados: los que se cayeron miran tristes desde ahí.
 ## Lugar fijo por slot (1P y 3P a la izquierda, 2P y 4P a la derecha).
+## Los paneles y bancos son fijos (_draw_stand_panels, capa cacheada); acá
+## solo los que ya están sentados.
 func _draw_stands() -> void:
 	for side in 2:
-		var x := float(UiTheme.SAFE_MARGIN) if side == 0 else SCREEN.x - UiTheme.SAFE_MARGIN - STAND_W
-		var panel := Rect2(x, STAND_TOP, STAND_W, STAND_H)
-		UiTheme.draw_round_rect(self, panel, Color(UiTheme.PAPER, 0.85), UiTheme.RADIUS, 5.0, UiTheme.INK, true)
-		draw_text_centered("Tribuna", Vector2(panel.get_center().x, panel.position.y + 42.0), 30, UiTheme.INK)
 		for row in 2:
-			var feet := Vector2(panel.get_center().x, panel.position.y + 230.0 + row * 250.0)
-			var bench := Rect2(panel.position.x + 30.0, feet.y - 8.0, STAND_W - 60.0, 30.0)
-			var bench_col: Color = UiTheme.BRICKS[(side * 2 + row * 5 + 1) % UiTheme.BRICKS.size()]
-			UiTheme.draw_round_rect(self, bench.grow(4.0), UiTheme.INK, 14.0)
-			UiTheme.draw_round_rect(self, bench, bench_col, 12.0)
 			var p := _player_in_seat(side + row * 2)
 			if p.is_empty():
 				continue
+			var feet := _seat_feet(side, row)
 			PlayerAvatar.draw_mascot(self, feet, STAND_SCALE, p.color, PlayerAvatar.style_of(p), PlayerAvatar.Mood.SAD)
-			_draw_name(self, p, feet + Vector2(0, 58.0), true)
+			_draw_name(self, p, feet + Vector2(0, 58.0))
+
+
+func _stand_panel(side: int) -> Rect2:
+	var x := float(UiTheme.SAFE_MARGIN) if side == 0 else SCREEN.x - UiTheme.SAFE_MARGIN - STAND_W
+	return Rect2(x, STAND_TOP, STAND_W, STAND_H)
+
+
+func _seat_feet(side: int, row: int) -> Vector2:
+	var panel := _stand_panel(side)
+	return Vector2(panel.get_center().x, panel.position.y + 230.0 + row * 250.0)
+
+
+## Lo fijo de las tribunas (se dibuja una vez, ver MiniGame.draw_static).
+func _draw_stand_panels(ci: CanvasItem) -> void:
+	for side in 2:
+		var panel := _stand_panel(side)
+		UiTheme.draw_round_rect(ci, panel, Color(UiTheme.PAPER, 0.85), UiTheme.RADIUS, 5.0, UiTheme.INK, true)
+		UiTheme.draw_text(ci, "Tribuna", Vector2(panel.get_center().x, panel.position.y + 42.0), 30, UiTheme.INK)
+		for row in 2:
+			var feet := _seat_feet(side, row)
+			var bench := Rect2(panel.position.x + 30.0, feet.y - 8.0, STAND_W - 60.0, 30.0)
+			var bench_col: Color = UiTheme.BRICKS[(side * 2 + row * 5 + 1) % UiTheme.BRICKS.size()]
+			UiTheme.draw_round_rect(ci, bench.grow(4.0), UiTheme.INK, 14.0)
+			UiTheme.draw_round_rect(ci, bench, bench_col, 12.0)
 
 
 ## Jugador sentado en ese lugar de la tribuna (ya terminó de caer), o {}.

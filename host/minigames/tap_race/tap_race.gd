@@ -13,6 +13,10 @@ var _taps: Dictionary = {}       # player_id -> int
 var _was_down: Dictionary = {}   # player_id -> bool
 var _tap_times: Dictionary = {}  # player_id -> Array[int] (ms del último segundo)
 var _countdown := 3.0
+## Meta, separadores y carteles de los carriles: no cambian en toda la
+## carrera, así que el lote de triángulos se arma una sola vez y en cada frame
+## solo se vuelve a mandar (ver _draw).
+var _track := GameArt.TriBatch.new()
 
 
 static func get_info() -> Dictionary:
@@ -73,20 +77,14 @@ func _draw() -> void:
 	draw_sky()
 	var lanes := Rect2(TRACK_LEFT - 40, (SCREEN.y - LANE_HEIGHT * players.size()) / 2.0 + 40, TRACK_RIGHT - TRACK_LEFT + 140, LANE_HEIGHT * players.size())
 	draw_play_field(lanes, LANE_HEIGHT / 2.0)
-	# Meta a cuadros
-	var cell := 30.0
-	var fy := lanes.position.y
-	var k := 0
-	while fy < lanes.end.y:
-		for c in 2:
-			draw_rect(Rect2(TRACK_RIGHT + c * cell, fy, cell, minf(cell, lanes.end.y - fy)), UiTheme.INK if (k + c) % 2 == 0 else Color.WHITE)
-		fy += cell
-		k += 1
+	# Meta a cuadros, separadores de carril y carteles con el nombre: todo en
+	# un lote (un draw call) armado una vez; los textos y las mascotas van después.
+	if _track.points.is_empty():
+		_build_track(lanes)
+	_track.draw(self)
 	for i in players.size():
 		var p: Dictionary = players[i]
 		var y := lanes.position.y + LANE_HEIGHT * i
-		if i > 0:
-			UiTheme.draw_dashed_line(self, Vector2(lanes.position.x, y), Vector2(TRACK_RIGHT, y), Color(UiTheme.INK, 0.25), 4.0, 24.0, 16.0)
 		var progress := float(_taps[p.id]) / TAPS_TO_WIN
 		var x := lerpf(TRACK_LEFT + 20.0, TRACK_RIGHT - 30.0, progress)
 		var hop := absf(sin(float(_taps[p.id]) * PI / 2.0)) * 6.0
@@ -95,13 +93,47 @@ func _draw() -> void:
 			# Cada toque es medio paso: la mascota corre al ritmo del dedo.
 			{"t": anim_time + p.slot, "walk": _taps[p.id] * 0.5 if _taps[p.id] > 0 else -1.0,
 				"look": Vector2(1, 0), "wave": _taps[p.id] >= TAPS_TO_WIN})
-		var tag := Rect2(24, y + LANE_HEIGHT / 2.0 - 30, lanes.position.x - 60, 60)
-		UiTheme.draw_round_rect(self, tag.grow(3), UiTheme.INK, 30)
-		UiTheme.draw_round_rect(self, tag, p.color, 28)
-		UiTheme.draw_text_left(self, p.name, Vector2(tag.position.x + 18, tag.get_center().y), 28, UiTheme.text_on(p.color), tag.size.x - 30)
+		var tag := _lane_tag(lanes, i)
+		UiTheme.draw_text(self, UiTheme.player_tag(p.slot), Vector2(tag.position.x + 33.0, tag.get_center().y - 2.0), 26, UiTheme.PAPER)
+		UiTheme.draw_text_left(self, p.name, Vector2(tag.position.x + 68.0, tag.get_center().y - 2.0), 26,
+			UiTheme.text_on(p.color), tag.end.x - 16.0 - (tag.position.x + 68.0))
 	var center := "Meta: %d" % TAPS_TO_WIN
-	draw_hud(_taps, center)
+	draw_hud(_taps, center, "flag")
 	if _countdown > 0.0:
 		draw_text_centered("%d" % ceili(_countdown), SCREEN / 2.0, 260, UiTheme.PAPER, 22)
 	elif _countdown > -0.8:
 		draw_text_centered("¡YA!", SCREEN / 2.0, 260, UiTheme.ACCENT, 22)
+
+
+## Cartel del carril `i`: a la izquierda de la pista.
+func _lane_tag(lanes: Rect2, i: int) -> Rect2:
+	var y := lanes.position.y + LANE_HEIGHT * i
+	return Rect2(UiTheme.SAFE_MARGIN, y + LANE_HEIGHT / 2.0 - 32.0, lanes.position.x - UiTheme.SAFE_MARGIN - 60.0, 64.0)
+
+
+func _build_track(lanes: Rect2) -> void:
+	var batch := _track
+	var cell := 30.0
+	batch.rect(Rect2(TRACK_RIGHT - 4.0, lanes.position.y, cell * 2.0 + 8.0, lanes.size.y), UiTheme.INK)
+	var fy := lanes.position.y
+	var k := 0
+	while fy < lanes.end.y:
+		for c in 2:
+			batch.rect(Rect2(TRACK_RIGHT + c * cell, fy, cell, minf(cell, lanes.end.y - fy)), UiTheme.INK if (k + c) % 2 == 0 else UiTheme.PAPER)
+		fy += cell
+		k += 1
+	for i in players.size():
+		var y := lanes.position.y + LANE_HEIGHT * i
+		if i > 0:
+			var x := lanes.position.x
+			while x < TRACK_RIGHT - 8.0:
+				batch.line(Vector2(x, y), Vector2(minf(x + 24.0, TRACK_RIGHT - 8.0), y), Color(UiTheme.INK, 0.25), 4.0)
+				x += 40.0
+		# Cartel del carril: [1P | nombre] del color del jugador, con relieve.
+		var tag := _lane_tag(lanes, i)
+		var col: Color = players[i].color
+		batch.capsule(tag.grow(4.0).grow_side(SIDE_BOTTOM, 3.0), UiTheme.INK)
+		batch.capsule(tag, col.darkened(0.3))
+		batch.capsule(Rect2(tag.position, tag.size - Vector2(0, 6.0)), col)
+		batch.capsule(Rect2(tag.position + Vector2(14.0, 4.0), Vector2(tag.size.x * 0.6, 14.0)), Color(1, 1, 1, 0.3))
+		batch.capsule(Rect2(tag.position + Vector2(7.0, 9.0), Vector2(52.0, tag.size.y - 20.0)), UiTheme.CHIP_DARK)

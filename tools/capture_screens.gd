@@ -5,6 +5,7 @@ extends SceneTree
 ##
 ##   xvfb-run -a -s "-screen 0 1920x1080x24" godot --path . -s res://tools/capture_screens.gd
 ##   … -- --out=/tmp/capturas/      (otra carpeta, para revisar sin pisar docs/)
+##   … -- --width=1920              (ancho de las capturas; default 960, el de docs/img)
 ##   … -- --out=/tmp/estilos/pixel --style=pixel
 ##        (exploración de estilos: post-proceso sobre la TV y el celular; ver
 ##        docs/ESTILOS.md. Sin --style las capturas quedan como siempre.)

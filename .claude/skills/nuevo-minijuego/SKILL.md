@@ -19,10 +19,11 @@ Guía completa con ejemplo: `docs/ADDING_A_MINIGAME.md`. Esta skill es el checkl
 4. **Terminar una sola vez** con `finish(result_from_scores(puntajes, "resumen"))` o con `winners` explícitos si "gana el primero en llegar". El modo competencia convierte puestos en puntos (100/70/50/30): el juego solo reporta su puntaje propio.
 5. **Dibujar con el sistema visual**, no con colores sueltos:
    - `draw_sky()` y `draw_play_field(rect)` para el fondo.
-   - `PlayerAvatar.draw_mascot(self, pies, escala, p.color, p.slot)` para los jugadores.
-   - `draw_hud(puntajes, texto_central)` arriba (reloj con `clock_text(seg)`).
+   - `PlayerAvatar.draw_mascot(self, pies, escala, p.color, PlayerAvatar.style_of(p))` para los jugadores y después `draw_player_tags([[p, pies, escala], …])` (globito 1P–4P y nombre).
+   - `draw_hud(puntajes, texto_central, ícono)` arriba (reloj con `clock_text(seg)`; ícono "clock", "flag" o "star").
+   - Arte común (tablero, brillo, figuras en lote): `GameArt` (`host/minigames/game_art.gd`, ADR 0009).
    - `draw_text_centered(texto, pos, tamaño, color, contorno)` para textos.
-   - Cielo, campo y marcador están cacheados (capas propias): `draw_sky()`/`draw_play_field()` al principio de `_draw()`, `draw_hud()` una vez por `_draw()`. Ver `docs/PERFORMANCE.md`.
+   - Cielo, campo y marcador están cacheados (capas propias): `draw_sky()`/`draw_play_field()` al principio de `_draw()`, `draw_hud()` una vez por `_draw()`. Lo fijo del juego (mesa, paneles), con `draw_static(fn)`. Ver `docs/PERFORMANCE.md`.
 6. **Sonido y vibración**: `play_sfx(nombre)` en la TV, `notify_player(pid, tipo)` en el celular del jugador y `tick_countdown(antes, después)` para la cuenta regresiva. Eventos importantes (sumar, eliminar, ganar) siempre con las dos cosas.
 7. **Seguridad**: usar solo `input.axis` / `input.btn`; límites propios si hace falta (ver `tap_race.gd`). Nombres solo con `draw_string`/`Label`.
 8. **Márgenes**: resolución lógica 1920×1080; dejar ~64 px libres en los bordes (overscan) y los 90 px de arriba para el HUD.
