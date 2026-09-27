@@ -182,7 +182,7 @@ Veinte juegos nuevos (distintos de los de arriba), agrupados por la **emoción**
 | Joystick, deslizar, un botón | Sí | La mayoría de las ideas | — |
 | **Apuntar y soltar** con el joystick | Sí (interpretación en la TV, ver "Estilo pool") | Catapulta, Topos | — |
 | **Cuatro botones** (`four_buttons`) | No (Memoria de colores se resolvió con las 4 direcciones del joystick) | Trivia, ¿Quién es más probable?, respuestas en general | Sí: bits C y D en `btn`, `VERSION` 2 |
-| **Joystick + botón** (`stick_button`) | No | Globos; también patear en Fútbol y tirar bombas | Sí, mismo paquete |
+| **Joystick + A y B** (`joystick_ab`, reemplaza a la idea `stick_button`) | Sí ([ADR 0014](adr/0014-layout-joystick-ab.md)); todavía sin juego | Globos; también patear en Fútbol, saltar y tirar bombas | Sí: `VERSION` 2 |
 | **Dibujar** (`draw`) | No | Dibujá y adiviná | Sí: mensaje de trazos (en tramos, por el límite de 512 bytes) + ADR |
 | **Teclado** (`text`) | No | Tutti frutti | Sí: mensaje de texto corto + ADR |
 
@@ -317,7 +317,7 @@ Impacto: cuánto mejora la experiencia de un grupo nuevo. Esfuerzo: S / M / L / 
 | 8 | Cooperativo contra la TV | Modo | Alto (familias) | M-L | C | v0.4 | Nadie pierde contra nadie: ideal con chicos |
 | 9 | La torta gigante | Juego | Alto | S | C | v0.4 | Primer cooperativo; es el desafío 1 del modo cooperativo |
 | 10 | Equipos 2 vs 2 | Modo | Medio-alto | L | C | v0.4 | Criterio de la Fase C ("1 por equipos"); junto con Hockey de mesa |
-| 11 | Layouts `four_buttons` y `stick_button` (`VERSION` 2) | Base | Alto | M | C | v0.4 | Se suman juntos, como pide [PLAN.md](PLAN.md) |
+| 11 | Layouts `four_buttons` y `joystick_ab` (`VERSION` 2; `joystick_ab` ya está) | Base | Alto | M | C | v0.4 | Se suman juntos, como pide [PLAN.md](PLAN.md) |
 | 12 | Trivia de la fiesta | Juego | Alto | M | C | v0.4 | Juego de cabeza; usa el layout de 4 botones |
 | 13 | Handicap ("Ayuda") | Modo | Medio | M | C | v0.4 | Se mide con las simulaciones de bots |
 | 14 | Tablero de la fiesta | Modo | Muy alto | XL | C/D | v0.5 | Lo que hace "volver el sábado que viene"; necesita 12+ juegos y bots |
@@ -341,7 +341,7 @@ Impacto: cuánto mejora la experiencia de un grupo nuevo. Esfuerzo: S / M / L / 
 
 **v0.4 · "Solos, en equipo o todos juntos"** (Fase C, protocolo `VERSION` 2)
 - **Modos:** Bots (con test obligatorio para todo juego), Cooperativo contra la TV, Equipos 2 vs 2 y Handicap.
-- **Protocolo:** paquete de layouts `four_buttons` y `stick_button` (junto con dos botones e inclinación, si ya están listos según [PLAN.md](PLAN.md)).
+- **Protocolo:** paquete de layouts `four_buttons` y `joystick_ab` (este ya está, [ADR 0014](adr/0014-layout-joystick-ab.md); junto con dos botones e inclinación, si ya están listos según [PLAN.md](PLAN.md)).
 - **Juegos:** La torta gigante (cooperativo), Trivia de la fiesta (cuatro botones), Globos (joystick + botón), Hockey de mesa (equipos); Memoria de colores ya está hecha (joystick).
 - **Por qué:** los bots son la base de tres cosas: jugar solo, reemplazar desconectados y **balancear con miles de partidas simuladas**, que a su vez sirven para medir el handicap. Cooperativo y equipos abren el juego a familias con chicos. Los layouts van todos juntos para actualizar la app una sola vez.
 - *Ejemplo:* Juli juega sola con 3 bots un martes; el sábado la familia juega Cooperativo contra la Nube Gruñona y saca medalla de oro.

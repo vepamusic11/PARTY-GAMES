@@ -13,6 +13,8 @@ const DEAD_ZONE := 0.12
 
 @export var radius := 140.0
 @export var color := Color.WHITE
+## Pista que se ve mientras no hay dedo (JoystickAB usa una más corta).
+@export var hint := "Arrastrá en cualquier lugar"
 
 ## Dirección actual, -1..1 en cada eje. Vector2.ZERO si no hay dedo.
 var value := Vector2.ZERO
@@ -104,8 +106,7 @@ func _draw() -> void:
 	base.flush(self)
 	UiTheme.draw_toy_disc(self, knob - Vector2(0, knob_r * 0.12), knob_r, color if active else color.lerp(UiTheme.PAPER, 0.15),
 		_press, knob_r * 0.24)
-	if not active:
-		var hint := "Arrastrá en cualquier lugar"
+	if not active and not hint.is_empty():
 		var hint_w := UiTheme.FONT_BOLD.get_string_size(hint, HORIZONTAL_ALIGNMENT_LEFT, -1, 34).x
 		var pill := Rect2(size.x / 2.0 - hint_w / 2.0 - 36.0, size.y - 100.0, hint_w + 72.0, 72.0)
 		UiTheme.draw_round_rect(self, pill, UiTheme.PHONE_GLASS, 36.0)

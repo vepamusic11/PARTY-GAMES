@@ -8,7 +8,10 @@ extends RefCounted
 ## acá, actualizá ese documento y subí VERSION si el cambio no es compatible.
 
 # --- Versionado y red -------------------------------------------------------
-const VERSION := 1
+## 2: layout "joystick_ab" (joystick + botones A y B). Un control v1 no sabe
+## dibujarlo y quedaría en "Mirá la TV" sin poder jugar: por eso la TV
+## rechaza a los v1 con "bad_version" ("Actualizá ambas apps"). Ver ADR 0014.
+const VERSION := 2
 const GAME_ID := "party-games"
 const WS_PORT := 47777
 const DISCOVERY_PORT := 47778
@@ -69,7 +72,11 @@ const LAYOUT_WAIT := "wait"             ## Sin juego activo: pantalla de espera.
 const LAYOUT_JOYSTICK := "joystick"     ## axis = dirección (-1..1, -1..1).
 const LAYOUT_SLIDER_H := "slider_h"     ## axis.x = posición absoluta (-1..1).
 const LAYOUT_ONE_BUTTON := "one_button" ## btn & BTN_A = botón presionado.
-const LAYOUTS: Array[String] = [LAYOUT_WAIT, LAYOUT_JOYSTICK, LAYOUT_SLIDER_H, LAYOUT_ONE_BUTTON]
+## Joystick + botones A y B, como un control de consola: axis = dirección
+## (-1..1, -1..1); btn & BTN_A y btn & BTN_B = botones presionados (los dos
+## a la vez se pueden). data opcional: {"a": "Patear", "b": "Saltar"}.
+const LAYOUT_JOYSTICK_AB := "joystick_ab"
+const LAYOUTS: Array[String] = [LAYOUT_WAIT, LAYOUT_JOYSTICK, LAYOUT_SLIDER_H, LAYOUT_ONE_BUTTON, LAYOUT_JOYSTICK_AB]
 
 # --- Fases de la sesión -------------------------------------------------------
 const PHASE_LOBBY := "lobby"
@@ -77,8 +84,8 @@ const PHASE_PLAYING := "playing"
 const PHASE_RESULTS := "results"
 
 # --- Botones (máscara de bits) -----------------------------------------------
-const BTN_A := 1
-const BTN_B := 2
+const BTN_A := 1  ## one_button y joystick_ab.
+const BTN_B := 2  ## joystick_ab.
 const BTN_MASK := BTN_A | BTN_B
 
 ## Colores de jugador por defecto (1P..4P). Son los 4 primeros de

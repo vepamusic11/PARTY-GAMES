@@ -156,3 +156,13 @@ godot --headless --path . -s res://tests/run_tests.gd
 - **Nombres:** mostrarlos con `draw_string` o `Label`, nunca en `RichTextLabel` con BBCode.
 - **Resolución lógica:** 1920×1080 (`SCREEN`). Dejar márgenes: algunas TVs recortan los bordes (*overscan*).
 - **Un layout nuevo** (ej. dos botones) requiere: constante en `Protocol`, control en `controller/layouts/`, caso en `ControllerMain._on_layout_changed`, y actualizar `PROTOCOL.md`. Eso sí obliga a actualizar la app del celular.
+  Checklist completo: skill `nuevo-layout`. Ejemplo: `joystick_ab` ([ADR 0014](adr/0014-layout-joystick-ab.md)), que subió `VERSION` a 2.
+- **Joystick + botones A y B** (`Protocol.LAYOUT_JOYSTICK_AB`): moverse y hacer una acción a la vez (patear, saltar). `layout_data` opcional `{"a": "Patear", "b": "Saltar"}` pone un texto debajo de cada botón. Para los botones, `track_buttons` devuelve lo que se acaba de apretar (un toque = una acción) y `pressed_a`/`pressed_b` dicen qué está apretado:
+  ```gdscript
+  func on_input(player_id: int, input: Dictionary) -> void:
+  	_dir[player_id] = input.axis
+  	var down := track_buttons(player_id, input)
+  	if down & Protocol.BTN_A:
+  		_kick(player_id)
+  	_blocking[player_id] = pressed_b(player_id)  # B sostenido = cubrirse
+  ```

@@ -384,6 +384,20 @@ static func draw_control_icon(ci: CanvasItem, c: Vector2, s: float, layout: Stri
 			ci.draw_circle(c, s + line, ink)
 			ci.draw_circle(c, s, white)
 			draw_text(ci, "A", c, int(s), ink)
+		Protocol.LAYOUT_JOYSTICK_AB:
+			# Joystick a la izquierda; A (blanco, grande) y B (neutro) a la derecha.
+			var base := c + Vector2(-s * 0.8, s * 0.05)
+			ci.draw_circle(base, s * 0.62 + line, ink)
+			ci.draw_circle(base, s * 0.62, Color(PAPER, 0.35 * a))
+			var knob := base + Vector2(s * 0.2, -s * 0.18)
+			ci.draw_circle(knob, s * 0.32 + line, ink)
+			ci.draw_circle(knob, s * 0.32, white)
+			for key: Array in [["B", Vector2(s * 0.28, -s * 0.36), s * 0.3, Color(PHONE_KEY_NEUTRAL, a)],
+					["A", Vector2(s * 0.9, s * 0.26), s * 0.38, white]]:
+				var kc: Vector2 = c + key[1]
+				ci.draw_circle(kc, key[2] + line, ink)
+				ci.draw_circle(kc, key[2], key[3])
+				draw_text(ci, key[0], kc, int(key[2] * 1.1), ink)
 		_:
 			draw_star(ci, c, s, white)
 
@@ -855,6 +869,7 @@ const PHONE_ERROR_BG := Color("#FFE9E6")     ## Fondo de los avisos de error (am
 const PHONE_INFO_BG := Color("#E4F2FF")      ## Fondo de "Conectando…" y ayudas.
 const PHONE_GLASS := Color(1, 1, 1, 0.55)    ## Paneles translúcidos sobre el cielo.
 const PHONE_PRESS_SQUASH := 0.08             ## Cuánto se ensancha la perilla al tocarla.
+const PHONE_KEY_NEUTRAL := Color("#D5DBEA")  ## Botón B de joystick_ab: neutro (A lleva el color del jugador).
 
 
 ## Tecla de juguete dentro de `rect` (incluye el canto): sombra, canto

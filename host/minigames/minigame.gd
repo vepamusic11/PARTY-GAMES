@@ -21,6 +21,7 @@ var players: Array[Dictionary] = []
 var anim_time := 0.0
 var _finished := false
 var _walk: Dictionary = {}   # player_id -> fase de caminata (vueltas)
+var _buttons: Dictionary = {}  # player_id -> btn del último input (ver track_buttons)
 
 # Capas cacheadas (ver "Capas cacheadas" más abajo): fondo y marcador.
 var _backdrop: Node2D          # detrás del juego: cielo y campo
@@ -97,6 +98,32 @@ func player_by_id(player_id: int) -> Dictionary:
 		if p.id == player_id:
 			return p
 	return {}
+
+
+## Botones A y B (layouts one_button y joystick_ab). Llamar al principio de
+## on_input: guarda el estado y devuelve los botones que se ACABAN de apretar
+## (flanco de subida), para acciones de un toque (patear, saltar):
+##   var down := track_buttons(player_id, input)
+##   if down & Protocol.BTN_B: _jump(player_id)
+## on_player_disconnected manda btn 0: suelta todo solo.
+func track_buttons(player_id: int, input: Dictionary) -> int:
+	var now := int(input.get("btn", 0)) & Protocol.BTN_MASK
+	var before := int(_buttons.get(player_id, 0))
+	_buttons[player_id] = now
+	return now & ~before
+
+
+## ¿Tiene apretado el botón (Protocol.BTN_A o BTN_B)? Según track_buttons.
+func is_button_down(player_id: int, button: int = Protocol.BTN_A) -> bool:
+	return (int(_buttons.get(player_id, 0)) & button) != 0
+
+
+func pressed_a(player_id: int) -> bool:
+	return is_button_down(player_id, Protocol.BTN_A)
+
+
+func pressed_b(player_id: int) -> bool:
+	return is_button_down(player_id, Protocol.BTN_B)
 
 
 ## Arma el resultado a partir de un diccionario de puntajes.

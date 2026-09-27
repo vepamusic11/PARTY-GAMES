@@ -35,6 +35,7 @@ const LOOKS := {
 ## Nombre de la captura del celular según el control que muestra.
 const CONTROL_SHOTS := {
 	Protocol.LAYOUT_JOYSTICK: "ctrl_joy", Protocol.LAYOUT_ONE_BUTTON: "ctrl_button", Protocol.LAYOUT_SLIDER_H: "ctrl_slider",
+	Protocol.LAYOUT_JOYSTICK_AB: "ctrl_joy_ab",  # Todavía sin juego: vista previa con tools/preview_joystick_ab.gd.
 }
 
 var host: HostMain

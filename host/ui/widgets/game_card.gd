@@ -13,6 +13,7 @@ const CONTROL_NAMES := {
 	Protocol.LAYOUT_JOYSTICK: "Joystick",
 	Protocol.LAYOUT_SLIDER_H: "Deslizar",
 	Protocol.LAYOUT_ONE_BUTTON: "Un botón",
+	Protocol.LAYOUT_JOYSTICK_AB: "Joystick + A/B",
 }
 
 ## Miniaturas: assets/thumbs/<id>.webp (ver tools/make_thumbnails.gd).

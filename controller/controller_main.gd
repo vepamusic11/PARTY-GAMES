@@ -126,6 +126,9 @@ func _process(delta: float) -> void:
 		axis = (_active_layout as SliderPad).value
 	elif _active_layout is BigButton:
 		btn = Protocol.BTN_A if (_active_layout as BigButton).pressed else 0
+	elif _active_layout is JoystickAB:
+		axis = (_active_layout as JoystickAB).value
+		btn = (_active_layout as JoystickAB).buttons
 	# Solo mandar si cambió, o como keepalive: ahorra batería y red.
 	if axis != _last_sent_axis or btn != _last_sent_btn or _since_last_send >= KEEPALIVE_SEC:
 		client.send_input(axis, btn)
@@ -193,6 +196,12 @@ func _on_layout_changed(layout: String, data: Dictionary) -> void:
 			b.color = color
 			b.label = str(data.get("label", "A")).left(12)
 			_active_layout = b
+		Protocol.LAYOUT_JOYSTICK_AB:
+			var pad := JoystickAB.new()
+			pad.color = color
+			pad.label_a = str(data.get("a", ""))
+			pad.label_b = str(data.get("b", ""))
+			_active_layout = pad
 	var was_waiting := _wait_view.visible
 	_wait_view.visible = _active_layout == null
 	if _wait_view.visible and not was_waiting:

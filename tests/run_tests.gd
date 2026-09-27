@@ -1754,7 +1754,7 @@ func test_rejects_raw_garbage() -> void:
 	await _until(func() -> bool:
 		ws.poll()
 		return ws.get_ready_state() == WebSocketPeer.STATE_OPEN)
-	ws.send_text('{"v":1,"type":"input","seq":1,"axis":[0,0],"btn":1}')  # input sin haberse unido
+	ws.send_text('{"v":%d,"type":"input","seq":1,"axis":[0,0],"btn":1}' % Protocol.VERSION)  # input sin haberse unido
 	await _until(func() -> bool:
 		ws.poll()
 		return ws.get_ready_state() == WebSocketPeer.STATE_CLOSED)
@@ -1951,7 +1951,7 @@ func test_player_look_network() -> void:
 	await _until(func() -> bool:
 		ws.poll()
 		return ws.get_ready_state() == WebSocketPeer.STATE_OPEN)
-	ws.send_text(JSON.stringify({"v": 1, "type": "join", "room": server.room_code, "name": "Viejo"}))
+	ws.send_text(JSON.stringify({"v": Protocol.VERSION, "type": "join", "room": server.room_code, "name": "Viejo"}))
 	await _until(func() -> bool:
 		ws.poll()
 		return server.get_players().size() == 3)
@@ -1964,7 +1964,7 @@ func test_player_look_network() -> void:
 	await _until(func() -> bool:
 		ws2.poll()
 		return ws2.get_ready_state() == WebSocketPeer.STATE_OPEN)
-	ws2.send_text(JSON.stringify({"v": 1, "type": "join", "room": server.room_code, "name": "Raro", "color": "negro", "style": [99]}))
+	ws2.send_text(JSON.stringify({"v": Protocol.VERSION, "type": "join", "room": server.room_code, "name": "Raro", "color": "negro", "style": [99]}))
 	await _until(func() -> bool:
 		ws2.poll()
 		return server.get_players().size() == 4)
@@ -1991,9 +1991,9 @@ func test_player_look_network() -> void:
 
 	# look con basura: se ignora sin romper nada.
 	updated.clear()
-	ws.send_text('{"v":1,"type":"look","color":[1],"style":{"a":1}}')
-	ws.send_text('{"v":1,"type":"look","color":1e999}')
-	ws.send_text('{"v":1,"type":"look"}')
+	ws.send_text('{"v":%d,"type":"look","color":[1],"style":{"a":1}}' % Protocol.VERSION)
+	ws.send_text('{"v":%d,"type":"look","color":1e999}' % Protocol.VERSION)
+	ws.send_text('{"v":%d,"type":"look"}' % Protocol.VERSION)
 	await _frames(10)
 	ws.poll()
 	check(updated.is_empty() and server.get_players()[2].color_index == 2, "look inválido ignorado")
@@ -2012,7 +2012,7 @@ func test_player_look_network() -> void:
 
 	# Límite de frecuencia: una ráfaga no pasa entera.
 	for i in 30:
-		ws.send_text(JSON.stringify({"v": 1, "type": "look", "style": i % Protocol.MASCOT_STYLES}))
+		ws.send_text(JSON.stringify({"v": Protocol.VERSION, "type": "look", "style": i % Protocol.MASCOT_STYLES}))
 	await _frames(15)
 	ws.poll()
 	check(updated.size() <= HostServer.LOOK_RATE_LIMIT_PER_SEC, "look con límite de frecuencia (%d)" % updated.size())
@@ -2647,6 +2647,194 @@ func test_seat_card_bot() -> void:
 func _physics_frames(n: int) -> void:
 	for i in n:
 		await physics_frame
+# --- Layout joystick_ab (joystick + A y B, ver docs/adr/0014) -------------------
+
+func test_parse_input_button_b() -> void:
+	var r := Protocol.parse_input({"seq": 1, "axis": [0, 0], "btn": Protocol.BTN_B})
+	check(r.btn == Protocol.BTN_B, "B solo")
+	r = Protocol.parse_input({"seq": 2, "axis": [0.5, 0], "btn": Protocol.BTN_A | Protocol.BTN_B})
+	check(r.btn == Protocol.BTN_A | Protocol.BTN_B and r.axis == Vector2(0.5, 0), "A y B a la vez, con el joystick movido")
+	r = Protocol.parse_input(Protocol.decode(Protocol.encode(Protocol.T_INPUT, {"seq": 3, "axis": [0, 0], "btn": 2.0})))
+	check(not r.is_empty() and r.btn == Protocol.BTN_B, "B tal como llega por la red (float)")
+	r = Protocol.parse_input({"seq": 4, "axis": [0, 0], "btn": 4 | Protocol.BTN_B})
+	check(r.btn == Protocol.BTN_B, "bits desconocidos (C, D…) se descartan")
+
+
+func test_joystick_ab_layout_valid() -> void:
+	check(Protocol.LAYOUT_JOYSTICK_AB in Protocol.LAYOUTS, "joystick_ab está en LAYOUTS")
+	check(Protocol.VERSION >= 2, "layout nuevo con VERSION nueva (un control v1 no lo sabe dibujar)")
+	check(GameCard.CONTROL_NAMES.has(Protocol.LAYOUT_JOYSTICK_AB), "nombre del control en la tarjeta del lobby")
+	var pad := JoystickAB.new()
+	pad.size = Vector2(2340, 920)
+	for button in [Protocol.BTN_A, Protocol.BTN_B]:
+		check(pad.button_radius(button) * 2.0 >= 128.0, "botón %d ≥ 128 px" % button)
+	# Celular chico y angosto: los botones no bajan de 128 px.
+	pad.size = Vector2(1280, 560)
+	for button in [Protocol.BTN_A, Protocol.BTN_B]:
+		check(pad.button_radius(button) * 2.0 >= 128.0, "celular chico: botón %d ≥ 128 px" % button)
+	var gap := pad.button_center(Protocol.BTN_A).distance_to(pad.button_center(Protocol.BTN_B))
+	check(gap > pad.button_radius(Protocol.BTN_A) + pad.button_radius(Protocol.BTN_B), "A y B no se pisan")
+	pad.free()
+
+
+## Dos (y tres) dedos a la vez: caminar con el joystick y apretar A y B.
+func test_joystick_ab_multitouch() -> void:
+	var pad := JoystickAB.new()
+	root.add_child(pad)
+	pad.size = Vector2(2340, 920)
+	await process_frame
+	var stick := pad.stick_rect().get_center()
+	var a := pad.button_center(Protocol.BTN_A)
+	var b := pad.button_center(Protocol.BTN_B)
+	check(pad.part_at(stick) == pad._stick and pad.part_at(a) == pad._a and pad.part_at(b) == pad._b, "cada zona va a su pieza")
+	pad._gui_input(_touch(0, stick, true))
+	pad._gui_input(_drag(0, stick + Vector2(100, 0)))
+	check(pad.value.x > 0.5 and pad.buttons == 0, "dedo 1: joystick a la derecha (%s)" % pad.value)
+	pad._gui_input(_touch(1, a + Vector2(20, 10), true))
+	check(pad.buttons == Protocol.BTN_A and pad.value.x > 0.5, "dedo 2 en A sin soltar el joystick")
+	pad._gui_input(_drag(0, stick + Vector2(0, -100)))
+	check(pad.value.y < -0.5 and pad.buttons == Protocol.BTN_A, "se mueve el joystick con A apretado")
+	pad._gui_input(_touch(2, b, true))
+	check(pad.buttons == Protocol.BTN_A | Protocol.BTN_B, "tercer dedo: A y B a la vez")
+	pad._gui_input(_drag(1, stick))  # El dedo de A se arrastra hacia el joystick: sigue siendo A.
+	check(pad.value.y < -0.5 and pad.buttons == Protocol.BTN_A | Protocol.BTN_B, "cada dedo sigue en su pieza")
+	pad._gui_input(_touch(1, stick, false))
+	check(pad.buttons == Protocol.BTN_B and pad.value != Vector2.ZERO, "suelta A: queda B y el joystick")
+	pad._gui_input(_touch(3, stick + Vector2(-200, 0), true))
+	check(pad.value.y < -0.5, "un segundo dedo en la zona del joystick no le roba el control")
+	pad._gui_input(_touch(0, stick, false))
+	check(pad.value == Vector2.ZERO and pad.buttons == Protocol.BTN_B, "suelta el joystick: vuelve al centro")
+	pad._gui_input(_touch(2, b, false))
+	pad._gui_input(_touch(3, stick, false))
+	check(pad.value == Vector2.ZERO and pad.buttons == 0, "sin dedos: todo suelto")
+	# La app pasa a segundo plano con dedos apoyados: se suelta todo.
+	pad._gui_input(_touch(4, a, true))
+	pad.propagate_notification(Control.NOTIFICATION_APPLICATION_FOCUS_OUT)
+	check(pad.buttons == 0 and pad._routes.is_empty(), "al perder el foco no queda A apretado")
+	pad.queue_free()
+	await process_frame
+
+
+func test_joystick_ab_left_handed() -> void:
+	var pad := JoystickAB.new()
+	root.add_child(pad)
+	pad.size = Vector2(2340, 920)
+	await process_frame
+	var a_right := pad.button_center(Protocol.BTN_A)
+	var b_right := pad.button_center(Protocol.BTN_B)
+	var stick_right := pad.stick_rect()
+	check(a_right.x > pad.size.x / 2.0 and stick_right.get_center().x < pad.size.x / 2.0, "diestro: joystick a la izquierda, botones a la derecha")
+	pad._gui_input(_touch(0, a_right, true))
+	check(pad.buttons == Protocol.BTN_A, "A apretado antes de cambiar")
+	pad.left_handed = true
+	check(pad.buttons == 0, "cambiar a zurdo suelta los dedos")
+	var a_left := pad.button_center(Protocol.BTN_A)
+	check(is_equal_approx(a_left.x, pad.size.x - a_right.x) and is_equal_approx(a_left.y, a_right.y), "zurdo: A en espejo")
+	check(is_equal_approx(pad.button_center(Protocol.BTN_B).x, pad.size.x - b_right.x), "zurdo: B en espejo")
+	check(pad.stick_rect().get_center().x > pad.size.x / 2.0 and is_equal_approx(pad.stick_rect().end.x, pad.size.x), "zurdo: joystick a la derecha")
+	check(is_equal_approx(pad._stick.position.x, pad.stick_rect().position.x), "la pieza del joystick se mueve")
+	var a_face: Vector2 = pad._a.position + pad._a.size / 2.0
+	check(a_face.x < pad.size.x / 2.0, "la pieza de A se mueve a la izquierda")
+	pad._gui_input(_touch(0, a_right, true))  # Donde antes estaba A ahora está el joystick.
+	check(pad.buttons == 0 and pad._routes.get(0) == pad._stick, "el mismo toque ahora es joystick")
+	pad._gui_input(_touch(1, a_left, true))
+	check(pad.buttons == Protocol.BTN_A, "A del lado izquierdo")
+	pad.queue_free()
+	await process_frame
+
+
+func test_minigame_track_buttons() -> void:
+	var game := MiniGame.new()
+	check(game.track_buttons(1, {"btn": Protocol.BTN_A}) == Protocol.BTN_A, "flanco de subida de A")
+	check(game.track_buttons(1, {"btn": Protocol.BTN_A}) == 0, "A sostenido no vuelve a disparar")
+	check(game.track_buttons(1, {"btn": Protocol.BTN_A | Protocol.BTN_B}) == Protocol.BTN_B, "B se suma con A apretado")
+	check(game.pressed_a(1) and game.pressed_b(1) and not game.pressed_b(2), "estado por jugador")
+	check(game.track_buttons(1, {"btn": 255}) == 0, "bits desconocidos se descartan")
+	game.track_buttons(1, {})
+	check(not game.pressed_a(1) and not game.pressed_b(1), "sin btn = todo suelto")
+	game.free()
+
+
+## Red: la TV manda joystick_ab (con textos), el celular manda A y B, y un
+## control v1 (que no conoce el layout) es rechazado con "bad_version".
+func test_joystick_ab_network() -> void:
+	var port := TEST_PORT + 14  # 14: el número del ADR (evita choques con otros tests).
+	var server := HostServer.new()
+	root.add_child(server)
+	check(server.start(port, "127.0.0.1") == OK, "el servidor abre el puerto")
+	var inputs: Array = []
+	server.input_received.connect(func(_pid: int, i: Dictionary) -> void: inputs.append(i))
+	var c := _client()
+	var layouts: Array = []
+	c.layout_changed.connect(func(l: String, d: Dictionary) -> void: layouts.append([l, d]))
+	c.join("127.0.0.1", port, server.room_code, "Pablo")
+	await _until(func() -> bool: return server.get_players().size() == 1)
+	server.set_layout(Protocol.LAYOUT_JOYSTICK_AB, {"a": "Patear", "b": "Saltar"})
+	await _until(func() -> bool: return layouts.any(func(x: Array) -> bool: return x[0] == Protocol.LAYOUT_JOYSTICK_AB))
+	var got: Array = layouts.filter(func(x: Array) -> bool: return x[0] == Protocol.LAYOUT_JOYSTICK_AB)
+	check(not got.is_empty() and got[0][1].get("a") == "Patear", "el control recibe joystick_ab con sus textos")
+	c.send_input(Vector2(-0.4, 0.2), Protocol.BTN_A | Protocol.BTN_B)
+	await _until(func() -> bool: return not inputs.is_empty())
+	check(not inputs.is_empty() and inputs[0].btn == Protocol.BTN_A | Protocol.BTN_B, "la TV recibe A y B")
+	check(not inputs.is_empty() and inputs[0].axis.is_equal_approx(Vector2(-0.4, 0.2)), "y el joystick")
+
+	# Control v1: no conoce joystick_ab. Se lo rechaza al unirse (no queda
+	# mirando "Mirá la TV" sin poder jugar).
+	var ws := WebSocketPeer.new()
+	ws.connect_to_url("ws://127.0.0.1:%d" % port)
+	await _until(func() -> bool:
+		ws.poll()
+		return ws.get_ready_state() == WebSocketPeer.STATE_OPEN)
+	ws.send_text(JSON.stringify({"v": 1, "type": "join", "room": server.room_code, "name": "Viejo"}))
+	var reasons: Array = []
+	await _until(func() -> bool:
+		ws.poll()
+		while ws.get_available_packet_count() > 0:
+			var msg := Protocol.decode(ws.get_packet().get_string_from_utf8())
+			if msg.get("type") == Protocol.T_REJECT:
+				reasons.append(msg.get("reason"))
+		return not reasons.is_empty() or ws.get_ready_state() == WebSocketPeer.STATE_CLOSED)
+	check(reasons == [Protocol.R_BAD_VERSION] or ws.get_close_reason() == Protocol.R_BAD_VERSION,
+		"control v1 rechazado con bad_version (%s)" % [reasons])
+	check(server.get_players().size() == 1, "el control viejo no ocupa lugar")
+	server.stop()
+	server.queue_free()
+	await _free_clients()
+
+
+## El celular arma el layout nuevo; uno que no conoce (de una TV más nueva)
+## no rompe: queda en la espera, sin control y sin mandar botones.
+func test_controller_joystick_ab_and_unknown_layout() -> void:
+	var ctrl := ControllerMain.new()
+	root.add_child(ctrl)
+	await process_frame
+	ctrl._on_layout_changed(Protocol.LAYOUT_JOYSTICK_AB, {"a": "Patear con mucha fuerza", "b": 7})
+	var pad := ctrl._active_layout as JoystickAB
+	check_that(pad != null, "arma el JoystickAB")
+	if pad:
+		check(pad.label_a == "Patear con m" and pad.label_b == "7", "textos recortados y convertidos (%s / %s)" % [pad.label_a, pad.label_b])
+		check(not ctrl._wait_view.visible, "sin pantalla de espera")
+	ctrl._on_layout_changed("joystick_abcd", {"a": 1})
+	check(ctrl._active_layout == null and ctrl._wait_view.visible, "layout desconocido: queda esperando sin romper")
+	ctrl._on_layout_changed(Protocol.LAYOUT_JOYSTICK_AB, {})
+	check(ctrl._active_layout is JoystickAB, "vuelve a armarlo")
+	ctrl.queue_free()
+	await process_frame
+
+
+func _touch(index: int, pos: Vector2, pressed: bool) -> InputEventScreenTouch:
+	var t := InputEventScreenTouch.new()
+	t.index = index
+	t.position = pos
+	t.pressed = pressed
+	return t
+
+
+func _drag(index: int, pos: Vector2) -> InputEventScreenDrag:
+	var d := InputEventScreenDrag.new()
+	d.index = index
+	d.position = pos
+	return d
 
 
 # --- Utilidades -----------------------------------------------------------------
