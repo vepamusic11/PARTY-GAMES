@@ -4,6 +4,8 @@ Cómo seguimos desde v0.2 hasta un juego publicable en tiendas, con criterios me
 
 Auditoría de calidad de producto (diseño, UX, audio, contenido, técnica, tienda y proceso) con backlog priorizado: [CALIDAD.md](CALIDAD.md).
 
+Modos de juego, 20 ideas de juegos nuevos, retención y roadmap de contenido v0.3–v0.5: [JUEGOS.md](JUEGOS.md#modos-de-juego) y [MODOS.md](MODOS.md).
+
 ## Dónde estamos
 
 | Área | Estado |

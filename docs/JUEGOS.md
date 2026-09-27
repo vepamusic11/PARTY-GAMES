@@ -2,6 +2,8 @@
 
 Qué juegos hay, cuáles conviene sumar y cómo encajan en lo que ya existe. Complementa la Fase C de [PLAN.md](PLAN.md). Para hacer uno: [ADDING_A_MINIGAME.md](ADDING_A_MINIGAME.md) y la skill `nuevo-minijuego`.
 
+Más abajo: qué hace divertidos a los party games de referencia, **modos de juego** (detalle en [MODOS.md](MODOS.md)), **20 ideas nuevas** por emoción, **retención** y el **roadmap de contenido** de las próximas 3 versiones.
+
 **Regla de oro:** cada juego nuevo tiene que sumar algo distinto, ya sea un control, una dinámica o una emoción. Un juego que se parece mucho a otro ocupa lugar en el lobby sin aportar.
 
 ## Los 7 de hoy
@@ -75,3 +77,253 @@ Toda la lógica vive en la TV, que sigue siendo autoritativa: el celular solo ma
 5. Después, los que necesitan layouts nuevos (Memoria de colores, Equilibrio), sumados juntos en una sola versión del protocolo.
 
 Cada juego nuevo tiene que cumplir la definición de "terminado" de [PLAN.md](PLAN.md): tests, capturas revisadas, rendimiento dentro del presupuesto y su miniatura para el lobby.
+
+---
+
+## Qué hace divertido a un party game
+
+Investigación del 27/09/2026 sobre las referencias que el público ya conoce. Las fuentes se consultaron por buscador; como las páginas no se pudieron abrir directamente, van marcadas *(indirecto)*, igual que en [RECURSOS.md](RECURSOS.md). Lista completa al final, en "Fuentes".
+
+| Referencia | Qué la hace divertida | Qué tomamos | Ejemplo en nuestro juego |
+|---|---|---|---|
+| **Mario Party** | Tablero con dados y un minijuego por turno; tipos fijos de minijuego (4 jugadores, 1 contra 3, 2 contra 2, duelo); estrellas bonus al final | Economía monedas → estrellas; minijuegos 1 contra 3 y 2 contra 2; duelos | Modo Tablero; con 3 jugadores, un 1 contra 2 donde el que va solo es más rápido |
+| **Jackbox** | El celular es el control y **la pantalla privada**: se escribe, dibuja o vota en secreto. Pocos tipos de control, así se aprende uno y se saben todos. Público de hasta 10.000 personas | Juegos con información oculta; votar; público | Tres puertas (cada uno elige en secreto en su celular); modo espectador |
+| **Trivia Murder Party** (Jackbox) | Perder una pregunta te manda a un minijuego de vida o muerte; los muertos siguen jugando como fantasmas | Eliminación sin quedarse afuera | Torneo por eliminación con fantasmas |
+| **Fall Guys** | Rondas de 2–3 minutos; caerse es gracioso, no frustrante; mezcla carrera, supervivencia, equipos y memoria | Rondas cortas; el fracaso como chiste; variedad de tipos | La mascota que cae en Empujones hace "splash" y sale mojada, no "GAME OVER" |
+| **Overcooked** | Cooperativo con roles imprescindibles, presión de tiempo y gritos; la comunicación es el juego | Cooperativo contra la TV | La torta gigante: solo se mueve si los cuatro tiran para el mismo lado |
+| **Ultimate Chicken Horse** | Cada uno pone una trampa y después todos corren. **Si todos llegan o nadie llega, no hay puntos**: hay que hacer el nivel difícil, pero no imposible | Construir y competir; puntaje que castiga los extremos | Trampas para todos |
+| **Pummel Party** | Tablero con ítems absurdos (un guante, una berenjena a control remoto) y minijuegos de caos | Ítems graciosos en la versión 2 del tablero | Guante que le roba una moneda a quien tengas al lado |
+| **WarioWare** | Microjuegos de ~4 segundos que se aceleran con cada acierto; un tablero corto donde el liderazgo cambia de mano | Variantes que aceleran; partidas cortas | Variante "turbo" de cualquier juego; Desenfunde dura 5 segundos por ronda |
+| **Kirby Air Riders** | *Top Ride*: carrera vista desde arriba en pistas que entran enteras en la pantalla, sin pantalla dividida. *City Trial*: 5 minutos juntando mejoras y después una prueba en el estadio | Confirma la cámara de Karts de mascotas; "preparación + prueba" | Variante de Arena: las estrellas juntadas dan velocidad para una carrera final de 20 s |
+| **BombSquad** | Bombas, física y explosiones que empujan a todos; hockey, capturar la bandera y una variante en cámara lenta ("Epic") | Caos físico con reglas simples; cámara lenta en el momento clave | Bombas saltarinas; la última explosión se ve en cámara lenta |
+| **Nintendo Switch Sports** | Colecciones de ropa nueva cada semana, siempre cosméticas; liga con rangos | Progresión solo cosmética | Stickers que desbloquean gorros y patrones para la mascota |
+
+**Cinco lecciones que guían todo lo que sigue:**
+1. **Cero espera.** Todos juegan a la vez, siempre. *Ejemplo:* en el Tablero los cuatro tiran el dado juntos; nadie mira tres turnos ajenos.
+2. **Se entiende en 5 segundos.** Un verbo por juego ("tocá", "esquivá", "tirá"). *Ejemplo:* Desenfunde se explica con una palabra: "¡Ya!".
+3. **Perder es gracioso.** La animación del que pierde tiene que hacer reír. *Ejemplo:* en Sillas musicales, la mascota que se queda sin silla se sienta en el piso con cara de ofendida.
+4. **Nadie "ya perdió".** Alcance sutil, rondas que valen más al final, fantasmas que siguen jugando. *Ejemplo:* Gran final ×2 en Partida rápida.
+5. **El celular es más que un joystick.** Es una pantalla privada: se puede elegir, votar o dibujar en secreto. *Ejemplo:* en Tres puertas nadie sabe qué puerta eligió Pablo hasta que la TV las abre.
+
+## Modos de juego
+
+Hoy hay un solo modo: **Competencia** (una ronda de N juegos con puntos 100 / 70 / 50 / 30 por puesto, [ADR 0003](adr/0003-modo-competencia.md)). Los modos nuevos cambian *cómo se encadenan y cuentan* los juegos, sin tocar los juegos en sí. Detalle de cada uno (cómo se juega, cambios de arquitectura, riesgo y ejemplo completo): **[MODOS.md](MODOS.md)**.
+
+**Concepto: *modo* vs. *juego*.** El juego es la cancha; el modo es el campeonato. *Ejemplo:* Pintar el piso en Competencia da 100 al que más pinta; en Equipos se pinta con dos patrones y ganan dos; en el Tablero da 10 monedas.
+
+| Modo | Cómo se juega (una línea) | Arquitectura | Protocolo | Esfuerzo | Riesgo |
+|---|---|---|---|---|---|
+| **Partida rápida + Gran final** | 3 juegos elegidos con variedad; el último vale doble | `QuickMode` sobre `Tournament` | No | S | Bajo |
+| **Bots** | "Agregar bot" fácil/normal/difícil; reemplaza a quien se desconecta | Script de bot por juego + `BotDriver` | No | L | Medio |
+| **Equipos 2 vs 2** | Sol contra Luna; juegos propios de equipo o de suma | `TeamMode`; `teams` en `get_info()` | Opcional | L | Medio |
+| **Cooperativo contra la TV** | 4 desafíos contra la Nube Gruñona con 3 corazones compartidos; medalla | `CoopMode`; `coop_score` en el resultado | No | M-L | Medio |
+| **Handicap ("Ayuda")** | La TV le da ayuda visible a un jugador (ej. estrellas desde más lejos) | `assist` en cada jugador | No | M | Bajo-medio |
+| **Eliminación con fantasmas** | Sale el último de cada juego y sigue como fantasma; final 1 contra 1 | `EliminationMode`; `ghost` en cada jugador | No | M-L | Medio |
+| **Fiesta infinita** | Juegos sin fin, se entra y sale entre juegos, corona de los últimos 5 | `EndlessMode`; cola en `HostServer` | No (cola con `wait`) | M | Medio |
+| **Desafío del día** | Un juego con una variante y una meta, igual en todas las TVs por la fecha | Semilla por fecha; `modifiers` | No | M | Bajo |
+| **Espectador** | Del 5° en adelante: alentar y votar qué juego sigue | Público separado de `MAX_PLAYERS` | **Sí** (ADR) | M-L | Medio |
+| **Tablero de la fiesta** | Dados simultáneos, casillas, monedas y estrellas; 10 turnos | `BoardMode` + `BoardScreen` | No | XL | Alto |
+
+Base común para todos: un contrato `GameMode` del que `Tournament` pasa a ser un caso más (ADR 0013 propuesto en [MODOS.md](MODOS.md#base-común-modos-como-estrategia)).
+
+## Más ideas
+
+Veinte juegos nuevos (distintos de los de arriba), agrupados por la **emoción** que buscan. Cada uno cumple la regla de oro: suma algo que no tiene otro. "Dificultad" es de programación.
+
+**Controles que aparecen en esta sección:**
+
+| Control | ¿Existe? | Qué habilita | Protocolo |
+|---|---|---|---|
+| Joystick, deslizar, un botón | Sí | La mayoría de las ideas | — |
+| **Apuntar y soltar** con el joystick | Sí (interpretación en la TV, ver "Estilo pool") | Catapulta, Topos | — |
+| **Cuatro botones** (`four_buttons`) | No; ya lo pide Memoria de colores | Trivia, ¿Quién es más probable?, respuestas en general | Sí: bits C y D en `btn`, `VERSION` 2 |
+| **Joystick + botón** (`stick_button`) | No | Globos; también patear en Fútbol y tirar bombas | Sí, mismo paquete |
+| **Dibujar** (`draw`) | No | Dibujá y adiviná | Sí: mensaje de trazos (en tramos, por el límite de 512 bytes) + ADR |
+| **Teclado** (`text`) | No | Tutti frutti | Sí: mensaje de texto corto + ADR |
+
+Como dice la Fase C de [PLAN.md](PLAN.md), los layouts nuevos se suman **juntos en una sola versión del protocolo** (skill `nuevo-layout`).
+
+### Reflejos
+
+| Juego | Dinámica (con ejemplo) | Control | Jugadores | Qué suma | Dificultad | Reutiliza |
+|---|---|---|---|---|---|---|
+| **Desenfunde** | Duelo del Oeste: las mascotas se miran de espaldas y hay que tocar apenas la TV dice "¡YA!". Quien toca antes de tiempo pierde la ronda. La TV engaña: "¡YA… mate!". *Ej.:* Sofi (Conejo) toca en 0,21 s; Pablo se adelantó con "¡YA… mate!" y su Oso se cae sentado | Un botón | 1–4 | Reacción a un momento **desconocido** (Reloj exacto es a un momento conocido); el engaño da risa | Baja | Visor y cronómetro de Reloj exacto |
+| **Topos** | Cada jugador tiene 4 pozos en su esquina (arriba, abajo, izquierda, derecha); sale un topo y hay que mover el joystick hacia ese pozo. El topo con casco no se toca. *Ej.:* a Tomi le sale el topo dorado a la izquierda: +3 | Joystick (movimiento corto y soltar) | 1–4 | Reflejos de **dirección**, no de un solo botón | Baja-media | Detección de "soltar" del joystick (Pool loco) |
+
+### Puntería y precisión
+
+| Juego | Dinámica (con ejemplo) | Control | Jugadores | Qué suma | Dificultad | Reutiliza |
+|---|---|---|---|---|---|---|
+| **Grúa de bloques** | Una grúa va y viene sola sobre la torre de cada uno; se toca para soltar el bloque. Si queda torcido, la torre se tambalea y puede caerse. Gana la más alta a los 60 s. *Ej.:* la torre de Juli llega a 11 bloques pero se inclina; Pablo, más prudente, termina con 9 bien derechos y gana porque la de Juli se cae en el último segundo | Un botón | 1–4 | Precisión + riesgo (apurarse o esperar) | Media (apilado simple sin motor de física: cae si el centro de masa sale de la base) | — |
+| **Catapulta** | Cada mascota tiene una catapulta y un castillo de cartón; se apunta y se suelta para tirar una bola en parábola y derribar los castillos ajenos. *Ej.:* Sofi estira el joystick hacia abajo a la izquierda, suelta, y la bola vuela sobre el castillo de Tomi y le baja la torre | Joystick (apuntar y soltar) | 2–4 | Puntería con **curva** (Pool loco es en línea recta) | Media | "Apuntar y soltar" de Pool loco; bloques de Grúa |
+| **Globos** | Suben globos; se mueve la mira con el joystick y el botón revienta. Globo con tu patrón +1, dorado +3, nube de tormenta −2. *Ej.:* Pablo revienta el dorado justo antes que Juli | Joystick + botón (**nuevo**) | 1–4 | Primer juego de "mira y disparo" | Baja-media | — |
+
+### Estrategia
+
+| Juego | Dinámica (con ejemplo) | Control | Jugadores | Qué suma | Dificultad | Reutiliza |
+|---|---|---|---|---|---|---|
+| **Tres puertas** | Cada ronda hay 3 puertas: un tesoro de 6 monedas, uno de 2 y una trampa. Cada uno elige **en secreto en su celular**; si varios eligen el mismo tesoro, se lo reparten. Pistas en la TV ("la trampa no está a la izquierda"). *Ej.:* Pablo y Sofi van al tesoro grande y se llevan 3 cada uno; Tomi apuesta al de 2 y se lo lleva entero | Joystick (izquierda / arriba / derecha, con tiempo límite) | 2–4 | Primer juego de **información oculta**: leer a los demás. Casi no lleva física | Baja | — |
+| **Trampas para todos** | Al estilo Ultimate Chicken Horse: (1) cada uno ubica una trampa en una pista de costado; (2) todos corren y saltan. Sumás si llegás y otros no; **si llegan todos o no llega nadie, nadie suma**. *Ej.:* Juli pone un resorte que ayuda a todos… salvo a quien lo pisa tarde | Joystick para ubicar, botón para saltar (**cambia de layout a mitad del juego**) | 2–4 | Construir el nivel y competir en él; el puntaje castiga los extremos | Alta (dos fases; `MiniGame` necesita poder pedir otro layout) | Carrera de obstáculos (vista de costado y salto) |
+
+### Caos
+
+| Juego | Dinámica (con ejemplo) | Control | Jugadores | Qué suma | Dificultad | Reutiliza |
+|---|---|---|---|---|---|---|
+| **Bombas saltarinas** | Al estilo BombSquad: caen bombas con mecha en una isla; caminar contra una la patea. Al explotar empujan a todos; el que cae al agua pierde una vida. La última explosión va en cámara lenta. *Ej.:* Tomi patea una bomba hacia Pablo, rebota en una piedra y vuelve: salen volando los dos | Joystick | 2–4 | Caos con **proyectiles**: la amenaza la crean los jugadores | Media | Física de empuje, isla y agua de Empujones |
+| **Sillas musicales** | Suena música y las mascotas dan vueltas; cuando para, hay que sentarse. Una silla menos por ronda. *Ej.:* la música para de golpe; el Gato de Juli y el Conejo de Sofi llegan a la misma silla y gana la que llegó primero por 3 cm | Joystick | 3–4 | **La música es la mecánica**; todos lo conocen de la vida real | Baja-media | Movimiento de Arena; audio sintetizado ([ADR 0005](adr/0005-sonido-sintetizado.md)) |
+
+### Cooperación
+
+**Concepto: *interdependencia*.** Nadie puede ganar solo (ver Overcooked arriba). Estos juegos son la base del modo Cooperativo contra la TV; en Competencia se puntúan por aporte ("quién tapó más goteras").
+
+| Juego | Dinámica (con ejemplo) | Control | Jugadores | Qué suma | Dificultad | Reutiliza |
+|---|---|---|---|---|---|---|
+| **La torta gigante** | Los cuatro tiran de una torta con cuerdas; la torta se mueve con **la suma** de los joysticks por un laberinto con charcos. Si tiran para lados opuestos, no se mueve. *Ej.:* Pablo tira para arriba, Sofi para la derecha: la torta va en diagonal y casi cae al charco; Tomi grita "¡todos a la derecha!" | Joystick | 2–4 (cooperativo) | Primer cooperativo; obliga a hablar | Baja | — |
+| **Barco con goteras** | Aparecen goteras en la cubierta y se tapan parándose encima. Si todos se amontonan de un lado, el barco se inclina y las mascotas resbalan. *Ej.:* Juli corre a tapar una gotera a la izquierda y el barco se inclina; Pablo se va a la derecha para equilibrar | Joystick | 1–4 (cooperativo) | Equilibrio **entre personas**: cada movimiento afecta a todos | Media | Movimiento de Arena |
+| **Pizzería de mascotas** | Estilo Overcooked simplificado: llegan pedidos, hay estaciones de masa, salsa, queso y horno; se agarra y se deja pasando por encima. *Ej.:* Sofi se queda en el horno, Tomi trae la masa y Pablo, el queso: sin repartirse los roles no llegan | Joystick (agarrar y soltar automáticos) | 2–4 (cooperativo) | Roles y organización | Alta | Movimiento de Arena |
+
+### Memoria y atención
+
+| Juego | Dinámica (con ejemplo) | Control | Jugadores | Qué suma | Dificultad | Reutiliza |
+|---|---|---|---|---|---|---|
+| **Contar ovejas** | Pasan ovejas blancas, ovejas negras y algún lobo disfrazado saltando un cerco. Pregunta: "¿Cuántas ovejas negras pasaron?". Se elige el número en una recta de 0 a 20 con el slider; gana quien más se acerca. *Ej.:* pasaron 7; Juli dice 7, Pablo 8 y Tomi 12 | Deslizar | 1–4 | Juego **tranquilo** de atención; el único uso del slider fuera de Ping Pong | Baja | Slider de Ping Pong |
+| **¿Qué cambió?** | Se ve la escena de la fiesta 5 s, se apaga la luz y al volver algo cambió (el gorro del Oso, un globo menos). Se mueve el cursor y se queda quieto 1 s sobre la respuesta. *Ej.:* Sofi señala el globo que faltaba en 2 s | Joystick | 1–4 | Memoria visual (Memoria de colores es de secuencias) | Baja-media | Mascotas y escenario existentes |
+
+### Ritmo y música
+
+| Juego | Dinámica (con ejemplo) | Control | Jugadores | Qué suma | Dificultad | Reutiliza |
+|---|---|---|---|---|---|---|
+| **Banda de mascotas** | Cada mascota toca un instrumento (Oso bombo, Conejo pandereta, Robot teclado, Gato guitarra) y las notas llegan por su carril: se toca justo cuando pasan por la línea. Cada acierto suma su capa a la canción. *Ej.:* cuando Tomi falla, se deja de oír el teclado y todos se dan cuenta | Un botón | 1–4 | Ritmo; la música **se arma** con los aciertos | Media-alta: hay que **calibrar la latencia** (medir la demora de cada celular con el ping y correr la ventana de acierto) | Sintetizador y "música por capas" de [CALIDAD.md](CALIDAD.md) |
+
+### Dibujo y creatividad
+
+| Juego | Dinámica (con ejemplo) | Control | Jugadores | Qué suma | Dificultad | Reutiliza |
+|---|---|---|---|---|---|---|
+| **Calcar la figura** | La TV muestra una figura (estrella, casa, pez) y cada uno la traza en su cuadrante con el joystick como lápiz, al estilo de las pizarras mágicas. La TV mide el parecido. *Ej.:* el pez de Pablo parece un zapato, pero cierra bien la cola y saca 71 % | Joystick | 1–4 | Dibujo **sin layout nuevo**; torpe a propósito, y eso da risa | Media (comparar trazos) | — |
+| **Dibujá y adiviná** | Al estilo Drawful: uno dibuja en su celular una palabra secreta y los demás eligen qué es entre opciones en su celular. Suma el que adivina y el que dibujó si alguien acertó. *Ej.:* Juli dibuja "jirafa"; Tomi elige "lámpara" y todos se ríen | Dibujar (**nuevo**) + cuatro botones | 3–4 | Creatividad de verdad; el celular como lienzo | Alta (trazos por red, ADR, validar tamaño y cantidad de puntos) | — |
+
+### Trivia y preguntas
+
+| Juego | Dinámica (con ejemplo) | Control | Jugadores | Qué suma | Dificultad | Reutiliza |
+|---|---|---|---|---|---|---|
+| **Trivia de la fiesta** | Preguntas con 4 respuestas; cuanto más rápido y correcto, más puntos. Incluye preguntas **sobre la partida en curso**, sacadas del historial del torneo. *Ej.:* "¿Quién juntó más estrellas en Arena hace un rato?": todos miran a Sofi | Cuatro botones (**nuevo**, el de Memoria de colores) | 1–4 | Juego de **cabeza**; las preguntas sobre la partida son únicas de este juego | Media (banco de preguntas por idioma y apto para chicos) | `Tournament.history` |
+| **¿Quién es más probable…?** | "¿Quién es más probable que se duerma en el cine?". Cada uno vota a otro jugador en su celular; suma quien vota con la mayoría. *Ej.:* 3 de 4 votan al Oso de Pablo, que protesta | Cuatro botones con las mascotas de los jugadores | 3–4 | 100 % social, sin habilidad: parejo entre chicos y grandes | Baja de código; media de contenido (200 frases **amables**) | — |
+| **Tutti frutti** | Categoría y letra ("un animal con M"). Cada uno escribe en su celular; los demás marcan si vale. *Ej.:* Tomi escribe "murciélago", Pablo "mosquito" y Juli "mono" | Teclado (**nuevo**) | 2–4 | El celular como teclado | Alta: texto libre por red (validar largo y mostrar solo con `Label`, regla de `CLAUDE.md`), idiomas y moderación | — |
+
+> Votar ("¿quién es más probable?", "¿vale esta palabra?") **no rompe** la regla de que el celular no decide resultados: el voto es un `btn` más, y la TV cuenta, valida (un voto por persona, no votarse a sí mismo) y decide.
+
+### Variantes: contenido nuevo sin juegos nuevos
+
+**Concepto: *modificador*.** Una regla que cambia un juego existente sin reescribirlo. Multiplica el contenido y alimenta el Desafío del día y la Fiesta infinita, como la aceleración de WarioWare.
+
+| Variante | Juegos | Ejemplo |
+|---|---|---|
+| **De noche** | Arena, Pintar el piso | Solo se ve un círculo de luz alrededor de cada mascota; las estrellas brillan un segundo al aparecer |
+| **Turbo** | Todos | Todo va 30 % más rápido en los últimos 15 s |
+| **Hielo** | Empujones, Arena | Las mascotas resbalan y frenan tarde |
+| **Viento** | Esquivar, Ping Pong | Una ráfaga visible (con flechas) corre los bloques o la pelota |
+| **Gigantes** | Empujones, Bombas saltarinas | Mascotas el doble de grandes: más choques |
+
+Se declaran en `modifiers` de `get_info()` y el juego los recibe en `setup`. Un test genérico juega cada juego con cada variante.
+
+## Retención
+
+Qué hace que la gente **vuelva a jugar**, sin monetización agresiva.
+
+**Concepto: *las tres necesidades*.** Según la teoría de la autodeterminación (Ryan, Rigby y Przybylski), un juego engancha cuando hace sentir **capaz** (competencia), **libre de elegir** (autonomía) y **conectado con otros** (relación); las tres predicen por separado el disfrute y las ganas de volver a jugar ([Motivation and Emotion, 2006](https://selfdeterminationtheory.org/SDT/documents/2006_RyanRigbyPrzybylski_MandE.pdf)).
+
+*Ejemplo:* Juli vuelve porque (capaz) bajó su récord de Reloj exacto a 0,02 s, (autonomía) quiere desbloquear el gorro de cumpleaños para su Gato y (relación) quiere la revancha con Pablo en Ping Pong.
+
+| Mecanismo | Qué es | Ejemplo | Dónde vive | Fase |
+|---|---|---|---|---|
+| **Stickers y accesorios** | Cada partida da un sticker; con 5 se desbloquea un accesorio **cosmético** (gorro de cumpleaños, anteojos de sol, bufanda, corona de flores, casco de sumo) | "Jugaste 10 partidas de Empujones: casco de sumo para tu Oso" | Perfil en el celular (`user://`); la TV valida que el accesorio exista, igual que `look` | D |
+| **Patrones de pelaje** | Lunares, rayas, manchas y estrellitas sobre el cuerpo de la mascota | Sofi desbloquea "lunares" y su Conejo rosa se distingue del Conejo rosa de su prima **sin depender del color** (suma accesibilidad, ver [CALIDAD.md](CALIDAD.md)) | Ídem | D |
+| **Bailes de victoria** | Animación elegible en el podio | El Robot de Tomi hace "el robot" al ganar | Ídem | D |
+| **Logros** | Metas curiosas por juego, avisadas en el celular | "Ganar Reloj exacto con 0,00" · "Esquivar sin moverte 10 s" · "Pintar 100 baldosas" · "Tirar a 3 en un solo empujón" · "Ganar la Gran final viniendo último" · "Tapar 20 goteras" · "Jugar todos los juegos" | La TV los detecta y avisa con un mensaje informativo nuevo `achievement` (TV → celular, compatible, como `feedback`) | D |
+| **Récords de la casa** | Tabla por juego guardada en la TV | En el lobby rota: "Récord de Esquivar: Juli, 52 s" | `user://` de la TV | C |
+| **Estadísticas divertidas** | Datos curiosos al terminar | "Pablo caminó 1,2 km en Arena" · "Sofi tocó 312 veces" | Solo en pantalla | A |
+| **Rivalidades** | Historial entre dos jugadores que se repiten | "Pablo vs Sofi en Ping Pong: 7 a 3. ¿Revancha?" | Perfiles en la TV por apodo + mascota | D |
+| **Álbum de la fiesta** | Foto del podio de cada noche | "27/09: ganó el Conejo de Sofi" | Captura guardada en la TV, **nunca sale de la casa** | D |
+| **Racha amable** | Cuenta **semanas** con al menos una fiesta y nunca se pierde con castigo | "Llevan 4 semanas de fiesta" | Perfil | D |
+
+**Lo que no hacemos** (para público familiar, y porque sale caro): cajas sorpresa pagas, monedas premium, "perdés tu racha si no entrás hoy", notificaciones insistentes, ventajas de juego pagas ni anuncios en medio de una partida. En 2022 la FTC acordó con Epic Games (Fortnite) USD 245 millones en reintegros por *patrones oscuros* que llevaban a compras no deseadas ([FTC](https://www.ftc.gov/business-guidance/blog/2022/12/245-million-ftc-settlement-alleges-fortnite-owner-epic-games-used-digital-dark-patterns-charge)).
+
+**Concepto: *patrón oscuro*.** Un diseño que empuja a hacer algo que la persona no quería. *Ejemplo de lo que no hay que hacer:* un botón "Comprar pack" del mismo color y en el mismo lugar que "Jugar otra vez", para que un chico lo toque sin querer.
+
+**Si se monetiza** (decisión pendiente de [PLAN.md](PLAN.md)): pago único o **packs de juegos** ("Pack Playa: 4 juegos y 2 accesorios"), con precio claro y compra solo desde la TV con confirmación. Los accesorios se ganan jugando; ninguno se vende suelto.
+
+**Por qué alcanza con que el perfil viva en el celular:** si alguien edita su archivo y se pone la corona sin ganarla, no cambia ningún resultado: es cosmético. Lo que la TV sí controla es que el id exista y que no rompa la distinción 1P–4P.
+
+## Roadmap de contenido
+
+### Tabla de prioridades
+
+Impacto: cuánto mejora la experiencia de un grupo nuevo. Esfuerzo: S / M / L / XL (ver [MODOS.md](MODOS.md)). Fase según [PLAN.md](PLAN.md).
+
+| # | Qué | Tipo | Impacto | Esfuerzo | Fase | Versión | Por qué ahí |
+|---|---|---|---|---|---|---|---|
+| 1 | Partida rápida + Gran final | Modo | Alto | S | A | v0.3 | Lo más pedido en la primera sesión ("tenemos 10 minutos") y casi gratis |
+| 2 | Contrato `GameMode` (ADR 0013) | Base | Alto (habilita todo) | M | A | v0.3 | Sin él, cada modo ensucia `HostMain` |
+| 3 | Desenfunde | Juego | Alto | S | C | v0.3 | Un botón, 5 s de explicación, muchas risas |
+| 4 | Bombas saltarinas | Juego | Alto | M | C | v0.3 | Caos al estilo BombSquad reutilizando Empujones |
+| 5 | Tres puertas | Juego | Medio-alto | S | C | v0.3 | Primer juego de información oculta; barato |
+| 6 | Estadísticas divertidas y Récords de la casa | Retención | Medio | S | A/C | v0.3 | El final "cierra" y queda algo para superar |
+| 7 | Bots | Modo | Alto | L | C | v0.4 | Jugar solo, reemplazar desconectados, balancear con simulaciones |
+| 8 | Cooperativo contra la TV | Modo | Alto (familias) | M-L | C | v0.4 | Nadie pierde contra nadie: ideal con chicos |
+| 9 | La torta gigante | Juego | Alto | S | C | v0.4 | Primer cooperativo; es el desafío 1 del modo cooperativo |
+| 10 | Equipos 2 vs 2 | Modo | Medio-alto | L | C | v0.4 | Criterio de la Fase C ("1 por equipos"); junto con Hockey de mesa |
+| 11 | Layouts `four_buttons` y `stick_button` (`VERSION` 2) | Base | Alto | M | C | v0.4 | Se suman juntos, como pide [PLAN.md](PLAN.md) |
+| 12 | Trivia de la fiesta | Juego | Alto | M | C | v0.4 | Juego de cabeza; usa el layout de 4 botones |
+| 13 | Handicap ("Ayuda") | Modo | Medio | M | C | v0.4 | Se mide con las simulaciones de bots |
+| 14 | Tablero de la fiesta | Modo | Muy alto | XL | C/D | v0.5 | Lo que hace "volver el sábado que viene"; necesita 12+ juegos y bots |
+| 15 | Stickers, accesorios y logros | Retención | Alto | L | D | v0.5 | Motivo para volver sin tocar la justicia del juego |
+| 16 | Fiesta infinita | Modo | Medio | M | C/D | v0.5 | Cumpleaños y reuniones largas |
+| 17 | Desafío del día + variantes | Modo | Medio | M | D | v0.5 | Contenido nuevo cada día sin servidor |
+| 18 | Sillas musicales, Barco con goteras, Contar ovejas | Juegos | Medio | S-M c/u | C | v0.5 | Música como mecánica, segundo cooperativo, juego tranquilo |
+| 19 | Eliminación con fantasmas | Modo | Medio | M-L | D | Después | Divertido, pero pide juegos para 2 y variantes de fantasma |
+| 20 | Espectador | Modo | Medio | M-L | E | Después | Cambia el protocolo y la red; tiene sentido con relay y fiestas grandes |
+| 21 | Dibujá y adiviná, Tutti frutti | Juegos | Alto | L c/u | E | Después | Layouts de dibujo y texto: más protocolo, moderación y localización |
+| 22 | Trampas para todos, Pizzería, Banda de mascotas | Juegos | Alto | L c/u | D/E | Después | Los más caros; conviene tener bots y variantes antes |
+
+### Próximas 3 versiones
+
+**v0.3 · "Más fiesta, mismo protocolo"** (cierra la Fase A y abre la C; se puede hacer en paralelo con la Fase B de dispositivos reales)
+- **Modos:** Partida rápida + Gran final; contrato `GameMode` con `Tournament` adentro.
+- **Juegos:** Desenfunde, Bombas saltarinas y Tres puertas, más los que ya están en curso del "Orden recomendado" (Pool loco, Karts de mascotas, Carrera de obstáculos). Con eso se llega a los **10–12 juegos** de la Fase C.
+- **Retención:** estadísticas divertidas en el podio y Récords de la casa.
+- **Por qué:** nada de esto cambia el protocolo, así que no obliga a actualizar la app del celular mientras se valida en dispositivos reales. Suma lo que un grupo nuevo nota en la primera noche: empezar rápido, juegos variados y un final con tensión.
+- *Ejemplo:* un grupo que prueba la app por primera vez toca "Partida rápida", le salen Desenfunde, Pintar el piso y Bombas saltarinas, y la Gran final se define por una bomba que vuelve.
+
+**v0.4 · "Solos, en equipo o todos juntos"** (Fase C, protocolo `VERSION` 2)
+- **Modos:** Bots (con test obligatorio para todo juego), Cooperativo contra la TV, Equipos 2 vs 2 y Handicap.
+- **Protocolo:** paquete de layouts `four_buttons` y `stick_button` (junto con dos botones e inclinación, si ya están listos según [PLAN.md](PLAN.md)).
+- **Juegos:** La torta gigante (cooperativo), Trivia de la fiesta (cuatro botones), Globos (joystick + botón), Hockey de mesa (equipos) y Memoria de colores (ya propuesto).
+- **Por qué:** los bots son la base de tres cosas: jugar solo, reemplazar desconectados y **balancear con miles de partidas simuladas**, que a su vez sirven para medir el handicap. Cooperativo y equipos abren el juego a familias con chicos. Los layouts van todos juntos para actualizar la app una sola vez.
+- *Ejemplo:* Juli juega sola con 3 bots un martes; el sábado la familia juega Cooperativo contra la Nube Gruñona y saca medalla de oro.
+
+**v0.5 · "Para volver el sábado que viene"** (fin de la Fase C, entrada a la D)
+- **Modos:** Tablero de la fiesta (versión 1, sin ítems, con "Tablero justo"), Fiesta infinita y Desafío del día con variantes.
+- **Retención:** stickers, accesorios, patrones de pelaje, bailes y logros (mensaje `achievement`).
+- **Juegos:** Sillas musicales, Barco con goteras y Contar ovejas, pensados para darle variedad al tablero.
+- **Por qué:** el tablero necesita muchos juegos y bots para completar lugares, así que va después de v0.3 y v0.4. Junto con la progresión cosmética es lo que convierte "una noche divertida" en "la juntada de todos los sábados", que es el criterio de "listo" de la Fase D ("la mayoría quiere volver a jugar").
+- *Ejemplo:* la familia guarda el tablero en el turno 6 y lo termina el domingo; Tomi desbloquea el casco de sumo para su Robot y Sofi supera el Desafío del día.
+
+**Cómo saber si se acertó:** con la analítica anónima de la Fase D (Aptabase, [PRODUCCION.md](PRODUCCION.md)) medir qué modos se eligen, cuántos juegos se juegan por sesión y si el grupo vuelve en 7 días; y en las pruebas cerradas preguntar "¿qué juego sacarían?". Un juego que casi nadie elige no se arregla con más contenido, sino rediseñándolo o sacándolo del lobby.
+
+## Fuentes
+
+Consultadas el 27/09/2026. *(indirecto)*: confirmado por buscador, sin abrir la página.
+
+- Mario Party: tipos de minijuego ([Mario Wiki](https://mario.fandom.com/wiki/Minigame_(Mario_Party_series))) y estrellas bonus ([Super Mario Wiki](https://www.mariowiki.com/Bonus_Star)) *(indirecto)*.
+- Jackbox: controles del celular y público ([Built In Chicago](https://www.builtinchicago.org/articles/jackbox-games-design-party-pack), [Jackbox Wiki](https://jackboxgames.fandom.com/wiki/The_Jackbox_Party_Pack_(series))); fantasmas en Trivia Murder Party ([Jackbox Wiki](https://jackboxgames.fandom.com/wiki/Trivia_Murder_Party)) *(indirecto)*.
+- Fall Guys: diseño y rondas ([GamesRadar](https://www.gamesradar.com/fall-guys-interview/), [NPR](https://www.npr.org/2020/08/13/901735175/fall-guys-is-candy-colored-party-battle-fun)) *(indirecto)*.
+- Overcooked: cooperación y roles ([Push Square](https://www.pushsquare.com/news/2018/08/interview_chewing_the_fat_with_overcooked_2_developer_ghost_town_games), [Game Developer](https://www.gamedeveloper.com/design/game-design-deep-dive-building-truly-cooperative-play-in-i-overcooked-i-)) *(indirecto)*.
+- Ultimate Chicken Horse: reglas y puntaje ([UCH Wiki](https://ultimate-chicken-horse.fandom.com/wiki/Rules), [Clever Endeavour](https://cleverendeavourgames.freshdesk.com/support/solutions/articles/32000028991-custom-rules-and-presets)) *(indirecto)*.
+- Pummel Party ([Steam](https://store.steampowered.com/app/880940/Pummel_Party/)) *(indirecto)*.
+- WarioWare: microjuegos y tablero de Move It! ([Super Mario Wiki](https://www.mariowiki.com/Microgame), [Biff Bam Pop](https://biffbampop.com/2023/11/16/in-the-game-warioware-move-it-unleashes-an-onslaught-of-microgames/)) *(indirecto)*.
+- Kirby Air Riders: Top Ride y City Trial ([WiKirby Top Ride](https://wikirby.com/wiki/Top_Ride), [WiKirby City Trial](https://wikirby.com/wiki/City_Trial)) *(indirecto)*.
+- BombSquad ([App Store](https://apps.apple.com/us/app/bombsquad/id416482767)) *(indirecto)*.
+- Nintendo Switch Sports: liga y colecciones cosméticas ([Switch Sports Wiki](https://switchsports.fandom.com/wiki/Pro_League), [Game8](https://game8.co/games/Nintendo-Switch-Sports/archives/376755)) *(indirecto)*.
+- Mecánicas de alcance ([Board Game Design Course](https://boardgamedesigncourse.com/making-a-comeback/)) *(indirecto)*.
+- Motivación: Ryan, Rigby y Przybylski, *The Motivational Pull of Video Games* (2006) ([PDF](https://selfdeterminationtheory.org/SDT/documents/2006_RyanRigbyPrzybylski_MandE.pdf)) *(indirecto)*.
+- Patrones oscuros: acuerdo de la FTC con Epic Games, 2022 ([FTC](https://www.ftc.gov/business-guidance/blog/2022/12/245-million-ftc-settlement-alleges-fortnite-owner-epic-games-used-digital-dark-patterns-charge)) *(indirecto)*.
