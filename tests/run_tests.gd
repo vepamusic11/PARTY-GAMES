@@ -378,6 +378,143 @@ func test_registry_optional_defaults() -> void:
 		accents[key] = info.id
 
 
+## ¡Que no te deje la cámara!: recorrido determinista, física pura
+## (bloques sólidos, empujones), eliminación por el borde de la cámara, por
+## sierra y por pozo, y fin por último en pie y por tiempo.
+func test_scroller_rules() -> void:
+	var script: Script = load("res://host/minigames/scroller/scroller.gd")
+	var same := true
+	var differs := false
+	for i in 30:
+		var a: Array = script.build_segment(1234, i)
+		same = same and a == script.build_segment(1234, i)
+		differs = differs or a != script.build_segment(98765, i)
+	check(same, "scroller: la misma semilla arma siempre el mismo recorrido")
+	check(differs, "scroller: otra semilla arma otro recorrido")
+	check(script.build_segment(1234, 0).is_empty(), "scroller: la salida no tiene obstáculos")
+	var easy_first := true
+	var hard_later := false
+	for s in 20:
+		easy_first = easy_first and script.template_for(s, 1) in script.EASY and script.template_for(s, 2) in script.EASY
+		for i in range(7, 12):
+			hard_later = hard_later or script.template_for(s, i) in script.HARD
+	check(easy_first and hard_later, "scroller: primero tramos fáciles, después difíciles")
+	check(script.camera_speed(0.0) < script.camera_speed(30.0) and script.camera_speed(200.0) == script.CAM_SPEED_END,
+		"scroller: la cámara acelera de a poco hasta un tope")
+	var wall: Array = script.push_out_of_rect(Vector2(95, 50), Vector2(300, 0), Rect2(100, 0, 100, 100), 30.0)
+	check(wall[2] and (wall[0] as Vector2).x <= 70.01 and (wall[1] as Vector2).x <= 0.0, "scroller: un bloque es sólido y frena (%s)" % [wall])
+	var inside: Array = script.push_out_of_rect(Vector2(190, 50), Vector2.ZERO, Rect2(100, 0, 100, 100), 30.0)
+	check((inside[0] as Vector2).x >= 230.0 - 0.01, "scroller: si quedó adentro sale por el lado más cercano (%s)" % [inside])
+	var push: Dictionary = script.resolve_push(Vector2.ZERO, Vector2(400, 0), Vector2(50, 0), Vector2.ZERO)
+	check(push.hit and (push.vb as Vector2).x > 400.0 and (push.va as Vector2).x < (push.vb as Vector2).x,
+		"scroller: embestir empuja al otro con bonus (%s)" % [push])
+	var saw := {"kind": "saw", "c": Vector2(500, 300), "r": 50.0, "amp": Vector2(0, 100), "speed": PI / 2.0, "phase": 0.0}
+	check(script.hazard_hits(saw, Vector2(500, 400), 1.0) and not script.hazard_hits(saw, Vector2(500, 300), 1.0),
+		"scroller: la sierra lastima donde está en ese momento (va y viene)")
+
+	# Partida en un recorrido vacío, avanzada a mano (sin _physics_process).
+	var game: Variant = MiniGameRegistry.create("scroller")
+	root.add_child(game)
+	game.set_physics_process(false)
+	game.setup(_fake_players(3))
+	game.set_course_seed(7)
+	for i in 60:
+		game._segments[i] = []
+	var results: Array = []
+	game.finished.connect(func(res: Dictionary) -> void: results.append(res))
+	var start: Vector2 = game._pos[1]
+	game.on_input(1, {"seq": 0, "axis": Vector2(1, 0), "btn": 0})
+	game.step(1.0)
+	check(game._pos[1] == start and game._cam == 0.0, "scroller: nadie se mueve (ni la cámara) en la cuenta regresiva")
+	game._countdown = 0.0
+	# Empujón: Sofi (2) embiste a Tomi (3), que está quieto.
+	game._pos[2] = Vector2(600, 300)
+	game._vel[2] = Vector2(450, 0)
+	game._pos[3] = Vector2(655, 300)
+	game._vel[3] = Vector2.ZERO
+	game.step(1.0 / 60.0)
+	check((game._vel[3] as Vector2).x > 300.0 and (game._pos[3] as Vector2).x > 655.0, "scroller: Tomi sale empujado (%s)" % [game._vel[3]])
+	# Pablo (1) se queda quieto y la cámara lo deja atrás; los otros corren.
+	game.on_input(1, {"seq": 1, "axis": Vector2.ZERO, "btn": 0})
+	game.on_input(2, {"seq": 1, "axis": Vector2(1, -0.3), "btn": 0})
+	game.on_input(3, {"seq": 1, "axis": Vector2(1, 0.3), "btn": 0})
+	var guard := 0
+	while not game._out.has(1) and guard < 600:
+		game.step(1.0 / 60.0)
+		guard += 1
+	check(game._out.has(1) and game._out[1].kind == "camera", "scroller: el que se queda atrás queda eliminado por la cámara")
+	check((game._pos[1] as Vector2).x < game._cam + 1.0, "scroller: se eliminó al pasar el borde izquierdo")
+	check(not game._out.has(2) and not game._out.has(3), "scroller: los que corren siguen en pie")
+	check(results.is_empty(), "scroller: con dos en pie sigue el juego")
+	# Una sierra aparece justo donde está Sofi: choque mortal.
+	var sofi: Vector2 = game._pos[2]
+	var seg := floori(sofi.x / script.SEG_W)
+	game._segments[seg] = [{"kind": "saw", "c": sofi, "r": 40.0, "amp": Vector2.ZERO, "speed": 1.0, "phase": 0.0}]
+	game.step(1.0 / 60.0)
+	check(game._out.has(2) and game._out[2].kind == "hit", "scroller: chocar una sierra elimina")
+	check(results.is_empty(), "scroller: espera que se vea la última eliminación antes de terminar")
+	for i in 150:
+		game.step(1.0 / 60.0)
+	check(results.size() == 1, "scroller: termina al quedar uno en pie (%d)" % results.size())
+	if results.size() == 1:
+		var res: Dictionary = results[0]
+		check(res.winners == [3], "scroller: gana Tomi, el último en pie (%s)" % [res.winners])
+		check(int(res.scores[1]) <= int(res.scores[2]) and int(res.scores[1]) <= int(res.scores[3]),
+			"scroller: el que se quedó atrás hizo menos metros (%s)" % [res.scores])
+		check(game._is_seated(1) and game._is_seated(2), "scroller: los eliminados terminan en la tribuna")
+	game.finish({"winners": [1], "scores": {}})
+	check(results.size() == 1, "scroller: finished se emite una sola vez")
+	game.queue_free()
+
+	# Pozo y fin por tiempo: ganan los que siguen en pie, ordenados por metros.
+	var timed: Variant = MiniGameRegistry.create("scroller")
+	root.add_child(timed)
+	timed.set_physics_process(false)
+	timed.setup(_fake_players(3))
+	timed.set_course_seed(7)
+	for i in 60:
+		timed._segments[i] = []
+	var timed_results: Array = []
+	timed.finished.connect(func(res: Dictionary) -> void: timed_results.append(res))
+	timed._countdown = 0.0
+	timed._pos[3] = Vector2(900, 500)
+	timed._segments[0] = [{"kind": "pit", "rect": Rect2(820, 420, 160, 160)}]
+	timed.step(1.0 / 60.0)
+	check(timed._out.has(3) and timed._out[3].kind == "pit", "scroller: pisar un pozo elimina")
+	timed._elapsed = script.DURATION_SEC - 0.05
+	timed._pos[1] = Vector2(1500, 200)
+	timed._pos[2] = Vector2(1100, 400)
+	for i in 120:
+		timed.step(1.0 / 60.0)
+	check(timed_results.size() == 1, "scroller: termina por tiempo")
+	if timed_results.size() == 1:
+		var res: Dictionary = timed_results[0]
+		check(res.winners.size() == 2 and 1 in res.winners and 2 in res.winners, "scroller: ganan los dos en pie (%s)" % [res.winners])
+		var entries: Array[Dictionary] = []
+		for pid: int in [1, 2, 3]:
+			entries.append({"id": pid, "score": float(res.scores[pid]), "winner": pid in res.winners})
+		var places := Tournament.rank(entries)
+		check(places[1] == 1 and places[2] == 2 and places[3] == 3, "scroller: en pie primero y ordenados por metros (%s)" % [places])
+	timed.queue_free()
+
+	# Determinismo: misma semilla e inputs, misma partida (con obstáculos reales).
+	var runs: Array = []
+	for run in 2:
+		var g: Variant = MiniGameRegistry.create("scroller")
+		root.add_child(g)
+		g.set_physics_process(false)
+		g.setup(_fake_players(4))
+		g.set_course_seed(42)
+		for f in 900:
+			for k in 4:
+				g.on_input(k + 1, {"seq": f, "axis": Vector2(cos(f * 0.03 + k), sin(f * 0.05 + k * 2.0)) * 0.9 + Vector2(0.5, 0), "btn": 0})
+			g.step(1.0 / 60.0)
+		runs.append([g._pos.duplicate(), g._out.keys(), g._cam, g._live_scores()])
+		g.queue_free()
+	check(runs[0] == runs[1], "scroller: misma semilla y mismos inputs dan la misma partida")
+	await process_frame
+
+
 
 func test_stop_clock_scoring() -> void:
 	var sc = preload("res://host/minigames/stop_clock/stop_clock.gd")  # Sin tipo: métodos propios del juego.

@@ -1160,3 +1160,8 @@ const KARTS_ROAD_LIGHT := Color("#6C7497")  ## Franja del medio del asfalto (gas
 const KARTS_ROAD_LINE := Color(1, 1, 1, 0.8)
 const KARTS_PUDDLE := Color("#4AA8F2")      ## Charcos resbalosos.
 const KARTS_PUDDLE_SHINE := Color("#CDEBFF")
+
+
+# --- Scroller (agente) -----------------------------------------------------------
+## ¡Que no te deje la cámara!: color de la tarjeta y de las flechas de impulso.
+const ACCENT_SCROLLER := Color("#84CC16")

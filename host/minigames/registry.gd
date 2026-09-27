@@ -12,6 +12,7 @@ const GAMES: Array[Script] = [
 	preload("res://host/minigames/paint/paint.gd"),
 	preload("res://host/minigames/sumo/sumo.gd"),
 	preload("res://host/minigames/karts/karts.gd"),
+	preload("res://host/minigames/scroller/scroller.gd"),
 ]
 
 

@@ -18,6 +18,7 @@ Más abajo: qué hace divertidos a los party games de referencia, **modos de jue
 | Pintar el piso | Pintar más territorio que los demás | Joystick | 1–4 |
 | Empujones | Tirar a los otros de la isla | Joystick | 2–4 |
 | Karts de mascotas | Carrera de 3 vueltas vista desde arriba | Joystick | 1–4 |
+| ¡Que no te deje la cámara! *(hecho)* | La cámara avanza sola y acelera por un recorrido de bloques, sierras, molinetes, pozos y flechas de impulso; el que se queda atrás o choca algo mortal va a la tribuna. Último en pie gana; a los 75 s ganan los que siguen, por metros. Tramos prediseñados combinados con semilla (el mismo recorrido para todos) | Joystick | 2–4 |
 
 ## Propuestos
 

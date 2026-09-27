@@ -77,6 +77,10 @@ const SHOTS := {
 	},
 	"sumo": {"sec": 5.5, "crop": Rect2(690, 420, 540, 304)},
 	"karts": {"sec": 8.0, "crop": Rect2(0, 0, 620, 349), "follow": true},
+	"scroller": {
+		"sec": 6.5, "crop": Rect2(360, 200, 1000, 562), "seed": 3,
+		"orbit": {"c": Vector2(1150, 380), "r": Vector2(110, 70), "spread": Vector2(70, 110)},
+	},
 }
 
 var _out_dir := OUT_DIR
