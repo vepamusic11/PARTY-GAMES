@@ -29,7 +29,7 @@ func _ready() -> void:
 	box.add_theme_constant_override("separation", 24)
 	add_child(box)
 	var logo := UiTheme.logo_rect(UiTheme.STUDIO_LOGO_PATH)
-	logo.custom_minimum_size = Vector2(0, 300)
+	logo.custom_minimum_size = Vector2(0, 620)
 	box.add_child(logo)
 	var feather := _Feather.new()
 	feather.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)

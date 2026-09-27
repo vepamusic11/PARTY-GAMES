@@ -17,7 +17,7 @@ const FONT_SEMI := preload("res://assets/fonts/Fredoka-SemiBold.ttf")
 # --- Paleta -------------------------------------------------------------------
 const SKY_TOP := Color("#4FB3F6")
 const SKY_BOTTOM := Color("#CDEBFF")
-const STUDIO_BG := Color("#001026")     ## Fondo de la presentación IO-GAMES (el de su logo).
+const STUDIO_BG := Color("#000D22")     ## Fondo de la presentación IO-GAMES (el de su logo).
 const INK := Color("#1D2140")          ## Texto principal y contornos.
 const INK_SOFT := Color("#565C85")     ## Texto secundario.
 const MUTED := Color("#9AA0BE")        ## Deshabilitado / pistas.
