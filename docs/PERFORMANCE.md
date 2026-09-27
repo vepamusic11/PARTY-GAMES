@@ -139,7 +139,6 @@ Escenario desenfocado, tablero con volumen, marcador con mascotas, globito 1P–
 - **Render en xvfb**: sube en los juegos sin tablero (Ping Pong, Reloj exacto: el escenario es una textura estirada a pantalla completa y llvmpipe paga cada muestra). Con tablero, el escenario se pinta solo alrededor y el piso no tiene capas que se tapen (cada baldosa es cara + labio + brillo sin superponerse; la junta va solo en las rendijas): queda igual o menos que antes. Una primera versión con baldosas y bloques redondeados (~36 triángulos cada uno) y una sombra `StyleBoxFlat` del tamaño del tablero duplicaba el render: ver [ADR 0009](adr/0009-arte-de-los-juegos.md).
 - **Pintar el piso**: cada fila de baldosas es un lote de triángulos armado con la baldosa precalculada de cada jugador (`GameArt.tile_template`): 172 → 81 draw calls.
 
-<<<<<<< HEAD
 ### Karts de mascotas
 
 Medido con Empujones en la misma corrida como control (la máquina tenía varias corridas en paralelo: los tiempos absolutos salieron ~3× los de las tablas de arriba, con el juego a ~11 fps y varios pasos de física por frame). `karts_tarde` es la carrera a los 14 s (se midió con `LATE_SCENES` agregado en una copia local del benchmark):
@@ -186,7 +185,7 @@ Partículas en lote con pool fijo (`FxParticles`, un draw call), números flotan
 - **Qué cuesta**: en Arena y Ping Pong los efectos se disparan todo el tiempo en el benchmark (estrellas y rebotes cada pocos frames): ≈ 0,15–0,3 ms por frame con partículas vivas. El pool recorre solo los lugares ocupados (`_hi`), reusa los arreglos de colores por forma y ubica cada forma con `Transform2D * PackedVector2Array`; 200 partículas ≈ 0,1 ms de armado.
 - **Empujones**: la sacudida ya no redibuja las capas de la isla (antes ≈ 13 frames por golpe) y los efectos a mano (varios `draw_arc`/`draw_star` por golpe) pasaron al lote: 93 → 91 draw calls.
 - Sin efectos activos, `Juice` y `FxParticles` apagan su `_process` y no se redibujan.
-=======
+
 ### Pool loco
 
 `host/minigames/pool/`: la mesa (paño, bandas, troneras) va en `draw_static` sobre `draw_play_field` con una sola baldosa (el marco de bloques del tablero); en cada frame, sombras, brillo de las doradas, guías de tiro y bolas van en **un** `TriBatch` (las bolas, la sombra y la guía de puntitos se arman una vez como plantillas locales y solo se ubican), más las 4 mascotas y los globitos. La física (`pool_physics.gd`, pasos fijos de 1/120 s, hasta 11 bolas) saltea los pares de bolas quietas. Medido en la misma corrida que Arena y Pintar el piso (600 frames, máquina compartida):
@@ -198,7 +197,6 @@ Partículas en lote con pool fijo (`FxParticles`, un draw call), números flotan
 | pool | 4,07 | 5,53 | 32 |
 
 Los inputs del benchmark casi nunca vuelven a 0, así que en `pool` todos apuntan todo el tiempo (flechas y guías en cada frame) y casi no tiran. Con una variante que suelta el joystick cada 1,6 s (tiros, choques y troneras todo el tiempo), `pool` quedó ≈ 1,6× Arena en Scripts (p95 6,84 contra 4,19 ms en una corrida con la máquina menos cargada).
->>>>>>> d046936 (Pool loco: nuevo minijuego de pool simultáneo para 2 a 4 jugadores)
 
 ## Qué se cambió y por qué
 
