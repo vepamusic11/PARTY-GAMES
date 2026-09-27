@@ -653,9 +653,163 @@ func test_game_finale() -> void:
 	check(results.size() == 1 and results[0].winners == [2], "termina una sola vez con el resultado de 0:00 (%s)" % [results])
 	game.finish({"winners": [1], "scores": {}})
 	check(results.size() == 1, "finished no se repite")
+const QUICKDRAW := preload("res://host/minigames/quickdraw/quickdraw.gd")
+
+
+## Desenfunde: juego con el tiempo y el reloj real a mano (determinista).
+func _quickdraw(n: int, clock: Array) -> Variant:
+	var game = MiniGameRegistry.create("quickdraw")  # Sin tipo: métodos propios del juego.
+	root.add_child(game)
+	game.process_mode = Node.PROCESS_MODE_DISABLED  # El test maneja el tiempo a mano.
+	game.wall_clock_usec = func() -> int: return clock[0]
+	game.setup(_fake_players(n))
+	return game
+
+
+## Avanza `seconds` en pasos de 1/60 s; el reloj real sube igual.
+func _qd_step(game: Variant, clock: Array, seconds: float) -> void:
+	for i in roundi(seconds * 60.0):
+		clock[0] += 16667
+		game._physics_process(1.0 / 60.0)
+
+
+func _qd_tap(game: Variant, pid: int) -> void:
+	game.on_input(pid, {"seq": 1, "axis": Vector2.ZERO, "btn": Protocol.BTN_A})
+	game.on_input(pid, {"seq": 2, "axis": Vector2.ZERO, "btn": 0})
+
+
+## Tocar antes del ¡YA! pierde la ronda; el primero en tocar después gana.
+func test_quickdraw_early_and_first() -> void:
+	var clock := [1000000]
+	var game = _quickdraw(3, clock)
+	_qd_step(game, clock, 1.0 / 60.0)
+	check(game.round_number() == 1 and not game.is_go(), "empieza la ronda 1 esperando")
+	game._go_at = 2.51
+	game._trick = -1
+	_qd_tap(game, 1)
+	check(not game.is_early(1), "durante \"Ronda 1\" todavía no cuenta")
+	_qd_step(game, clock, 1.0)
+	check(game.sign_text()[0] == "Preparados…", "el cartel dice Preparados…")
+	_qd_tap(game, 1)
+	check(game.is_early(1) and not game.is_go(), "tocar antes del ¡YA! es muy temprano")
+	_qd_step(game, clock, 1.5)
+	check(game.is_go() and game.sign_text() == ["¡YA!", true], "sale el ¡YA! a su tiempo")
+	_qd_tap(game, 1)
+	check(game.reaction_ms(1) == QUICKDRAW.NO_TIME, "el que se adelantó no dispara en esa ronda")
+	_qd_step(game, clock, 0.4)
+	clock[0] += 3000  # Llega 3 ms después del último paso de física.
+	_qd_tap(game, 3)
+	_qd_step(game, clock, 0.15)
+	_qd_tap(game, 2)
+	_qd_tap(game, 2)
+	check(game.reaction_ms(3) == 403 and game.reaction_ms(2) == 550,
+		"tiempos medidos por la TV (%d, %d)" % [game.reaction_ms(3), game.reaction_ms(2)])
+	_qd_step(game, clock, 1.0 / 60.0)
+	check(game.is_result() and game.round_winners() == [3], "gana el primero en tocar (%s)" % [game.round_winners()])
+	check(game.points() == {1: 0, 2: QUICKDRAW.speed_bonus(550), 3: 100 + QUICKDRAW.speed_bonus(403)},
+		"puntos: victoria + velocidad (%s)" % [game.points()])
+	check(game.sign_text()[0] == "¡Ganó Tomi!", "el cartel anuncia al ganador")
 	game.queue_free()
 	await process_frame
 
+
+
+## Los carteles trampa no son el ¡YA!: tocar durante uno es muy temprano.
+func test_quickdraw_tricks() -> void:
+	var clock := [0]
+	var game = _quickdraw(2, clock)
+	_qd_step(game, clock, 1.0 / 60.0)
+	game._trick = 0          # "¡YA…mate!"
+	game._trick_at = 1.5
+	game._go_at = 3.3
+	_qd_step(game, clock, 1.55)
+	check(game.trick_showing() == 0 and game.sign_text() == ["¡YA…", false] and not game.is_go(), "primero asoma \"¡YA…\"")
+	_qd_tap(game, 1)
+	check(game.is_early(1), "tocar con \"¡YA…\" es muy temprano")
+	_qd_step(game, clock, 0.5)
+	check(game.sign_text()[0] == "¡YA…mate!" and not game.is_go(), "se completa \"¡YA…mate!\"")
+	_qd_step(game, clock, 1.3)
+	check(game.is_go() and not game.is_early(2), "el ¡YA! real llega después")
+	# Todos los carteles trampa dicen otra cosa, y el sorteo deja tiempo antes del ¡YA!.
+	for trick: Dictionary in QUICKDRAW.TRICKS:
+		check(trick.text != "¡YA!" and trick.tease != "¡YA!", "cartel trampa distinto: %s" % trick.text)
+	var tricks := 0
+	for r in 200:
+		game._start_round(2)
+		if game._trick >= 0:
+			tricks += 1
+			check(game._trick_at >= QUICKDRAW.ROUND_INTRO and game._trick_at + QUICKDRAW.TRICK_TIME + QUICKDRAW.TRICK_LEAD_MIN <= game._go_at + 0.0001,
+				"el cartel trampa termina antes del ¡YA! (%.2f / %.2f)" % [game._trick_at, game._go_at])
+	check(tricks > 50 and tricks < 150, "a veces hay trampa (%d de 200)" % tricks)
+	game._start_round(1)
+	check(game._trick == -1, "la ronda 1 nunca tiene trampa")
+	game.queue_free()
+	await process_frame
+
+
+## Puntos, empates en una ronda (misma lectura de la red) y desempate final.
+func test_quickdraw_points_and_tiebreak() -> void:
+	var qd = QUICKDRAW
+	check(qd.speed_bonus(200.0) == 50 and qd.speed_bonus(400.0) == 40 and qd.speed_bonus(700.0) == 20, "bonus por velocidad")
+	check(qd.speed_bonus(1000.0) == 0 and qd.speed_bonus(5000.0) == 0 and qd.speed_bonus(0.0) == 50, "bonus acotado")
+	check(qd.rank_winners({1: 300, 2: 300, 3: 100}, {1: 250000, 2: 240000, 3: 100000}) == [2],
+		"a igual puntaje gana el de mejor reacción")
+	check(qd.rank_winners({1: 300, 2: 300}, {1: 250000, 2: 250000}) == [1, 2], "empate total: ganan los dos")
+	check(qd.rank_winners({1: 0, 2: 0}, {}) == [1, 2], "nadie disparó: empate")
+	check(qd.rank_winners({1: 140, 2: 140}, {2: 300000}) == [2], "quien nunca disparó a tiempo pierde el desempate")
+
+	var clock := [0]
+	var game = _quickdraw(2, clock)
+	_qd_step(game, clock, 1.0 / 60.0)
+	game._go_at = 2.0
+	_qd_step(game, clock, 2.0)
+	check(game.is_go(), "¡YA!")
+	_qd_step(game, clock, 0.3)
+	_qd_tap(game, 1)
+	clock[0] += 900  # Otro mensaje de la misma lectura de la red: mismo sello.
+	_qd_tap(game, 2)
+	_qd_step(game, clock, 1.0 / 60.0)
+	check(game.round_winners() == [1, 2] and game.points()[1] == game.points()[2] and game.points()[1] >= 100,
+		"llegan juntos: empatan y ganan los dos (%s)" % [game.points()])
+	# Un jugador con latencia medida (futuro HostServer) se compensa, con tope.
+	game.players[1]["latency_ms"] = 40
+	check(game.latency_ms(2) == 40.0, "latencia de ida del jugador")
+	game.players[1]["latency_ms"] = 9999
+	check(game.latency_ms(2) == QUICKDRAW.MAX_LATENCY_COMP_MS, "latencia recortada")
+	game.players[1]["latency_ms"] = "mucha"
+	check(game.latency_ms(2) == 0.0, "latencia inválida se ignora")
+	game.queue_free()
+	await process_frame
+
+
+## Misma semilla y mismos toques: misma partida (y termina una sola vez).
+func test_quickdraw_deterministic_seed() -> void:
+	var runs: Array = []
+	for s in [7, 7, 8]:
+		var clock := [0]
+		var game = _quickdraw(3, clock)
+		game._rng.seed = s  # Después de setup: la ronda 1 se sortea en el primer paso.
+		var results: Array = []
+		game.finished.connect(func(r: Dictionary) -> void: results.append(r))
+		for i in 60 * 70:
+			if game.is_finished():
+				break
+			# 1P toca cada 1,3 s (a veces temprano); 2P siempre 0,25 s después del ¡YA!; 3P nunca.
+			if i % 78 == 0:
+				_qd_tap(game, 1)
+			if game.is_go() and is_equal_approx(game._phase_t, 0.25):
+				_qd_tap(game, 2)
+			_qd_step(game, clock, 1.0 / 60.0)
+		check(results.size() == 1, "semilla %d: termina una sola vez" % s)
+		check(game.history.size() == QUICKDRAW.ROUNDS, "semilla %d: juega las 5 rondas" % s)
+		runs.append([game.history.map(func(h: Dictionary) -> Array: return [h.go_at, h.trick, h.winners, h.react, h.early]),
+			results[0] if not results.is_empty() else {}])
+		game.queue_free()
+	check(runs[0] == runs[1], "misma semilla, misma partida")
+	check(runs[0][0] != runs[2][0], "otra semilla, otra partida")
+	check(not runs[0][1].is_empty() and int(runs[0][1].scores[2]) >= 5 * QUICKDRAW.speed_bonus(250),
+		"2P dispara a tiempo en las 5 rondas (%s)" % [runs[0][1]])
+	await process_frame
 
 # --- Sonido y vibración ------------------------------------------------------------
 

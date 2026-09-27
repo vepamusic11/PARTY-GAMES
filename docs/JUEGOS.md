@@ -157,7 +157,7 @@ Como dice la Fase C de [PLAN.md](PLAN.md), los layouts nuevos se suman **juntos 
 
 | Juego | Dinámica (con ejemplo) | Control | Jugadores | Qué suma | Dificultad | Reutiliza |
 |---|---|---|---|---|---|---|
-| **Desenfunde** | Duelo del Oeste: las mascotas se miran de espaldas y hay que tocar apenas la TV dice "¡YA!". Quien toca antes de tiempo pierde la ronda. La TV engaña: "¡YA… mate!". *Ej.:* Sofi (Conejo) toca en 0,21 s; Pablo se adelantó con "¡YA… mate!" y su Oso se cae sentado | Un botón | 1–4 | Reacción a un momento **desconocido** (Reloj exacto es a un momento conocido); el engaño da risa | Baja | Visor y cronómetro de Reloj exacto |
+| **Desenfunde** *(hecho: `host/minigames/quickdraw/`; la TV mide cada toque con su reloj, ver "Justicia de red" en el script)* | Duelo del Oeste: las mascotas se miran de espaldas y hay que tocar apenas la TV dice "¡YA!". Quien toca antes de tiempo pierde la ronda. La TV engaña: "¡YA… mate!". *Ej.:* Sofi (Conejo) toca en 0,21 s; Pablo se adelantó con "¡YA… mate!" y su Oso se cae sentado | Un botón | 1–4 | Reacción a un momento **desconocido** (Reloj exacto es a un momento conocido); el engaño da risa | Baja | Visor y cronómetro de Reloj exacto |
 | **Topos** | Cada jugador tiene 4 pozos en su esquina (arriba, abajo, izquierda, derecha); sale un topo y hay que mover el joystick hacia ese pozo. El topo con casco no se toca. *Ej.:* a Tomi le sale el topo dorado a la izquierda: +3 | Joystick (movimiento corto y soltar) | 1–4 | Reflejos de **dirección**, no de un solo botón | Baja-media | Detección de "soltar" del joystick (Pool loco) |
 
 ### Puntería y precisión
@@ -274,7 +274,7 @@ Impacto: cuánto mejora la experiencia de un grupo nuevo. Esfuerzo: S / M / L / 
 |---|---|---|---|---|---|---|---|
 | 1 | Partida rápida + Gran final | Modo | Alto | S | A | v0.3 | Lo más pedido en la primera sesión ("tenemos 10 minutos") y casi gratis |
 | 2 | Contrato `GameMode` (ADR 0013) | Base | Alto (habilita todo) | M | A | v0.3 | Sin él, cada modo ensucia `HostMain` |
-| 3 | Desenfunde | Juego | Alto | S | C | v0.3 | Un botón, 5 s de explicación, muchas risas |
+| 3 | Desenfunde *(hecho)* | Juego | Alto | S | C | v0.3 | Un botón, 5 s de explicación, muchas risas |
 | 4 | Bombas saltarinas | Juego | Alto | M | C | v0.3 | Caos al estilo BombSquad reutilizando Empujones |
 | 5 | Tres puertas | Juego | Medio-alto | S | C | v0.3 | Primer juego de información oculta; barato |
 | 6 | Estadísticas divertidas y Récords de la casa | Retención | Medio | S | A/C | v0.3 | El final "cierra" y queda algo para superar |

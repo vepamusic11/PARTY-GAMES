@@ -1285,3 +1285,39 @@ static func save_effects_prefs(path: String) -> void:
 	cfg.load(path)  # Conserva el resto de las secciones (sonido, apodo…).
 	cfg.set_value("video", "reduce_motion", reduce_motion)
 	cfg.save(path)
+
+
+# --- Desenfunde (agente) ---
+## Duelo del Oeste al atardecer (host/minigames/quickdraw/).
+const ACCENT_QUICKDRAW := Color("#B7791F")    ## Tarjeta del lobby.
+const QD_SKY_TOP := Color("#5A3D8F")          ## Cielo: violeta arriba…
+const QD_SKY_MID := Color("#E4674A")          ## …naranja…
+const QD_SKY_LOW := Color("#FFA95A")          ## …y amarillo en el horizonte.
+const QD_HORIZON := Color("#FFD98C")
+const QD_SUN := Color("#FFF0B3")
+const QD_SUN_GLOW := Color(1.0, 0.86, 0.55, 0.55)
+const QD_MESA_FAR := Color("#C45C78")         ## Mesetas lejanas (siluetas).
+const QD_MESA_NEAR := Color("#9A4166")
+const QD_SAND_FAR := Color("#F4C27E")         ## Arena: más clara lejos…
+const QD_SAND_NEAR := Color("#DE9C58")        ## …más oscura adelante.
+const QD_STREET := Color("#F7D39A")
+const QD_RUT := Color(0.55, 0.32, 0.15, 0.22) ## Huellas de carreta.
+const QD_SHADE := Color(0.3, 0.1, 0.2, 0.28)  ## Sombras sobre la arena.
+const QD_SALOON := Color("#D8664F")
+const QD_SHERIFF := Color("#4FA3A5")
+const QD_TRIM := Color("#FFF1D6")             ## Marcos, carteles de las fachadas y texto del cartel.
+const QD_WINDOW := Color("#3B2342")
+const QD_WINDOW_LIT := Color("#FFC56B")
+const QD_WOOD := Color("#B7773F")
+const QD_WOOD_LIGHT := Color("#D39456")
+const QD_WOOD_DARK := Color("#7E4A22")
+const QD_WOOD_INK := Color("#4A2912")         ## Contorno del texto sobre madera.
+const QD_ROPE := Color("#E8C48A")
+const QD_CACTUS := Color("#4E9F57")
+const QD_TUMBLE := Color("#C9975A")           ## Planta rodadora.
+const QD_TUMBLE_DARK := Color("#7A5530")
+const QD_HAT := Color("#8B5A2B")              ## Sombrero de vaquero (la cinta es del color del jugador).
+const QD_HAT_DARK := Color("#5E3A1A")
+const QD_POPGUN := Color("#5A6CD6")           ## Cebita de corcho de juguete.
+const QD_CORK := Color("#E0A868")
+const QD_SMOKE := Color(1, 1, 1, 0.85)

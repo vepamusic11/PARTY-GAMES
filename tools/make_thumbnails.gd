@@ -85,6 +85,7 @@ const SHOTS := {
 	# jugadores de prueba no la repiten (con el joystick girando no pasan por
 	# el centro), así que la foto es mientras la TV la muestra.
 	"memory": {"sec": 4.1, "crop": Rect2(210, 200, 1088, 612)},
+	"quickdraw": {"sec": 1.15, "crop": Rect2(480, 330, 960, 540)},
 }
 
 var _out_dir := OUT_DIR
