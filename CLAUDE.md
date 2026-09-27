@@ -39,7 +39,7 @@ Siempre correr los tests antes de dar un cambio por terminado.
 - UI de la TV navegable con D-pad (sin mouse/táctil).
 - UI construida por código (sin .tscn salvo `app/boot.tscn`); mantener ese estilo o migrar de forma consistente.
 - Colores, tamaños y tipografía solo desde `UiTheme`; nada de valores sueltos en pantallas o juegos.
-- Jugadores distinguibles sin depender del color (etiqueta 1P–4P + accesorio de la mascota).
+- Jugadores distinguibles sin depender solo del color: etiqueta 1P–4P siempre, más el accesorio de la mascota o, si el jugador es un objeto de su color (tanque, víbora, paleta), una forma o patrón propio. No hace falta la mascota entera en todos los juegos (ver "Cómo se ve cada jugador" en `docs/JUEGOS.md`).
 - El botón "Atrás" abre el menú de pausa; nunca corta una partida sin confirmar.
 - Nuevos juegos: agregar al registry; los tests genéricos los cubren solos.
 - Rendimiento (60 fps en TV de gama baja): lo que no cambia no se redibuja en cada frame; presupuestos en `docs/PERFORMANCE.md`.

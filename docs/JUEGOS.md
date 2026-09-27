@@ -111,12 +111,43 @@ Toda la lógica vive en la TV, que sigue siendo autoritativa: el celular solo ma
 | ~~Memoria de colores~~ **(hecho)** | Repetir la secuencia | Joystick: arriba, derecha, abajo e izquierda son los cuatro botones (sin layout nuevo) | Juego de cabeza |
 | Equilibrio | Mantener la bandeja nivelada | Inclinación (layout nuevo) | Usa el celular como objeto físico |
 
+### Clásicos arcade para 4 (Bomberman, Battle City y parecidos)
+
+Juegos de sala de juegos y consolas que la gente ya conoce: se explican solos ("es como el Bomberman") y funcionan muy bien con 4 personas en un sillón. Varios usan el nuevo **joystick + A/B** ([ADR 0014](adr/0014-layout-joystick-ab.md)), que todavía no tiene juego. Son ideas propias *inspiradas* en el género: nombres, arte y niveles nuestros (nunca copiar nombres, sprites ni músicas de los originales).
+
+| Juego | Inspirado en | Dinámica | Control | Cómo se ve cada jugador | Qué suma | Dificultad |
+|---|---|---|---|---|---|---|
+| **Bombas de mascotas** | Bomberman | Laberinto en grilla con bloques rompibles; A pone una bomba que explota en cruz; los bloques sueltan mejoras (más alcance, más bombas, patear con B). Último en pie o más puntos a los 90 s. *Ej.:* Juli encierra a Tomi entre dos bombas; Tomi patea una con B y se salva | Joystick + A/B (**primer uso**) | Mascota entera (se ve chica en la grilla) | Estrategia de encierro; el clásico más pedido para 4 | Media: grilla, explosiones en cruz, mejoras |
+| **Tanquecitos** | Battle City / Tank | Tanques vistos desde arriba en un mapa con ladrillos que se rompen, acero que no, agua y arbustos que tapan. A dispara. Modo todos contra todos o **2 contra 2 cuidando la base** (la torta de cumpleaños de cada equipo). *Ej.:* Pablo y Sofi defienden su torta mientras Tomi rompe la pared de atrás | Joystick + A | **Tanque del color del jugador** con 1P–4P pintado en la torreta (no hace falta la mascota entera; como mucho, su cabeza asomando) | Primer juego de disparos y de equipos con base | Media |
+| **Víboras** | Snake / "Achtung, die Kurve" | Cada víbora crece al comer frutas; chocar con cualquier cuerpo te elimina. Variante "Achtung": se dobla con el joystick y la estela queda con huecos | Joystick | **Solo el color** + patrón propio (rayas, puntos, rombos, lisa) y la etiqueta 1P–4P en la cabeza | Encerrar al rival; partidas de 30 s | Baja |
+| **Come-come** | Pac-Man Vs. | Uno es el come-come y los otros tres son fantasmas que **solo ven cerca** (la TV oscurece lejos de ellos); si un fantasma lo atrapa, cambian los roles | Joystick | Come-come y fantasmas del color de cada uno + 1P–4P | 1 contra 3 asimétrico (como Mario Party) | Media |
+| **Cruzá la calle** | Frogger / Crossy Road | Cruzar carriles de autos y troncos de un río; gana quien llega más lejos. Los empujones entre jugadores valen | Joystick (pasitos) | Mascota entera | Timing + caos; lo entiende un chico de 5 años | Baja |
+| **Justas voladoras** | Joust | Se aletea con A para subir; gana el choque quien está más arriba | Joystick + A | Mascota entera sobre un pájaro de su color | Física de vuelo simple; muy gracioso | Media |
+| **Golpe de abajo** | Mario Bros. (arcade 1983) | Plataformas: golpear el piso desde abajo da vuelta a los bichos y después se los empuja; también se puede dar vuelta al rival | Joystick + A (saltar) | Mascota entera | Cooperar y traicionar en la misma pantalla | Media |
+| **Nave contra nave** | Spacewar! / Asteroids | Arena con gravedad hacia un sol central; A dispara, B turbo. Rocas que se parten | Joystick + A/B | **Nave del color del jugador** + 1P–4P | Inercia y puntería | Media |
+| **Territorio** | Qix / Paper.io | Salir de tu zona dibuja una línea; al volver, lo encerrado es tuyo. Si te tocan la línea, perdés lo que estabas cerrando | Joystick | **Solo el color** + textura propia en el territorio y 1P–4P en el lápiz | Riesgo contra recompensa (parecido a Pintar el piso, pero con encierro) | Media |
+| **Ladrillos en equipo** | Breakout / Arkanoid | Cada uno tiene su paleta en un lado de la pantalla y todos rompen el mismo muro; puntos por ladrillo y penalidad si se te escapa la pelota | Deslizar | **Paleta del color del jugador** + 1P–4P | Usa el deslizar de Ping Pong con 4 | Baja |
+| **Bloques que caen** | Tetris 99 / Puyo | Cada uno arma su pozo; limpiar líneas le manda basura a otro | Joystick + A (girar) | Pozo con borde del color + mascota chica mirando | Juego de cabeza competitivo | Alta (necesita buen control del giro por red) |
+| **Hockey de aire** | Air hockey | 1 contra 1 o 2 contra 2 con disco y arcos | Deslizar o joystick | Mazo del color + 1P–4P | Primer juego por equipos (ya estaba como "Hockey de mesa") | Baja-media |
+
+**Orden sugerido dentro de este grupo:** Bombas de mascotas (estrena el joystick + A/B y es el más pedido), Tanquecitos (equipos 2 contra 2), Víboras (barata, 1 día) y Come-come (asimétrico).
+
+### Cómo se ve cada jugador: no siempre hace falta la mascota entera
+
+Según el juego alcanza con **el color del jugador** en lo que controla (un tanque, una víbora, una paleta, un territorio). Dibujar la mascota entera no siempre suma: en una grilla chica no se lee, y cuesta más por cuadro. Hay tres niveles:
+
+| Nivel | Cuándo | Ejemplos |
+|---|---|---|
+| **Mascota entera** | El personaje camina, salta o se cae y eso es parte de la gracia | Arena, Empujones, Carrera de obstáculos, Bombas de mascotas |
+| **Objeto del color + cabeza de la mascota** | El jugador maneja algo (vehículo, bola) y la mascota va arriba o asomando | Karts, Pool loco, Tanquecitos |
+| **Solo el color** | El jugador es una estela, una paleta o un territorio | Víboras, Territorio, Ladrillos en equipo, Ping Pong |
+
+**Regla que no cambia (accesibilidad):** el color **solo** nunca alcanza, porque 1 de cada 12 hombres distingue mal algunos colores (por ejemplo, el rojo del verde). Siempre va la etiqueta **1P–4P** sobre lo que controla el jugador, y cuando no hay mascota, una **forma o patrón propio** (rayas, puntos, rombos, lisa). *Ej.:* en Víboras, la víbora roja de Pablo lleva "1P" en la cabeza y rayas; la verde de Sofi lleva "2P" y puntos. Así se distinguen aunque se vean del mismo tono. El marcador de arriba sigue mostrando la cabeza de la mascota de cada uno, así todos saben quién es quién.
+
 ## Orden recomendado
 
-1. **Pool loco:** no necesita un layout nuevo y su física se reutiliza en Mini golf y Bochas.
-2. ~~**Karts de mascotas**~~ (hecho): es la carrera que la gente espera en un party game y usa el joystick que ya existe.
 1. **Pool loco** *(hecho)*: no necesitó un layout nuevo y su física (`host/minigames/pool/pool_physics.gd`) se puede reutilizar en Mini golf y Bochas.
-2. **Karts de mascotas:** es la carrera que la gente espera en un party game y usa el joystick que ya existe.
+2. **Karts de mascotas** *(hecho)*: es la carrera que la gente espera en un party game y usa el joystick que ya existe.
 3. **Carrera de obstáculos** *(hecho, `host/minigames/hurdles/`)*: barata y muy clara para jugadores nuevos. Cada carril tiene su propio scroll lateral (la mascota queda fija y el recorrido pasa) y un riel con la meta; todos corren la misma secuencia de vallas, pozos, escalones y plataformas, generada con una semilla. Tocar salta, mantener salta un poco más alto (con límite); tropezar frena 1 s. Gana el primero en la meta o, a los 60 s, el que llegó más lejos. Física con pasos fijos de 1/60 s: la misma semilla y las mismas entradas dan la misma carrera (tests `test_hurdles_*`).
 4. **Hockey de mesa:** primer juego por equipos.
 5. Después, los que necesitan layouts nuevos (Equilibrio), sumados juntos en una sola versión del protocolo. Memoria de colores ya está hecha con el joystick (cada dirección es un botón), sin cambiar el protocolo.
