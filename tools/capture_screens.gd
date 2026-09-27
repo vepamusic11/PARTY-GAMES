@@ -38,6 +38,7 @@ const CONTROL_SHOTS := {
 
 var host: HostMain
 var _out_dir := OUT_DIR
+var _out_width := OUT_WIDTH  ## `--width=1920`: resolución completa (para revisar detalle).
 var _lobby_only := false  ## `--lobby-only`: corta tras el lobby (iterar diseño rápido).
 var _style := ""  ## Post-proceso de estilo (--style=pixel|neon|paper|flat); vacío = el actual.
 var _style_params := {}
@@ -53,6 +54,8 @@ func _run() -> void:
 		if arg.begins_with("--out="):
 			_out_dir = arg.trim_prefix("--out=").trim_suffix("/") + "/"
 			DirAccess.make_dir_recursive_absolute(_out_dir)
+		elif arg.begins_with("--width="):
+			_out_width = clampi(int(arg.trim_prefix("--width=")), 320, 3840)
 		elif arg == "--lobby-only":
 			_lobby_only = true
 		elif arg.begins_with("--style="):
@@ -206,7 +209,8 @@ func _expect(cond: bool, what: String) -> void:
 func _shot(vp: Viewport, name: String) -> void:
 	await RenderingServer.frame_post_draw
 	var img := vp.get_texture().get_image()
-	img.resize(OUT_WIDTH, int(img.get_height() * float(OUT_WIDTH) / img.get_width()), Image.INTERPOLATE_LANCZOS)
+	if img.get_width() != _out_width:
+		img.resize(_out_width, int(img.get_height() * float(_out_width) / img.get_width()), Image.INTERPOLATE_LANCZOS)
 	img.save_png(_out_dir + name + ".png")
 	print("  ", name, ".png")
 
