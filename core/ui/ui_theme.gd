@@ -773,3 +773,58 @@ class ShapeBatch:
 			_shifted.clear()
 		_shifted[key] = shifted
 		return shifted
+
+
+# --- Fondo (agente) -------------------------------------------------------------
+## Escenario de fiesta detrás de la UI (PartyBackground), barrido entre
+## pantallas (Transition) y confeti del podio (Confetti). El fondo va más
+## suave y desenfocado que la UI: tarjetas y textos tienen que seguir
+## destacando.
+const BG_SKY_TOP := Color("#3C8CE6")
+const BG_SKY_MID := Color("#6DB9F7")
+const BG_HAZE := Color("#D3E9FF")        ## Bruma del horizonte: lo lejano se mezcla con este color.
+const BG_GLOW := Color(1.0, 0.98, 0.9, 0.42)   ## Luz ambiente arriba al centro.
+const BG_BEAM := Color(1.0, 1.0, 1.0, 0.12)    ## Haces de luz del escenario.
+const BG_CLOUD_SHADE := Color("#C9DDF6")  ## Panza de las nubes.
+const BG_FLOOR_A := Color("#F1F3FC")
+const BG_FLOOR_B := Color("#CCD5EF")
+const BG_VIGNETTE := Color(0.06, 0.12, 0.38, 0.30)  ## Bordes más oscuros: la UI del centro resalta.
+const BG_SPARKLE := Color("#FFF4C2")      ## Brillos que titilan.
+const BG_HAZE_FAR := 0.42   ## Cuánto se mezclan con la bruma las torres de atrás.
+const BG_HAZE_NEAR := 0.2  ## …y las de adelante.
+const BG_BLUR_STEP := 1.1   ## Separación entre muestras del desenfoque (px de la textura a media resolución).
+
+
+## Puntos de un rectángulo redondeado (convexo: sirve para ShapeBatch.polygon).
+## `steps`: segmentos por esquina.
+static func round_rect_points(rect: Rect2, radius: float, steps: int = 4) -> PackedVector2Array:
+	var r := minf(radius, minf(rect.size.x, rect.size.y) / 2.0)
+	var pts := PackedVector2Array()
+	pts.resize((steps + 1) * 4)
+	var centers := [rect.end - Vector2(r, r), Vector2(rect.position.x + r, rect.end.y - r),
+		rect.position + Vector2(r, r), Vector2(rect.end.x - r, rect.position.y + r)]
+	var k := 0
+	for corner in 4:
+		var c: Vector2 = centers[corner]
+		for i in steps + 1:
+			var a := PI / 2.0 * corner + PI / 2.0 * i / steps
+			pts[k] = c + Vector2(cos(a), sin(a)) * r
+			k += 1
+	return pts
+
+
+## Degradé radial (centro `inner` → borde `outer`) en un solo triangle array.
+## `ry` <= 0: círculo.
+static func draw_radial(ci: CanvasItem, center: Vector2, rx: float, inner: Color, outer: Color,
+		ry: float = -1.0, steps: int = 40) -> void:
+	var ring := ellipse_points(center, rx, ry if ry > 0.0 else rx, 0.0, steps)
+	var pts := PackedVector2Array([center])
+	pts.append_array(ring)
+	var cols := PackedColorArray()
+	cols.resize(steps + 1)
+	cols.fill(outer)
+	cols[0] = inner
+	var idx := PackedInt32Array()
+	for i in steps:
+		idx.append_array([0, 1 + i, 1 + (i + 1) % steps])
+	RenderingServer.canvas_item_add_triangle_array(ci.get_canvas_item(), idx, pts, cols)

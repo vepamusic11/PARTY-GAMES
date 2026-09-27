@@ -10,7 +10,7 @@ description: Sistema visual y reglas de UI de Party Games (TV y celular). Usar a
 | Archivo | Qué tiene |
 |---|---|
 | `core/ui/ui_theme.gd` | Tokens (colores, medidas), tema de Godot, fábricas (`label`, `headline`) y funciones de dibujo (`draw_hex_chip`, `draw_round_rect`, `draw_star`…) |
-| `core/ui/widgets/` | Compartidos: `PartyBackground`, `PlayerAvatar` (mascotas), `HexChip` |
+| `core/ui/widgets/` | Compartidos: `PartyBackground` (escenario desenfocado detrás de la UI, se prepara una vez; tokens `BG_*`, ADR 0008), `PlayerAvatar` (mascotas), `HexChip` |
 | `host/ui/widgets/` | Solo TV: `GameCard`, `Stepper`, `SeatCard`, `ScorePedestal`, `ScoreBar`, `Confetti`, `KeyHint`, `Transition` (barrido de bloques entre pantallas) |
 | `host/ui/*_screen.gd` | Pantallas: lobby, intro "¿Cómo se juega?", resumen de ronda, podio, pausa |
 

@@ -1,13 +1,15 @@
 class_name Transition
 extends Control
 ## Barrido entre pantallas: filas de bloques de colores (los de
-## `UiTheme.BRICKS`) entran por la izquierda, tapan la pantalla y siguen de
-## largo por la derecha. El cambio de pantalla ocurre en el medio, cuando
-## todo está tapado, así nunca se ve un "salto" de una pantalla a otra.
+## `UiTheme.BRICKS`, con volumen y brillo) entran por la izquierda con una
+## estrella en la punta, tapan la pantalla y siguen de largo por la derecha.
+## Con todo tapado aparece un instante una estrella grande en el centro. El
+## cambio de pantalla ocurre en el medio, cuando todo está tapado, así nunca
+## se ve un "salto" de una pantalla a otra.
 ##
 ##   t = 0      0,21 s (tapado)      0,42 s
 ##   ▓▓░░░░      ▓▓▓▓▓▓               ░░░░▓▓
-##   ▓░░░░░  ->  ▓▓▓▓▓▓  ->  cambio   ░░░░░▓
+##   ▓░░░░░  ->  ▓▓★▓▓▓  ->  cambio   ░░░░░▓
 ##
 ## Uso: `play(callable)`. El callable corre al quedar tapada la pantalla.
 ## Reglas que garantiza:
@@ -17,6 +19,10 @@ extends Control
 ##   - **Input**: mientras corre se tragan las teclas del control remoto (un
 ##     OK doble no dispara dos acciones), pero nunca más de lo que dura.
 ##   - Con `duration = 0` el cambio es inmediato (tests).
+##
+## Rendimiento: cada fila es un nodo hijo que se dibuja UNA vez (un lote de
+## figuras, un draw call) y se redibuja solo si cambia el tamaño; durante el
+## barrido solo se mueve su `position.x`. La estrella del centro, igual.
 
 signal covered
 signal finished
@@ -26,6 +32,7 @@ const ROWS := 8
 const BRICK_W := 240.0
 const STAGGER := 0.12    ## Retraso de la última fila, en fracción del barrido: forma la diagonal.
 const GAP := 4.0         ## Separación entre bloques (se ve la "tinta" de fondo).
+const TRAIL := 90.0      ## Largo de la estela de luz en las puntas de cada fila.
 
 var duration := DURATION
 
@@ -34,6 +41,8 @@ var _running := false
 var _covered := false
 var _flushing := false
 var _pending: Array[Callable] = []
+var _rows: Array[Control] = []
+var _emblem: Node2D
 
 
 func _ready() -> void:
@@ -42,6 +51,17 @@ func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	z_index = 30  # Encima de todas las pantallas, incluso del menú de pausa.
 	visible = false
+	for row in ROWS:
+		var strip := Control.new()
+		strip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		strip.draw.connect(_draw_row.bind(strip, row))
+		add_child(strip)
+		_rows.append(strip)
+	_emblem = Node2D.new()
+	_emblem.draw.connect(_draw_emblem)
+	add_child(_emblem)
+	resized.connect(_on_resized)
+	_on_resized()
 
 
 ## Pide un cambio de pantalla. `on_covered` corre cuando la pantalla queda
@@ -66,6 +86,7 @@ func play(on_covered: Callable = Callable()) -> void:
 		_running = true
 		visible = true
 		mouse_filter = Control.MOUSE_FILTER_STOP
+		_place()
 
 
 func is_running() -> bool:
@@ -90,7 +111,7 @@ func _process(delta: float) -> void:
 	if _t >= 1.0:
 		_stop()
 	else:
-		queue_redraw()
+		_place()
 
 
 func _input(event: InputEvent) -> void:
@@ -119,7 +140,7 @@ func _stop() -> void:
 		finished.emit()
 
 
-# --- Dibujo ---------------------------------------------------------------------
+# --- Movimiento -------------------------------------------------------------------
 
 ## Posición horizontal de la fila `row`: de afuera a la izquierda a 0
 ## (tapando) y de ahí a afuera por la derecha.
@@ -128,35 +149,86 @@ func _row_offset(row: int) -> float:
 	var span := 0.5 - STAGGER
 	if _t < 0.5:
 		var k := _ease(clampf((_t - delay) / span, 0.0, 1.0))
-		return -(size.x + BRICK_W * 2.0) * (1.0 - k)
+		return -(_length() + TRAIL + 60.0) * (1.0 - k)
 	var k2 := _ease(clampf((_t - 0.5 - delay) / span, 0.0, 1.0))
-	return (size.x + BRICK_W / 2.0) * k2
+	return (size.x + BRICK_W / 2.0 + TRAIL) * k2
 
 
 static func _ease(x: float) -> float:
 	return x * x * (3.0 - 2.0 * x)  # smoothstep: arranca y frena suave.
 
 
-func _draw() -> void:
-	if not _running:
-		return
-	var row_h := size.y / ROWS
-	var strip_w := size.x + BRICK_W
+## Mueve las filas y la estrella del centro (sin redibujar nada).
+func _place() -> void:
 	for row in ROWS:
-		var x := _row_offset(row)
-		var y := row * row_h
 		# Las filas impares van corridas medio bloque, como una pared.
-		var start := x - (BRICK_W / 2.0 if row % 2 == 1 else 0.0)
-		draw_rect(Rect2(start, y, strip_w + BRICK_W / 2.0, row_h), UiTheme.INK)
-		var i := 0
-		var bx := start
-		while bx < start + strip_w + BRICK_W / 2.0:
-			var c: Color = UiTheme.BRICKS[(i + row * 3) % UiTheme.BRICKS.size()]
-			var r := Rect2(bx + GAP / 2.0, y + GAP / 2.0, BRICK_W - GAP, row_h - GAP)
-			UiTheme.draw_round_rect(self, r, c.darkened(0.2), 12)
-			UiTheme.draw_round_rect(self, Rect2(r.position, r.size - Vector2(0, 10)), c, 12)
-			for k in 2:
-				var stud := Vector2(r.position.x + r.size.x * (0.3 + 0.4 * k), r.position.y + r.size.y * 0.4)
-				draw_circle(stud, row_h * 0.12, c.lightened(0.28))
-			bx += BRICK_W
-			i += 1
+		var shift := BRICK_W / 2.0 if row % 2 == 1 else 0.0
+		_rows[row].position = Vector2(_row_offset(row) - shift, row * size.y / ROWS)
+	# Estrella: aparece mientras todo está tapado (t ≈ 0,32 … 0,68).
+	var k := clampf((_t - 0.32) / 0.36, 0.0, 1.0)
+	var pop := sin(k * PI)
+	_emblem.visible = pop > 0.01
+	_emblem.position = size / 2.0
+	_emblem.scale = Vector2.ONE * (0.35 + 0.75 * pop)
+	_emblem.rotation = (k - 0.5) * 1.2
+
+
+## Largo de cada fila: bloques enteros (sin uno cortado en la punta) y
+## medio bloque de más para las filas corridas.
+func _length() -> float:
+	return ceilf((size.x + BRICK_W * 1.5) / BRICK_W) * BRICK_W
+
+
+func _on_resized() -> void:
+	for strip in _rows:
+		strip.size = Vector2(_length(), size.y / ROWS)
+		strip.queue_redraw()
+	_emblem.queue_redraw()
+
+
+# --- Dibujo (una vez por fila) ----------------------------------------------------
+
+func _draw_row(strip: Control, row: int) -> void:
+	var row_h := size.y / ROWS
+	var length := _length()
+	var batch := UiTheme.ShapeBatch.new()
+	# Estelas de luz en las dos puntas (la de adelante al entrar, la de atrás al salir).
+	var glow: Color = UiTheme.BRICKS[(row * 3) % UiTheme.BRICKS.size()].lightened(0.3)
+	strip.draw_polygon(PackedVector2Array([Vector2(-TRAIL, 0), Vector2(0, 0), Vector2(0, row_h), Vector2(-TRAIL, row_h)]),
+		PackedColorArray([Color(glow, 0.0), Color(glow, 0.8), Color(glow, 0.8), Color(glow, 0.0)]))
+	strip.draw_polygon(PackedVector2Array([Vector2(length, 0), Vector2(length + TRAIL, 0), Vector2(length + TRAIL, row_h), Vector2(length, row_h)]),
+		PackedColorArray([Color(glow, 0.8), Color(glow, 0.0), Color(glow, 0.0), Color(glow, 0.8)]))
+	batch.polygon(PackedVector2Array([Vector2.ZERO, Vector2(length, 0), Vector2(length, row_h), Vector2(0, row_h)]), UiTheme.INK)
+	var i := 0
+	var bx := 0.0
+	var stud_r := row_h * 0.12
+	while bx < length:
+		var c: Color = UiTheme.BRICKS[(i + row * 3) % UiTheme.BRICKS.size()]
+		var r := Rect2(bx + GAP / 2.0, GAP / 2.0, BRICK_W - GAP, row_h - GAP)
+		batch.polygon(UiTheme.round_rect_points(r, 12.0), c.darkened(0.22))
+		var face := Rect2(r.position, r.size - Vector2(0, 10))
+		batch.polygon(UiTheme.round_rect_points(face, 12.0), c)
+		var shine := Rect2(face.position + Vector2(14, 7), Vector2(face.size.x - 28, 9))
+		batch.polygon(UiTheme.round_rect_points(shine, 4.5, 2), Color(1, 1, 1, 0.3))
+		for k in 2:
+			var stud := Vector2(r.position.x + r.size.x * (0.3 + 0.4 * k), r.position.y + r.size.y * 0.42)
+			batch.circle(stud + Vector2(0, 4), stud_r, c.darkened(0.15))
+			batch.circle(stud, stud_r, c.lightened(0.28))
+			batch.circle(stud - Vector2(stud_r, stud_r) * 0.35, stud_r * 0.3, Color(1, 1, 1, 0.55))
+		bx += BRICK_W
+		i += 1
+	# Estrellas en las puntas de la fila.
+	for x in [length + 6.0, -6.0]:
+		var p := Vector2(x, row_h / 2.0)
+		var rs := row_h * 0.3
+		batch.star(UiTheme.star_points(p, rs + 5.0, 0.5, row * 0.4), p, UiTheme.INK)
+		batch.star(UiTheme.star_points(p, rs, 0.48, row * 0.4), p, UiTheme.GOLD)
+		var hl := p - Vector2(rs, rs) * 0.12
+		batch.star(UiTheme.star_points(hl, rs * 0.35, 0.5, row * 0.4), hl, Color(1, 1, 1, 0.55))
+	batch.flush(strip)
+
+
+func _draw_emblem() -> void:
+	var r := minf(size.x, size.y) * 0.09
+	UiTheme.draw_radial(_emblem, Vector2.ZERO, r * 2.2, Color(UiTheme.GOLD, 0.55), Color(UiTheme.GOLD, 0.0))
+	UiTheme.draw_star(_emblem, Vector2.ZERO, r, UiTheme.GOLD)

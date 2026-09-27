@@ -55,7 +55,7 @@ Cada minijuego reporta su puntaje propio y `Tournament` lo traduce a puestos: 1�
 ### Capas de la TV
 ```
 HostMain (orquesta fases)
-├─ PartyBackground           fondo animado (cielo, nubes, bloques)
+├─ PartyBackground           escenario desenfocado (prerenderizado) + nubes y brillos
 ├─ capa de juego             MiniGame activo (Node2D, dibuja su propio fondo)
 ├─ LobbyScreen               unirse · cuántos juegan · qué juegos
 ├─ GameIntroScreen           "¿Cómo se juega?" antes de cada juego

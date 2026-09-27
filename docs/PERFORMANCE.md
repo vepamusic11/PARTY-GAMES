@@ -97,13 +97,34 @@ Los dos quedan dentro de lo pedido para la TV (p95 ≤ 8 ms en el benchmark y �
 
 Comparación visual: escenas deterministas de los dos juegos (estado fijo: cuenta regresiva; isla achicándose con temblor, efectos, uno cayendo y otro en la tribuna; final con la isla chica; piso con 140 baldosas, algunas saltando, power-up, brocha y velocidad; "¡Tiempo!"): **Pintar el piso 0 píxeles distintos**; **Empujones ≤ 3 píxeles de 2 millones con diferencia de 1/255** (redondeo de seno/coseno en el borde suavizado de los arcos). Las capturas de `capture_screens.gd` antes y después se ven iguales.
 
+### Fondo de escenario, transición y confeti
+
+Medido después, sobre `4d4997f`, antes y después del escenario desenfocado ([ADR 0008](adr/0008-fondo-escenario-desenfocado.md)), 300 frames por escena, corridas una detrás de la otra (la máquina tenía otras corridas en paralelo: diferencias de ±10 % son ruido):
+
+| Escena | Scripts prom. (ms) | Scripts p95 (ms) | Draw calls | Render prom. (ms) |
+|---|---:|---:|---:|---:|
+| lobby | 2,12 → **1,64** | 2,68 → 2,08 | 599 → **418** | 65,2 → 42,2 |
+| game_intro | 1,71 → **1,42** | 2,05 → 1,83 | 465 → **284** | 46,6 → 33,5 |
+| round_summary | 1,70 → **1,58** | 2,23 → 2,32 | 460 → **279** | 44,7 → 34,2 |
+| final (con confeti) | 1,74 → **1,39** | 2,29 → 1,84 | 376 → **195** | 42,5 → 28,9 |
+| ctrl_join | 0,67 → **0,23** | 0,93 → 0,41 | 29 → 16 | 29,8 → 27,9 |
+| ctrl_wait | 1,28 → **0,97** | 1,67 → 1,31 | 90 → 77 | 23,6 → 21,8 |
+| ctrl_joy | 0,84 → **0,54** | 1,04 → 0,68 | 55 → 42 | 20,8 → 19,0 |
+
+Los juegos no cambian (el fondo está oculto mientras se juega). El celular esperando sigue en 30 dibujos/s.
+
+- **`PartyBackground`**: el escenario se pinta una vez en un `SubViewport` a media resolución, otro lo desenfoca una vez (`core/ui/shaders/soft_blur.gdshader`) y los dos quedan en `UPDATE_ONCE`. En pantalla: 1 `TextureRect` + 6 nubes y 9 brillos como `Sprite2D` (texturas hechas por código una vez por proceso). En cada frame solo cambian posición, escala y transparencia de esos nodos: no hay `_draw()` por frame (antes, cielo + 7 nubes en GDScript y ≈ 160 draw calls fijos de torres y bordes). También baja el render: un cuadro con textura en vez de cientos de figuras con mezcla alfa.
+- **Celular**: sin escenario (ni SubViewport ni brillos): cielo liso que se dibuja una vez y nubes `Sprite2D` que se mueven a `anim_fps`.
+- **`Transition`**: cada fila de bloques es un nodo que se dibuja una vez (un lote, 1 draw call) y durante el barrido solo se mueve; antes eran ≈ 290 comandos redibujados en cada frame.
+- **`Confetti`**: todas las piezas (papelitos, estrellas, serpentinas, puntos, destellos) en **un** triangle array por frame; antes, un draw call por papelito. Cada tipo tiene una plantilla de puntos (las serpentinas, una por cuadro de su ondeo) que se transforma en C++; índices y colores se arman una vez en `burst()`.
+
 ## Qué se cambió y por qué
 
 ### 1. Capas estáticas que se dibujan una sola vez
 
 Godot conserva los comandos de dibujo de cada `CanvasItem` hasta el próximo `queue_redraw()` **de ese nodo**. Si un nodo se redibuja en cada frame, todo lo que dibuja se recalcula en cada frame, aunque no cambie. Entonces lo que no cambia va en un nodo hijo que no se redibuja:
 
-- **`PartyBackground`** (`core/ui/widgets/party_background.gd`): solo las nubes se mueven. El nodo dibuja cielo + nubes en cada frame; torres, piso a cuadros y bordes de bloques (≈ 160 rectángulos redondeados + 40 círculos + 100 rectángulos) van en el hijo `_front`, que se redibuja solo al cambiar de tamaño o de capas. El orden no cambia (cielo, nubes, torres, piso, bordes) porque los hijos se dibujan después que el padre.
+- **`PartyBackground`** (`core/ui/widgets/party_background.gd`): el escenario (cielo, torres, piso, luces) se pinta **una vez** en un `SubViewport` a media resolución y se desenfoca una vez (ver [Fondo de escenario](#fondo-de-escenario-transición-y-confeti) y [ADR 0008](adr/0008-fondo-escenario-desenfocado.md)); en pantalla es un solo `TextureRect`. Solo nubes y brillos se mueven, como `Sprite2D`: sin `_draw()` por frame.
 - **`MiniGame.draw_sky()` / `draw_play_field()`** (`host/minigames/minigame.gd`): ahora *registran* la capa y la dibuja una vez un hijo interno `_backdrop` con `show_behind_parent` (queda detrás de todo lo del juego). Solo se redibuja si cambian los argumentos. La API no cambió: los juegos las siguen llamando al principio de `_draw()`.
 - **`MiniGame.draw_hud()`**: el marcador va en un hijo interno `_hud`, delante del juego, que se redibuja solo cuando cambia un número o el texto del centro (≈ 1 vez por segundo en vez de 60).
 - Si en un `_draw()` el juego deja de pedir una capa, se borra al terminar ese `_draw()` (el juego se entera por la señal `draw`, que Godot emite justo antes de `_draw()`).
@@ -163,7 +184,7 @@ Para 60 fps el frame dura 16,7 ms. En la TV de gama baja (CPU ~4–5× más lent
 
 Reglas prácticas al dibujar:
 
-- Lo que no cambia durante la pantalla va en un nodo aparte que no se redibuja (ver `PartyBackground._front` y las capas de `MiniGame`).
+- Lo que no cambia durante la pantalla va en un nodo aparte que no se redibuja (ver las capas de `MiniGame`), o se prepara una vez en una textura si además se desenfoca (`PartyBackground`).
 - En los juegos, `draw_sky()` y `draw_play_field()` al principio de `_draw()` y `draw_hud()` una vez por `_draw()`: ya están cacheados.
 - Varias figuras seguidas → `UiTheme.ShapeBatch` (y `flush` antes de texto, líneas o rectángulos redondeados).
 - Nada de crear objetos (`StyleBox`, `Theme`, arreglos grandes) dentro de `_draw()` o `_process()`.
@@ -172,7 +193,6 @@ Reglas prácticas al dibujar:
 ## Próximos pasos posibles
 
 - **Empujones mientras se achica la isla**: el anillo recortado y el borde se redibujan en cada frame. Se podría redibujar por saltos (cada pocos px de radio), pero se vería distinto: se dejó exacto.
-- **Fondo de la TV como una sola textura**: las torres y bordes siguen siendo ~160 rectángulos redondeados (≈ 160 draw calls fijos en lobby, resumen y podio). Renderizarlos una vez a una textura bajaría a 1 draw call, pero con el estiramiento `canvas_items` hay que generarla a la resolución real de la pantalla (hasta 4K) y componerla con alfa premultiplicado para que se vea igual; se dejó afuera para no arriesgar diferencias visuales.
 - **Redibujar en `_process` en vez de `_physics_process`**: si la TV no llega a 60 fps, hay dos pasos de física por frame y los juegos se dibujan dos veces. Mover el `queue_redraw()` a `_process` evita ese trabajo extra justo cuando más falta hace.
 - **Mascotas como nodos**: en los juegos las mascotas se redibujan en cada frame aunque solo cambie su posición. Como nodos hijos con `position` no haría falta redibujarlas (cuando llegue arte con sprites, ver ADR 0004).
 - Medir en el aparato real (Google TV) con el profiler remoto de Godot y el monitor de `Performance`, y ajustar estos presupuestos con esos números.

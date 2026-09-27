@@ -19,7 +19,7 @@ Todo se dibuja por código (ADR 0004). El fondo de la TV y los juegos se redibuj
 - Sin cambiar la API de `MiniGame` ni de `UiTheme`: los juegos existentes y nuevos se benefician solos.
 
 ## Alternativas descartadas
-- **Renderizar el fondo a una textura (SubViewport)**: 1 draw call en vez de ~160, pero con el estiramiento `canvas_items` hay que generarla a la resolución real (hasta 4K, ~33 MB) y componerla con alfa premultiplicado; riesgo de diferencias visuales. Queda como próximo paso si hace falta.
+- **Renderizar el fondo a una textura (SubViewport)**: 1 draw call en vez de ~160, pero con el estiramiento `canvas_items` hay que generarla a la resolución real (hasta 4K, ~33 MB) y componerla con alfa premultiplicado; riesgo de diferencias visuales. Queda como próximo paso si hace falta. *(Hecho después, desenfocado y a media resolución: ver [ADR 0008](0008-fondo-escenario-desenfocado.md).)*
 - **Mascotas y marcador como nodos con sprites**: cambia la estructura de todos los juegos; mejor cuando llegue arte definitivo.
 - **Bajar los fps del celular también durante el juego**: aumentaría la latencia del input.
 
