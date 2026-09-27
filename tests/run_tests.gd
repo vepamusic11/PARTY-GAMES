@@ -1804,6 +1804,74 @@ func test_style_of() -> void:
 	check(UiTheme.on_light(Protocol.MASCOT_COLORS[9]) == Protocol.MASCOT_COLORS[9], "el negro queda igual")
 
 
+## Todas las expresiones y animaciones se dibujan hasta el final (sin errores
+## de script) con cualquier estilo y color, blanco y negro incluidos, chicas
+## y grandes; las claves nuevas de anim son opcionales (y toleran valores
+## fuera de rango).
+func test_mascot_expressions_draw() -> void:
+	var anims := [{}, {"t": 2.3}, {"t": 5.0, "walk": 0.3, "look": Vector2(1, 0)}, {"t": 1.0, "dance": 1.0},
+		{"t": 7.7, "dance": 0.6, "dance_kind": PlayerAvatar.DANCE_SPIN}, {"t": 10.2, "dance": 1.0, "dance_kind": 99},
+		{"t": 0.4, "defeat": 1.0, "greet": 0.5, "flop": 2.0, "squash": 0.4, "wave": true},
+		{"t": 3.3, "dance": 5.0, "dance_kind": PlayerAvatar.DANCE_ARMS, "defeat": -2.0}]
+	var colors: Array[Color] = Protocol.MASCOT_COLORS
+	var moods := PlayerAvatar.Mood.size()
+	var styles := PlayerAvatar.STYLE_NAMES.size()
+	var expected := 0
+	var probe := Control.new()
+	probe.size = Vector2(400, 300)
+	probe.draw.connect(func() -> void:
+		for m in moods:
+			for st in styles:
+				for a in anims.size():
+					for u in [0.7, 2.4]:
+						PlayerAvatar.draw_mascot(probe, Vector2(200, 280), u, colors[(m + st + a) % colors.size()], st, m,
+							0.5, 4.0, false, anims[a])
+				# Blanco, negro y la silueta vacía, con cada ánimo y estilo.
+				for c in [Color.WHITE, Color.BLACK, colors[colors.size() - 1]]:
+					PlayerAvatar.draw_mascot(probe, Vector2(200, 280), 1.0, c, st, m, 0.0, 0.0, false, {"t": 1.5, "dance": 1.0})
+				PlayerAvatar.draw_mascot(probe, Vector2(200, 280), 1.0, Color.RED, st, m, 0.0, 0.0, true, {"dance": 1.0})
+		PlayerAvatar.draw_mascot(probe, Vector2(200, 280), 1.0, Color.RED, 0)  # API vieja: sin anim.
+	)
+	expected = moods * styles * (anims.size() * 2 + 4) + 1
+	var before := PlayerAvatar.drawn
+	root.add_child(probe)
+	await _frames(3)
+	check(PlayerAvatar.drawn - before == expected, "todas las combinaciones terminan de dibujarse (%d de %d)" % [PlayerAvatar.drawn - before, expected])
+	probe.queue_free()
+	check(PlayerAvatar.Mood.NORMAL == 0 and PlayerAvatar.Mood.SURPRISED == 3, "los ánimos viejos conservan su número")
+
+	# El nodo: baile, derrota, saludo y dormirse.
+	var av := PlayerAvatar.new()
+	av.size = Vector2(160, 224)
+	root.add_child(av)
+	av.celebrate(PlayerAvatar.DANCE_SPIN, 0.1)
+	await _until(func() -> bool: return av.dance >= 1.0)
+	check(av.dance >= 1.0 and av.dance_kind == PlayerAvatar.DANCE_SPIN, "celebrate() baila")
+	await _until(func() -> bool: return av.dance <= 0.0)
+	check(av.dance <= 0.0, "celebrate(kind, segundos) para sola")
+	av.lose()
+	await _until(func() -> bool: return av.defeat >= 1.0)
+	check(av.defeat >= 1.0, "lose() se desanima")
+	av.lose(false)
+	av.say_hello()
+	await _until(func() -> bool: return av.greet >= 1.0)
+	check(av.shown_mood() == PlayerAvatar.Mood.HAPPY, "saludando pone cara feliz")
+	await _until(func() -> bool: return av.greet <= 0.0 and av.defeat <= 0.0)
+	av.sleep_after = 0.05
+	await _until(func() -> bool: return av.is_asleep())
+	check(av.shown_mood() == PlayerAvatar.Mood.SLEEPY, "sin actividad se duerme")
+	av.mood = PlayerAvatar.Mood.SAD
+	check(av.shown_mood() == PlayerAvatar.Mood.SAD, "dormida solo con ánimo normal")
+	av.mood = PlayerAvatar.Mood.NORMAL
+	av.wake()
+	check(not av.is_asleep() and av.shown_mood() == PlayerAvatar.Mood.NORMAL, "wake() la despierta")
+	var drawn_before := PlayerAvatar.drawn
+	av.celebrate()
+	await _frames(3)
+	check(PlayerAvatar.drawn > drawn_before, "el nodo bailando se redibuja")
+	av.queue_free()
+
+
 ## El estilo elegido llega a los juegos, al torneo y a las pantallas de la TV.
 func test_games_use_player_style() -> void:
 	# Todas las llamadas a draw_mascot de los juegos pasan el estilo del

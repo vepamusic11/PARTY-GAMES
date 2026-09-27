@@ -1367,3 +1367,9 @@ const POOL_BALL_SHADOW := Color(0.02, 0.12, 0.05, 0.38)  ## Sombra de las bolas 
 const POOL_SHINE := Color(1, 1, 1, 0.8)      ## Reflejo de las bolas.
 const POOL_AIM_DOT := Color(1, 1, 1, 0.75)   ## Puntitos de la guía de tiro.
 const POOL_HINT_BG := Color(0.07, 0.08, 0.2, 0.75)  ## Cartel "cómo se tira".
+
+
+# --- Mascotas 2 (agente) ---
+# Piezas nuevas de las mascotas (expresiones, bailes, robot rediseñado).
+const MASCOT_SOCKET := Color("#2E3458")      ## Zócalo de goma de la antena del robot.
+const MASCOT_BOLT := Color("#A3ABC2")        ## Tornillos de la frente del robot (metal más oscuro).

@@ -13,6 +13,8 @@ extends SceneTree
 ## Con `--closeup`, mascotas grandes (como en el lobby y el podio) arriba y
 ## chicas (como en los juegos) abajo: sirve para revisar el sombreado de
 ## cerca y que a ~60 px se sigan leyendo.
+## Con `--expressions`, todas las expresiones (Mood) y, en fases, los tres
+## bailes, la derrota y el saludo (docs/img/mascotas_expresiones.png).
 
 const SIZE := Vector2i(1920, 1080)
 const OUT_WIDTH := 1280
@@ -70,6 +72,66 @@ class _Closeup:
 					0.0, 0.0, false, {"t": 1.0, "walk": 0.25 if i % 2 == 0 else -1.0, "look": Vector2(1, 0)})
 
 
+## Expresiones (todos los ánimos, en dos filas con estilos y colores
+## distintos, blanco y negro incluidos) y animaciones del nodo en fases:
+## los tres bailes, derrota y saludo.
+class _Expressions:
+	extends Control
+
+	const MOODS := [
+		["Normal", PlayerAvatar.Mood.NORMAL], ["Feliz", PlayerAvatar.Mood.HAPPY], ["Triste", PlayerAvatar.Mood.SAD],
+		["Sorpresa", PlayerAvatar.Mood.SURPRISED], ["Enojada", PlayerAvatar.Mood.ANGRY],
+		["Mareada", PlayerAvatar.Mood.DIZZY], ["Dormida", PlayerAvatar.Mood.SLEEPY],
+		["Ganadora", PlayerAvatar.Mood.WINNER], ["Risa", PlayerAvatar.Mood.LAUGHING],
+	]
+	const PHASES := 8
+
+	func _draw() -> void:
+		draw_rect(Rect2(Vector2.ZERO, size), UiTheme.SKY_BOTTOM)
+		UiTheme.draw_text(self, "Mascotas · expresiones y bailes", Vector2(size.x / 2.0, 52), 50, UiTheme.PAPER, 10)
+		var left := 210.0
+		var cell := (size.x - left - 30.0) / MOODS.size()
+		for c in MOODS.size():
+			UiTheme.draw_text(self, MOODS[c][0], Vector2(left + cell * (c + 0.5), 118), 26, UiTheme.INK)
+		var rows := [[0, 0], [4, 7]]  # Primer estilo y color de cada fila.
+		for r in rows.size():
+			UiTheme.draw_text(self, "Expresión", Vector2(100, 250.0 + r * 172.0), 24, UiTheme.PAPER, 6)
+			for c in MOODS.size():
+				var st: int = (rows[r][0] + c) % PlayerAvatar.STYLE_NAMES.size()
+				var col: Color = PALETTE[(rows[r][1] + c * 3) % PALETTE.size()]
+				var feet := Vector2(left + cell * (c + 0.5), 305.0 + r * 172.0)
+				PlayerAvatar.draw_mascot(self, feet, 1.12, col, st, MOODS[c][1], 0.0, 0.0, false, {"t": 1.3 + c * 0.21})
+		# Animaciones en fases: una fila por baile + derrota y saludo.
+		var pcell := (size.x - left - 30.0) / PHASES
+		var dances := [
+			["Saltitos", PlayerAvatar.STYLE_BUNNY, 6, PlayerAvatar.DANCE_HOPS, 0.5],
+			["Giro", 1, 1, PlayerAvatar.DANCE_SPIN, 1.0],
+			["Brazos arriba", 2, 2, PlayerAvatar.DANCE_ARMS, 1.0],
+		]
+		for r in dances.size():
+			var y := 640.0 + r * 140.0
+			UiTheme.draw_text(self, dances[r][0], Vector2(100, y - 45.0), 24, UiTheme.PAPER, 6)
+			for k in PHASES:
+				# La vuelta del giro ocupa la primera mitad de su ciclo.
+				var span: float = dances[r][4] * (0.5 if r == 1 else 1.0)
+				var t := 10.0 + span * k / PHASES
+				PlayerAvatar.draw_mascot(self, Vector2(left + pcell * (k + 0.5), y), 0.95, PALETTE[dances[r][2]],
+					dances[r][1], PlayerAvatar.Mood.WINNER if r == 1 else PlayerAvatar.Mood.HAPPY, 0.0, 0.0, false,
+					{"t": t, "dance": 1.0, "dance_kind": dances[r][3]})
+		var yd := 1060.0
+		UiTheme.draw_text(self, "Derrota · saludo", Vector2(100, yd - 45.0), 24, UiTheme.PAPER, 6)
+		for k in PHASES:
+			var anim := {"t": 20.0 + k * 0.09}
+			var mood := PlayerAvatar.Mood.SAD
+			if k < 4:
+				anim["defeat"] = k / 3.0
+			else:
+				anim["greet"] = 1.0
+				mood = PlayerAvatar.Mood.HAPPY
+			PlayerAvatar.draw_mascot(self, Vector2(left + pcell * (k + 0.5), yd), 0.95, PALETTE[k % 4 + 3 * int(k >= 4)],
+				(k + 3) % PlayerAvatar.STYLE_NAMES.size(), mood, 0.0, 0.0, false, anim)
+
+
 class _Sheet:
 	extends Control
 
@@ -120,6 +182,8 @@ func _run() -> void:
 			sheet = _Styles.new()
 		elif arg == "--closeup":
 			sheet = _Closeup.new()
+		elif arg == "--expressions":
+			sheet = _Expressions.new()
 		elif arg.begins_with("--width="):  # Ancho de la imagen (1920 = sin achicar).
 			out_width = clampi(arg.trim_prefix("--width=").to_int(), 320, SIZE.x)
 	if sheet == null:

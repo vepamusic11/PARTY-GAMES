@@ -59,8 +59,11 @@ class Shape:
 
 
 ## Arma una Shape a partir de un contorno convexo (o estrellado respecto de
-## su centro). rings: escalas de cada anillo, de menor a 1.0.
-static func make_shape(outline: PackedVector2Array, rings: PackedFloat32Array, feather := true) -> Shape:
+## su centro). rings: escalas de cada anillo, de menor a 1.0. center: punto
+## desde el que se "ve" todo el contorno (por defecto, el promedio de sus
+## puntos); hace falta en figuras alargadas como el brazo con la mano.
+static func make_shape(outline: PackedVector2Array, rings: PackedFloat32Array, feather := true,
+		center: Variant = null) -> Shape:
 	var s := Shape.new()
 	s.id = _next_id
 	_next_id += 1
@@ -74,6 +77,8 @@ static func make_shape(outline: PackedVector2Array, rings: PackedFloat32Array, f
 		lo = lo.min(p)
 		hi = hi.max(p)
 	c /= n
+	if center is Vector2:
+		c = center
 	s.extent = ((hi - lo) / 2.0).max(Vector2(0.001, 0.001))
 	# Dirección de cada punto del borde en el disco unidad (para la luz).
 	var dirs := PackedVector2Array()
@@ -130,6 +135,52 @@ static func make_arc(a0: float, a1: float, steps: int, width: float, feather: fl
 			tris.append_array([a, a + 1, a + 4, a + 1, a + 5, a + 4])
 	s.indices = [tris, tris, tris]
 	return s
+
+
+## Trazo grueso a lo largo de una polilínea (espiral de los ojos mareados,
+## "Z" del que duerme, ojos ">" "<" de la risa, boca ondulada). Como make_arc:
+## ancho `width` y borde suavizado `feather` a cada lado (en unidades de la
+## figura); se dibuja con el material GLOW. Las esquinas se unen en punta
+## (inglete), con tope para que no salgan picos largos.
+static func make_strip(pts: PackedVector2Array, width: float, feather: float) -> Shape:
+	var s := Shape.new()
+	s.id = _next_id
+	_next_id += 1
+	s.feather = false
+	var offsets := [-width / 2.0 - feather, -width / 2.0, width / 2.0, width / 2.0 + feather]
+	var n := pts.size()
+	for i in n:
+		var d_in := (pts[i] - pts[maxi(i - 1, 0)]).normalized()
+		var d_out := (pts[mini(i + 1, n - 1)] - pts[i]).normalized()
+		if i == 0:
+			d_in = d_out
+		elif i == n - 1:
+			d_out = d_in
+		var nrm := (d_in + d_out).normalized().orthogonal()
+		if nrm.is_zero_approx():
+			nrm = d_in.orthogonal()
+		# Inglete: el borde se aleja 1/cos(medio ángulo), con tope 2.
+		var miter := 1.0 / maxf(0.5, nrm.dot(d_in.orthogonal()))
+		for k in 4:
+			s.core.append(pts[i] + nrm * float(offsets[k]) * miter)
+			s.sphere.append(Vector2.ZERO if k == 1 or k == 2 else Vector2.RIGHT)
+	var tris := PackedInt32Array()
+	for i in n - 1:
+		for k in 3:
+			var a := i * 4 + k
+			tris.append_array([a, a + 1, a + 4, a + 1, a + 5, a + 4])
+	s.indices = [tris, tris, tris]
+	return s
+
+
+## Contorno de una estrella de `tips` puntas (radio 1 afuera, `inner`
+## adentro), con la primera punta hacia arriba.
+static func star_outline(tips: int, inner: float) -> PackedVector2Array:
+	var pts := PackedVector2Array()
+	for i in tips * 2:
+		var a := -PI / 2.0 + PI * i / tips
+		pts.append(Vector2(cos(a), sin(a)) * (1.0 if i % 2 == 0 else inner))
+	return pts
 
 
 ## Contorno de una elipse unidad (o superelipse: exponent > 2 la hace más

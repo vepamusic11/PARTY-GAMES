@@ -27,6 +27,27 @@ Las maquetas de referencia están en `docs/design/` (lobby, un juego y hoja de m
 - **Celular**: botones "de juguete" con bisel que se aplastan al tocarlos (`controller/widgets/toy_button.gd`).
 - **Miniaturas reales** de cada juego en el lobby, generadas con `tools/make_thumbnails.gd`.
 
+## Actualización (27/09/2026): mascotas con más vida
+
+Todo sigue siendo por parámetros (sin sprites) y la API no cambió; solo se agregaron valores y claves opcionales. Hoja nueva: `tools/character_sheet.gd --expressions` → `docs/img/mascotas_expresiones.png`.
+- **Expresiones** (al final de `PlayerAvatar.Mood`, así los números viejos no cambian): `ANGRY` (cejas fruncidas y dientes apretados), `DIZZY` (ojos en espiral, boca ondulada y estrellitas; pensada para Empujones), `SLEEPY` (ojos cerrados, "Z" y globito), `WINNER` (ojos de estrella y destellos) y `LAUGHING` (ojos ">" "<" y lágrimas de risa). `SURPRISED` suma cejas arriba.
+- **Pose por capas**: respirar (inspira rápido, exhala lento; la cabeza sigue al pecho), caminar, bailar, derrota, saludo y ánimo suman su parte a unos pocos números (inclinación de cuerpo y cabeza, ángulo de cada brazo, salto, aplastado, giro de la cara) y la mascota se dibuja una sola vez con esa pose. Parpadeo doble una de cada tres veces.
+- **Acción secundaria**: orejas, antena y brote llegan tarde y rebotan (clave `flop`; el nodo la calcula con un resorte a partir del *squash* de `hop()`).
+- **Detalles**: brazo y mano son una sola pieza (sin línea de tinta en la muñeca); piernas visibles también en tamaño chico; la antena del robot sale de un zócalo de goma oscuro (la placa de metal se leía como un cuadradito blanco).
+
+**Cómo usarlas.** En pantallas, con el nodo `PlayerAvatar`:
+
+| Qué | Llamada |
+|---|---|
+| Baile de victoria (3 variantes: `DANCE_HOPS` saltitos, `DANCE_SPIN` giro, `DANCE_ARMS` brazos arriba; `-1` = el de su estilo) | `avatar.celebrate(kind, segundos)` · `stop_celebrating()` |
+| Derrota (hombros caídos, cabeza gacha; combinar con `mood = SAD`) | `avatar.lose()` · `lose(false)` |
+| Saludo al entrar al lobby | `avatar.say_hello()` |
+| Dormirse en esperas largas | `avatar.sleep_after = 40.0` y `wake()` cuando el jugador toca algo |
+
+En juegos (`draw_mascot` estática), claves opcionales del dict `anim`: `dance` (0..1), `dance_kind`, `defeat` (0..1), `greet` (0..1), `flop`. *Ejemplo:* en Empujones, el que cae: `mood = DIZZY`; el ganador del resultado: `{"t": t, "dance": 1.0}`.
+
+**Costo** (`draw_mascot`, µs por llamada, versión anterior y nueva intercaladas en la misma corrida, mediana de 20 repeticiones de 400 llamadas con estilos, colores y ánimos variados, máquina cargada con otras corridas): u = 0,6 → +2 a +6 %, u = 0,8 (tamaño de juego) → +4 %, u = 1,2 → +0 a +3 %, u = 3,6 (lobby) → −3 a −1 %. Lo que cuesta de más: piernas también en chico y la pose por capas; lo compensa el brazo con mano en una sola pieza (una figura menos por brazo) y saltear brillos invisibles en chico. Las expresiones nuevas agregan figuras solo cuando se usan.
+
 ## Motivos
 - Nítido en 720p, 1080p y 4K sin exportar imágenes en varios tamaños; el APK queda liviano (~100 KB de fuentes, nada de sprites).
 - Un único lugar para cambiar la identidad cuando llegue el arte definitivo.
