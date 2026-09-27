@@ -98,6 +98,18 @@ Relay en la nube para redes que aíslan dispositivos, solución para Apple TV ([
 - La integración la hace una sola sesión, que resuelve los conflictos, corre tests y capturas, sube el PR y actualiza el tablero.
 - Godot se ejecuta con un candado compartido (`flock /tmp/party-games-godot.lock`), porque los tests usan puertos fijos.
 
+### Para que el trabajo no se corte a la mitad
+
+Aprendido el 27/09/2026: el contenedor se reinició y después se agotó el límite de uso con 16 agentes a la vez; todos quedaron a medio camino.
+
+| Regla | Por qué | Ejemplo |
+|---|---|---|
+| **Máximo 4–6 agentes en paralelo**, en tandas | Muchos a la vez agotan el límite de uso de golpe, y además se pelean el candado de Godot: cada uno espera minutos para correr tests | Primero los 3 juegos nuevos; cuando terminan, las pantallas y los efectos |
+| **Commits de avance** en su worktree ("WIP: …") cada vez que algo compila y los tests pasan | Si se corta, el trabajo queda guardado en git y no solo en archivos sueltos | "WIP: Karts con pista y vueltas" antes de pasar al arte |
+| **Tareas chicas** (una pantalla, un juego, un sistema) con criterio de "terminado" claro | Una tarea de 30–60 min se termina dentro de una ventana de uso; una de 3 h no | "Juego Pool loco" sí; "mejorar todo el diseño" no |
+| **Retomar, no relanzar**: a un agente cortado se le manda un mensaje para que siga | Conserva su contexto y lo ya hecho | "Se reinició el contenedor: revisá git status y seguí" |
+| **Integración continua**: integrar cada agente apenas termina, no al final | Menos conflictos y el PR siempre tiene lo último probado | Karts integrado mientras Pool seguía trabajando |
+
 ## Decisiones pendientes (son tuyas)
 
 1. **Público objetivo:** familias con chicos o adultos. Cambia las políticas de las tiendas, los anuncios permitidos y el tono.
