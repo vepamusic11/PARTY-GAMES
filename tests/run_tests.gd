@@ -1636,6 +1636,196 @@ func _call_args(src: String, from: int) -> Array[String]:
 	return args
 
 
+# --- Memoria de colores ------------------------------------------------------
+
+const MEMORY := preload("res://host/minigames/memory/memory.gd")
+
+
+## Joystick -> botón: zona muerta, umbral, diagonales y flanco (centro ->
+## dirección cuenta UNA vez; mantener o temblar sin volver al centro, no).
+func test_memory_press_edges() -> void:
+	check(MEMORY.direction_of(Vector2.ZERO) == MEMORY.CENTER, "quieto = centro")
+	check(MEMORY.direction_of(Vector2(0, -0.2)) == MEMORY.CENTER, "dentro de la zona muerta = centro")
+	check(MEMORY.direction_of(Vector2(0, -0.5)) == MEMORY.NO_DIRECTION, "entre zona muerta y umbral no cuenta")
+	check(MEMORY.direction_of(Vector2(0, -1)) == MEMORY.UP, "arriba = estrella")
+	check(MEMORY.direction_of(Vector2(1, 0)) == MEMORY.RIGHT, "derecha = corazón")
+	check(MEMORY.direction_of(Vector2(0, 1)) == MEMORY.DOWN, "abajo = rombo")
+	check(MEMORY.direction_of(Vector2(-1, 0)) == MEMORY.LEFT, "izquierda = círculo")
+	check(MEMORY.direction_of(Vector2(0.3, -0.9)) == MEMORY.UP, "casi arriba (18°) cuenta como arriba")
+	check(MEMORY.direction_of(Vector2(0.7, 0.7)) == MEMORY.NO_DIRECTION, "en diagonal no cuenta")
+	check(MEMORY.direction_of(Vector2(NAN, 1)) == MEMORY.CENTER, "datos inválidos = centro")
+
+	var game: Variant = _memory_game(1, 3)
+	# Empuja durante la secuencia y lo mantiene al empezar su turno: no cuenta.
+	var first: int = MEMORY.sequence_for_seed(3, 1)[0]
+	_memory_axis(game, 1, Vector2.ZERO)
+	_memory_axis(game, 1, MEMORY.DIRS[first])
+	if not check_that(_memory_until_input(game), "llega el turno de repetir"):
+		game.free()
+		return
+	for f in 10:
+		_memory_axis(game, 1, MEMORY.DIRS[first])
+		game.step(1.0 / 60.0)
+	check(game._progress[1] == 0, "mantener desde antes del turno no cuenta")
+	# Tiembla entre el umbral y la zona muerta: tampoco (no volvió al centro).
+	_memory_axis(game, 1, MEMORY.DIRS[first] * 0.5)
+	_memory_axis(game, 1, MEMORY.DIRS[first])
+	check(game._progress[1] == 0, "temblar sin volver al centro no cuenta")
+	_memory_axis(game, 1, Vector2(0.1, 0.1))
+	_memory_axis(game, 1, MEMORY.DIRS[first])
+	check(game._progress[1] == 1 and game.scores()[1] == 1, "centro -> dirección cuenta y completa la ronda 1")
+	# Ronda 2: mantener la primera no cuenta como la segunda.
+	check_that(_memory_until_input(game), "llega la ronda 2")
+	var seq: Array[int] = game.sequence()
+	_memory_axis(game, 1, Vector2.ZERO)
+	for f in 10:
+		_memory_axis(game, 1, MEMORY.DIRS[seq[0]])
+	check(game._progress[1] == 1 and game.is_alive(1), "mantener apretado cuenta una sola vez (%d)" % game._progress[1])
+	game.free()
+
+
+## Quien se equivoca queda afuera y ya no juega; los demás siguen. Gana el
+## último en pie y quien no repite a tiempo también queda afuera.
+func test_memory_error_eliminates() -> void:
+	var game: Variant = _memory_game(3, 5)
+	var results: Array = []
+	game.finished.connect(func(r: Dictionary) -> void: results.append(r))
+	if not check_that(_memory_until_input(game), "llega el turno de repetir"):
+		game.free()
+		return
+	var s: int = game.sequence()[0]
+	_memory_press(game, 1, (s + 1) % 4)
+	check(not game.is_alive(1), "equivocarse elimina")
+	_memory_press(game, 2, s)
+	_memory_press(game, 3, s)
+	check(game.is_alive(2) and game.is_alive(3), "los que aciertan siguen")
+	check(_memory_until_input(game) and game.sequence().size() == 2, "la secuencia crece en 1")
+	_memory_press(game, 1, game.sequence()[0])
+	check(game._progress[1] == 0, "un eliminado ya no juega")
+	_memory_press(game, 2, (game.sequence()[0] + 2) % 4)
+	for d: int in game.sequence():
+		_memory_press(game, 3, d)
+	_memory_run(game)
+	check(results.size() == 1, "termina una sola vez al quedar uno en pie (%d)" % results.size())
+	if results.size() == 1:
+		check(results[0].winners == [3], "gana Tomi, el último en pie (%s)" % [results[0].winners])
+		check(results[0].scores == {1: 0, 2: 1, 3: 2}, "puntos por rondas completadas (%s)" % [results[0].scores])
+	game.free()
+	# Sin mover el joystick: se le acaba el tiempo y queda afuera.
+	game = _memory_game(1, 9)
+	_memory_until_input(game)
+	for f in ceili(MEMORY.input_time(1) * 60.0) + 2:
+		game.step(1.0 / 60.0)
+	check(not game.is_alive(1), "no repetir a tiempo elimina")
+	game.free()
+
+
+## Misma semilla, misma secuencia (la que arma el juego ronda a ronda) y
+## cada ronda se muestra más rápido.
+func test_memory_sequence_seed() -> void:
+	var a: Array[int] = MEMORY.sequence_for_seed(42, 12)
+	check(a == MEMORY.sequence_for_seed(42, 12), "misma semilla, misma secuencia")
+	check(a != MEMORY.sequence_for_seed(43, 12), "otra semilla, otra secuencia")
+	var long: Array[int] = MEMORY.sequence_for_seed(7, 300)
+	var ok := true
+	for i in long.size():
+		ok = ok and long[i] >= 0 and long[i] < 4 and (i < 2 or not (long[i] == long[i - 1] and long[i] == long[i - 2]))
+	check(ok, "símbolos válidos y nunca tres iguales seguidos")
+	var game: Variant = _memory_game(1, 42)
+	for r in 5:
+		if not _memory_until_input(game):
+			break
+		for d: int in game.sequence():
+			_memory_press(game, 1, d)
+	check(game.sequence() == MEMORY.sequence_for_seed(42, 5), "el juego arma la secuencia de su semilla (%s)" % [game.sequence()])
+	check(game.scores()[1] == 5 and game.is_alive(1), "repitió 5 rondas sin errores")
+	check(MEMORY.step_time(1) > MEMORY.step_time(6) and MEMORY.step_time(6) > MEMORY.step_time(11), "cada ronda más rápida")
+	check(is_equal_approx(MEMORY.step_time(40), MEMORY.STEP_FAST), "con tope de velocidad")
+	game.free()
+
+
+## Si los últimos se equivocan en la misma ronda, empatan (y ganan todos).
+func test_memory_tie() -> void:
+	var game: Variant = _memory_game(2, 11)
+	var results: Array = []
+	game.finished.connect(func(r: Dictionary) -> void: results.append(r))
+	_memory_until_input(game)
+	for pid in [1, 2]:
+		_memory_press(game, pid, game.sequence()[0])
+	_memory_until_input(game)
+	for pid in [1, 2]:
+		_memory_press(game, pid, (game.sequence()[0] + 1) % 4)
+	_memory_run(game)
+	check(results.size() == 1 and results[0].winners == [1, 2], "empate: ganan los dos")
+	if results.size() == 1:
+		check(results[0].scores == {1: 1, 2: 1}, "con las mismas rondas (%s)" % [results[0].scores])
+	game.free()
+
+
+## Tope de tiempo: gana quien completó más rondas (desempate por rondas).
+func test_memory_time_limit() -> void:
+	var game: Variant = _memory_game(2, 13)
+	var results: Array = []
+	game.finished.connect(func(r: Dictionary) -> void: results.append(r))
+	_memory_until_input(game)
+	for pid in [1, 2]:
+		_memory_press(game, pid, game.sequence()[0])
+	_memory_until_input(game)
+	var seq: Array[int] = game.sequence()
+	_memory_press(game, 1, seq[0])
+	_memory_press(game, 1, seq[1])
+	_memory_press(game, 2, seq[0])  # Sofi va por la mitad cuando se acaba el tiempo.
+	game._play_t = MEMORY.TOTAL_TIME - 0.01
+	game.step(1.0 / 60.0)
+	check(game.time_left() <= 0.0, "llegó al tope de tiempo")
+	_memory_run(game)
+	check(results.size() == 1, "termina por tiempo")
+	if results.size() == 1:
+		check(results[0].winners == [1], "gana Pablo, que completó más rondas (%s)" % [results[0].winners])
+		check(results[0].scores == {1: 2, 2: 1}, "puntos por rondas (%s)" % [results[0].scores])
+		check("tiempo" in str(results[0].summary), "el resumen dice que fue por tiempo")
+	game.free()
+
+
+func _memory_game(n: int, seed_value: int) -> Variant:
+	var game: Variant = MiniGameRegistry.create("memory")
+	game.setup(_fake_players(n))
+	game._rng.seed = seed_value
+	return game
+
+
+func _memory_axis(game: Variant, pid: int, axis: Vector2) -> void:
+	game.on_input(pid, {"seq": 0, "axis": axis, "btn": 0})
+
+
+## Una pulsación completa: centro, dirección y de vuelta al centro.
+func _memory_press(game: Variant, pid: int, dir: int) -> void:
+	_memory_axis(game, pid, Vector2.ZERO)
+	_memory_axis(game, pid, MEMORY.DIRS[dir])
+	_memory_axis(game, pid, Vector2.ZERO)
+
+
+## Avanza hasta el próximo turno de repetir (false si termina antes).
+func _memory_until_input(game: Variant) -> bool:
+	if game.accepting_input():
+		game.step(1.0 / 60.0)  # Sale del turno actual si ya estaba.
+	for i in 60 * 30:
+		if game.is_finished():
+			return false
+		if game.accepting_input():
+			return true
+		game.step(1.0 / 60.0)
+	return false
+
+
+## Avanza hasta que termina (tope de seguridad).
+func _memory_run(game: Variant) -> void:
+	for i in 60 * 120:
+		if game.is_finished():
+			return
+		game.step(1.0 / 60.0)
+
+
 # --- Utilidades -----------------------------------------------------------------
 
 func _fake_players(n: int) -> Array[Dictionary]:

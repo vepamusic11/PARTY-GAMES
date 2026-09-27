@@ -152,6 +152,19 @@ Medido con Empujones en la misma corrida como control (la máquina tenía varias
 - **CPU parecida a Empujones** (que en condiciones normales da p95 ≈ 6 ms): Karts debería quedar en el mismo rango, dentro de los 8 ms. La física son pasos fijos de 1/60 s (búsqueda local del tramo más cercano, ±8 puntos) y los centros de charcos y turbos se calculan una vez.
 - **Draw calls: ~40.** Pasto, pista (bordes de bloques, asfalto, líneas, largada a cuadros), turbos, charcos, árboles y el marco van en **un** lote en la capa fija (`draw_static`); el escenario se pinta solo alrededor del tablero. Por frame: un lote por kart (sombra, ruedas, chasis de plantilla por color, llamas), la mascota y el asiento, los globitos 1P–4P y las flechas que se prenden en los turbos. Las pestañas de vuelta debajo del marcador son una capa propia que se redibuja solo cuando cambia alguna vuelta.
 
+### Memoria de colores
+
+`host/minigames/memory/memory.gd`, medido con `--only=memory,dodge,stop_clock` en la misma corrida (máquina cargada por otros procesos: sirve para comparar entre juegos, no como valor absoluto):
+
+| Escena | Scripts prom. (ms) | Scripts p95 (ms) | Draw calls |
+|---|---:|---:|---:|
+| stop_clock (referencia) | 8,58 | 14,57 | 62 |
+| dodge (referencia) | 9,01 | 13,70 | 42 |
+| memory | 10,14 | 15,81 | **35** |
+
+- Tablero, botones apagados, tarjetas y ayuda van en `draw_static` (un lote). Por frame: un lote con el botón encendido, el halo, el arco del tiempo y las fichas de todos; los botones de cada estado se arman una vez (`_pad_mesh`).
+- Scripts ≈ +10 % sobre Esquivar por las cuatro mascotas más grandes (escala 1,5); dentro del ruido de la máquina.
+
 ## Qué se cambió y por qué
 
 ### 1. Capas estáticas que se dibujan una sola vez

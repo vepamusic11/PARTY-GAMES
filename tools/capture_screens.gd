@@ -22,7 +22,7 @@ const StyleLayer := preload("res://tools/styles/style_layer.gd")
 
 ## Segundos de juego antes de capturar (default 2,5): algunos juegos se ven
 ## mejor más avanzados (ej. el reloj ya corriendo o bloques cayendo).
-const SHOT_DELAY := {"stop_clock": 5.0, "dodge": 6.0, "paint": 8.0, "sumo": 4.5, "karts": 7.0, "scroller": 8.0}
+const SHOT_DELAY := {"stop_clock": 5.0, "dodge": 6.0, "paint": 8.0, "sumo": 4.5, "karts": 7.0, "scroller": 8.0, "memory": 4.2}
 ## Juegos en los que los controles de prueba mueven el joystick en círculos
 ## mientras esperan la captura (ej. para que se vea el piso pintado).
 const WANDER := ["paint", "sumo"]

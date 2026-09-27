@@ -1165,3 +1165,22 @@ const KARTS_PUDDLE_SHINE := Color("#CDEBFF")
 # --- Scroller (agente) -----------------------------------------------------------
 ## ¡Que no te deje la cámara!: color de la tarjeta y de las flechas de impulso.
 const ACCENT_SCROLLER := Color("#84CC16")
+
+
+# --- Memoria (agente) -------------------------------------------------------------
+# Memoria de colores (host/minigames/memory/memory.gd): tablero de Simón con
+# cuatro botones que se iluminan, uno por dirección del joystick. Cada botón
+# tiene además su forma (estrella, corazón, rombo, círculo): no depende solo
+# del color.
+
+const ACCENT_MEMORY := Color("#D946EF")   ## Tarjeta del lobby.
+## Botones del tablero en el orden de las direcciones: arriba (estrella),
+## derecha (corazón), abajo (rombo) e izquierda (círculo).
+const MEMORY_PADS: Array[Color] = [Color("#FFC21F"), Color("#F0444F"), Color("#3E7BFA"), Color("#2FBF63")]
+const MEMORY_LIT_MIX := 0.18                 ## Cuánto se aclara un botón encendido (hacia blanco).
+const MEMORY_DIM := Color(0.08, 0.1, 0.25, 0.38)  ## Botones apagados mientras la TV muestra la secuencia.
+const MEMORY_RIM := Color("#2D3266")         ## Aro de plástico del tablero.
+const MEMORY_RIM_LIGHT := Color("#4C55A0")   ## Brillo de arriba del aro.
+const MEMORY_STUD := Color("#FFF4C2")        ## Lucecitas del aro.
+const MEMORY_SOCKET := Color("#343A63")      ## Ficha vacía (todavía no la repetiste).
+const MEMORY_CARD := Color(1, 1, 1, 0.88)    ## Tarjeta de cada jugador y de la ayuda.

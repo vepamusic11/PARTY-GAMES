@@ -19,6 +19,7 @@ Más abajo: qué hace divertidos a los party games de referencia, **modos de jue
 | Empujones | Tirar a los otros de la isla | Joystick | 2–4 |
 | Karts de mascotas | Carrera de 3 vueltas vista desde arriba | Joystick | 1–4 |
 | ¡Que no te deje la cámara! *(hecho)* | La cámara avanza sola y acelera por un recorrido de bloques, sierras, molinetes, pozos y flechas de impulso; el que se queda atrás o choca algo mortal va a la tribuna. Último en pie gana; a los 75 s ganan los que siguen, por metros. Tramos prediseñados combinados con semilla (el mismo recorrido para todos) | Joystick | 2–4 |
+| Memoria de colores | Repetir la secuencia del tablero de Simón; quien se equivoca queda afuera | Joystick (cada dirección es un botón) | 1–4 |
 
 ## Propuestos
 
@@ -74,7 +75,7 @@ Toda la lógica vive en la TV, que sigue siendo autoritativa: el celular solo ma
 | Luz roja, luz verde | Avanzar solo con luz verde | Joystick | Autocontrol |
 | Motos de luz | Estela que no se puede tocar, como el clásico "Tron" | Joystick | Encerrar al rival |
 | Hockey de mesa | 1 contra 1 o 2 contra 2 | Deslizar | Primer juego por equipos con el control que ya existe |
-| Memoria de colores | Repetir la secuencia | Cuatro botones (layout nuevo) | Juego de cabeza |
+| ~~Memoria de colores~~ **(hecho)** | Repetir la secuencia | Joystick: arriba, derecha, abajo e izquierda son los cuatro botones (sin layout nuevo) | Juego de cabeza |
 | Equilibrio | Mantener la bandeja nivelada | Inclinación (layout nuevo) | Usa el celular como objeto físico |
 
 ## Orden recomendado
@@ -83,7 +84,7 @@ Toda la lógica vive en la TV, que sigue siendo autoritativa: el celular solo ma
 2. ~~**Karts de mascotas**~~ (hecho): es la carrera que la gente espera en un party game y usa el joystick que ya existe.
 3. **Carrera de obstáculos:** barata y muy clara para jugadores nuevos.
 4. **Hockey de mesa:** primer juego por equipos.
-5. Después, los que necesitan layouts nuevos (Memoria de colores, Equilibrio), sumados juntos en una sola versión del protocolo.
+5. Después, los que necesitan layouts nuevos (Equilibrio), sumados juntos en una sola versión del protocolo. Memoria de colores ya está hecha con el joystick (cada dirección es un botón), sin cambiar el protocolo.
 
 Cada juego nuevo tiene que cumplir la definición de "terminado" de [PLAN.md](PLAN.md): tests, capturas revisadas, rendimiento dentro del presupuesto y su miniatura para el lobby.
 
@@ -145,7 +146,7 @@ Veinte juegos nuevos (distintos de los de arriba), agrupados por la **emoción**
 |---|---|---|---|
 | Joystick, deslizar, un botón | Sí | La mayoría de las ideas | — |
 | **Apuntar y soltar** con el joystick | Sí (interpretación en la TV, ver "Estilo pool") | Catapulta, Topos | — |
-| **Cuatro botones** (`four_buttons`) | No; ya lo pide Memoria de colores | Trivia, ¿Quién es más probable?, respuestas en general | Sí: bits C y D en `btn`, `VERSION` 2 |
+| **Cuatro botones** (`four_buttons`) | No (Memoria de colores se resolvió con las 4 direcciones del joystick) | Trivia, ¿Quién es más probable?, respuestas en general | Sí: bits C y D en `btn`, `VERSION` 2 |
 | **Joystick + botón** (`stick_button`) | No | Globos; también patear en Fútbol y tirar bombas | Sí, mismo paquete |
 | **Dibujar** (`draw`) | No | Dibujá y adiviná | Sí: mensaje de trazos (en tramos, por el límite de 512 bytes) + ADR |
 | **Teclado** (`text`) | No | Tutti frutti | Sí: mensaje de texto corto + ADR |
@@ -215,7 +216,7 @@ Como dice la Fase C de [PLAN.md](PLAN.md), los layouts nuevos se suman **juntos 
 
 | Juego | Dinámica (con ejemplo) | Control | Jugadores | Qué suma | Dificultad | Reutiliza |
 |---|---|---|---|---|---|---|
-| **Trivia de la fiesta** | Preguntas con 4 respuestas; cuanto más rápido y correcto, más puntos. Incluye preguntas **sobre la partida en curso**, sacadas del historial del torneo. *Ej.:* "¿Quién juntó más estrellas en Arena hace un rato?": todos miran a Sofi | Cuatro botones (**nuevo**, el de Memoria de colores) | 1–4 | Juego de **cabeza**; las preguntas sobre la partida son únicas de este juego | Media (banco de preguntas por idioma y apto para chicos) | `Tournament.history` |
+| **Trivia de la fiesta** | Preguntas con 4 respuestas; cuanto más rápido y correcto, más puntos. Incluye preguntas **sobre la partida en curso**, sacadas del historial del torneo. *Ej.:* "¿Quién juntó más estrellas en Arena hace un rato?": todos miran a Sofi | Cuatro botones (**nuevo**) | 1–4 | Juego de **cabeza**; las preguntas sobre la partida son únicas de este juego | Media (banco de preguntas por idioma y apto para chicos) | `Tournament.history` |
 | **¿Quién es más probable…?** | "¿Quién es más probable que se duerma en el cine?". Cada uno vota a otro jugador en su celular; suma quien vota con la mayoría. *Ej.:* 3 de 4 votan al Oso de Pablo, que protesta | Cuatro botones con las mascotas de los jugadores | 3–4 | 100 % social, sin habilidad: parejo entre chicos y grandes | Baja de código; media de contenido (200 frases **amables**) | — |
 | **Tutti frutti** | Categoría y letra ("un animal con M"). Cada uno escribe en su celular; los demás marcan si vale. *Ej.:* Tomi escribe "murciélago", Pablo "mosquito" y Juli "mono" | Teclado (**nuevo**) | 2–4 | El celular como teclado | Alta: texto libre por red (validar largo y mostrar solo con `Label`, regla de `CLAUDE.md`), idiomas y moderación | — |
 
@@ -306,7 +307,7 @@ Impacto: cuánto mejora la experiencia de un grupo nuevo. Esfuerzo: S / M / L / 
 **v0.4 · "Solos, en equipo o todos juntos"** (Fase C, protocolo `VERSION` 2)
 - **Modos:** Bots (con test obligatorio para todo juego), Cooperativo contra la TV, Equipos 2 vs 2 y Handicap.
 - **Protocolo:** paquete de layouts `four_buttons` y `stick_button` (junto con dos botones e inclinación, si ya están listos según [PLAN.md](PLAN.md)).
-- **Juegos:** La torta gigante (cooperativo), Trivia de la fiesta (cuatro botones), Globos (joystick + botón), Hockey de mesa (equipos) y Memoria de colores (ya propuesto).
+- **Juegos:** La torta gigante (cooperativo), Trivia de la fiesta (cuatro botones), Globos (joystick + botón), Hockey de mesa (equipos); Memoria de colores ya está hecha (joystick).
 - **Por qué:** los bots son la base de tres cosas: jugar solo, reemplazar desconectados y **balancear con miles de partidas simuladas**, que a su vez sirven para medir el handicap. Cooperativo y equipos abren el juego a familias con chicos. Los layouts van todos juntos para actualizar la app una sola vez.
 - *Ejemplo:* Juli juega sola con 3 bots un martes; el sábado la familia juega Cooperativo contra la Nube Gruñona y saca medalla de oro.
 

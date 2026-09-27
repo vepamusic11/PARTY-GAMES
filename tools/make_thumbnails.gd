@@ -81,6 +81,10 @@ const SHOTS := {
 		"sec": 6.5, "crop": Rect2(360, 200, 1000, 562), "seed": 3,
 		"orbit": {"c": Vector2(1150, 380), "r": Vector2(110, 70), "spread": Vector2(70, 110)},
 	},
+	# Memoria: la secuencia de la ronda 1 con un botón encendido; los
+	# jugadores de prueba no la repiten (con el joystick girando no pasan por
+	# el centro), así que la foto es mientras la TV la muestra.
+	"memory": {"sec": 4.1, "crop": Rect2(210, 200, 1088, 612)},
 }
 
 var _out_dir := OUT_DIR

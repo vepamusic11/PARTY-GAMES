@@ -37,6 +37,11 @@ const RECIPES := {
 	"win": [[523, 523, 0.08, "sq", 0.28], [659, 659, 0.08, "sq", 0.28], [784, 784, 0.08, "sq", 0.28], [1047, 1047, 0.3, "sq", 0.3]],
 	"fanfare": [[392, 392, 0.12, "sq", 0.28], [523, 523, 0.12, "sq", 0.28], [659, 659, 0.12, "sq", 0.28],
 		[784, 784, 0.2, "sq", 0.3], [659, 659, 0.1, "sq", 0.28], [784, 784, 0.5, "sq", 0.32]],
+	# Memoria de colores: una nota por símbolo, como el juguete Simón (sol, mi, do, sol grave).
+	"memo_star": [[784, 784, 0.3, "tri", 0.55]],
+	"memo_heart": [[659, 659, 0.3, "tri", 0.55]],
+	"memo_diamond": [[523, 523, 0.3, "tri", 0.55]],
+	"memo_circle": [[392, 392, 0.3, "tri", 0.6]],
 }
 
 static var muted := false
