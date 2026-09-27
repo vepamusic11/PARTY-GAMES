@@ -1402,3 +1402,51 @@ const HURDLES_BUSH := Color("#CDEBD6")     ## Arbustos lejanos del fondo (pálid
 const HURDLES_BUSH_LIGHT := Color("#E2F5E8") ## …y su brillo.
 const HURDLES_POST := Color("#F4F6FB")     ## Patas blancas de las vallas.
 const HURDLES_RAIL := Color(0.11, 0.13, 0.25, 0.28)  ## Riel de progreso de cada carril.
+
+
+# --- Celular 2 (agente) ---
+# Celular en juego "como un control de consola personalizado": fondo con el
+# color del jugador, "Salir" manteniendo apretado, señal de Wi-Fi, instrucción
+# del juego y panel de ajustes (ver controller/).
+
+const PHONE_BACKDROP_TOP_MIX := 0.58      ## Arriba del degradé: color → papel.
+const PHONE_BACKDROP_BOTTOM_MIX := 0.22   ## Abajo del degradé (más color).
+const PHONE_BACKDROP_DARK_LUMINANCE := 0.2  ## Colores más oscuros (grafito, negro): degradé oscuro.
+const PHONE_BACKDROP_DARK_LIFT := 0.2     ## Cuánto se aclara arriba un color oscuro.
+const PHONE_BACKDROP_LIGHT_SHADE := 0.14  ## Cuánto se oscurece abajo un color muy claro (blanco).
+const PHONE_PATTERN_ALPHA := 0.09         ## Patrón sutil (cruces y puntos) del fondo.
+const PHONE_PATTERN_STEP := 120.0         ## Separación del patrón.
+const PHONE_WATERMARK_ALPHA := 0.2        ## Mascota grande translúcida del fondo.
+const PHONE_TAG_WATERMARK_ALPHA := 0.12   ## "4P" gigante del fondo.
+const PHONE_RAYS_ALPHA := 0.16            ## Rayos detrás de la tarjeta en "¡Mirá la TV!".
+const PHONE_SCRIM := Color(0.07, 0.1, 0.3, 0.6)  ## Velo detrás del panel de ajustes.
+const PHONE_HOLD_SEC := 1.0               ## "Salir": mantener apretado este tiempo.
+const PHONE_HOLD_RING := DANGER           ## Anillo de progreso de "Salir".
+const PHONE_TOAST_SEC := 1.8              ## Avisos cortos ("Mantené apretado para salir").
+const PHONE_CONTROL_SCALES: Array[float] = [0.8, 1.0, 1.2]  ## Tamaño del control: chico, normal, grande.
+const PHONE_CONTROL_SIZE_NAMES: Array[String] = ["Chico", "Normal", "Grande"]
+const PHONE_CONTROL_SIDE := 0.3           ## Centro del control, en fracción del ancho desde su borde.
+const PHONE_BUTTON_RADIUS := 0.33         ## Botón grande: radio respecto del alto (tamaño normal)…
+const PHONE_BUTTON_RADIUS_MAX := 0.37     ## …y el máximo, para que la carcasa entre en la pantalla.
+const PHONE_DARK_KNOB_RIM := Color(1, 1, 1, 0.45)  ## Aro claro de la perilla/botón si el jugador es negro o grafito.
+const PHONE_SIGNAL_OFF := Color(0.34, 0.36, 0.52, 0.28)  ## Barras de señal apagadas.
+const PHONE_TEXT_BAR := 34                ## Texto de la barra superior (instrucción, avisos).
+const PHONE_TEXT_SETTING := 40            ## Título de cada ajuste.
+const PHONE_TEXT_SETTING_SUB := 28        ## Explicación de cada ajuste.
+const PHONE_SETTING_ROW_H := 120.0        ## Alto de cada fila de ajustes (≥ TOUCH_TARGET casi).
+const PHONE_SWITCH := Vector2(132, 72)    ## Interruptor Sí/No.
+
+
+## Engranaje (botón de ajustes): rueda con 8 dientes y agujero, en un lote.
+static func draw_gear(ci: CanvasItem, c: Vector2, s: float, color: Color, hole: Color) -> void:
+	var batch := ShapeBatch.new()
+	var r := s * 0.34
+	for i in 8:
+		var a := TAU * i / 8.0
+		var d := Vector2.from_angle(a)
+		var n := Vector2(-d.y, d.x) * s * 0.09
+		batch.polygon(PackedVector2Array([c + d * r * 0.8 - n, c + d * s * 0.48 - n * 0.8,
+			c + d * s * 0.48 + n * 0.8, c + d * r * 0.8 + n]), color)
+	batch.circle(c, r, color)
+	batch.circle(c, s * 0.14, hole)
+	batch.flush(ci)

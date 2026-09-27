@@ -9,6 +9,12 @@ extends Control
 ## al tocarla (solo visual: value cambia en el mismo evento táctil).
 
 @export var color := Color.WHITE
+## Tamaño elegido en Ajustes: agranda o achica la perilla (el recorrido
+## sigue siendo todo el ancho). Zurdo no cambia nada: es simétrico.
+@export var control_scale := 1.0:
+	set(v):
+		control_scale = v
+		queue_redraw()
 
 var value := Vector2.ZERO
 var _touch_index := -1
@@ -87,8 +93,8 @@ func _draw() -> void:
 		UiTheme.draw_arrow(self, tip + Vector2(0, 5), 64.0, dir, UiTheme.INK)
 		UiTheme.draw_arrow(self, tip, 56.0, dir, UiTheme.PAPER)
 	# Perilla: tecla de juguete con estrías para "agarrarla"; se ensancha al tocarla.
-	var w := 230.0 * (1.0 + UiTheme.PHONE_PRESS_SQUASH * _press)
-	var h := 170.0 * (1.0 - UiTheme.PHONE_PRESS_SQUASH * _press)
+	var w := 230.0 * control_scale * (1.0 + UiTheme.PHONE_PRESS_SQUASH * _press)
+	var h := 170.0 * control_scale * (1.0 - UiTheme.PHONE_PRESS_SQUASH * _press)
 	var knob := Rect2(x - w / 2.0, y + 80.0 - h, w, h)  # Apoyada abajo: se aplasta hacia el canal.
 	var face := UiTheme.draw_toy_key(self, knob, color, _press, 34.0, 18.0, 6.0)
 	for k: int in [-1, 0, 1]:

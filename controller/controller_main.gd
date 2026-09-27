@@ -14,6 +14,15 @@ extends Control
 ## Look "de consola": botones y perillas con bisel, brillo y sombra
 ## (UiTheme.draw_toy_key / draw_toy_disc) que se aplastan al tocarlos.
 ## Los cambios de estado entran con transiciones cortas (≤ 0,3 s).
+##
+## Una vez unido, el celular es "tu control personalizado": fondo con tu
+## color, tu mascota y tu 1P–4P gigantes y translúcidos (PhoneBackdrop),
+## arriba una línea con qué hacer en el juego actual, la señal de Wi-Fi
+## (verde/naranja/roja y con 3/2/1 barras), el engranaje de Ajustes
+## (SettingsPanel: sonido, vibración, zurdo, tamaño del control y modo
+## desarrollador) y "Salir", que hay que mantener apretado 1 s (HoldButton).
+## La latencia en milisegundos solo se ve en modo desarrollador (5 toques en
+## el logo de la pantalla de unirse, o el ajuste).
 
 const SEND_RATE_HZ := 30.0
 const KEEPALIVE_SEC := 0.25   ## Reenvía el estado aunque no cambie (por si se perdió).
@@ -30,11 +39,27 @@ const IDLE_ANIM_FPS := 30.0
 const FADE_SEC := 0.25            ## Transición entre pantallas.
 const LATENCY_OK_MS := 120        ## Hasta acá la señal se ve verde…
 const LATENCY_SLOW_MS := 250      ## …hasta acá naranja; más, roja.
+const DEV_TAPS := 5               ## Toques seguidos en el logo para el modo desarrollador…
+const DEV_TAP_WINDOW_MS := 1500   ## …con menos de esto entre uno y otro.
+const HINT_MAX_LENGTH := 48       ## Instrucción que manda la TV (opcional): se recorta.
+## Qué hacer, según el control, si la TV no manda una instrucción propia
+## (`hint` en los datos del layout).
+const LAYOUT_HINTS := {
+	Protocol.LAYOUT_JOYSTICK: "Mové tu mascota con el joystick",
+	Protocol.LAYOUT_SLIDER_H: "Deslizá el dedo para mover tu paleta",
+	Protocol.LAYOUT_ONE_BUTTON: "Tocá el botón cuando la TV te diga",
+	Protocol.LAYOUT_JOYSTICK_AB: "Movete con el joystick y usá A y B",
+}
 
 var client := ControllerClient.new()
 var discovery := DiscoveryListener.new()
+## Archivo local de ajustes (apodo, apariencia, sonido y PhoneSettings). Los
+## tests lo cambian antes de agregar el nodo para no tocar el real.
+var settings_path := SETTINGS_PATH
+var settings := PhoneSettings.new()
 
 var _background: PartyBackground
+var _backdrop: PhoneBackdrop
 var _power_saving := false
 
 var _join_screen: Control
@@ -67,8 +92,18 @@ var _confetti: ConfettiBurst
 var _look_picker: LookPicker
 var _phase := Protocol.PHASE_LOBBY
 var _latency: Label
-var _latency_icon: GlyphBadge
-var _latency_level := -1
+var _latency_ms := -1
+var _signal: SignalIcon
+var _leave: HoldButton
+var _settings_button: ToyButton
+var _settings_panel: SettingsPanel
+var _instruction: Label
+var _instruction_gap: Control
+var _toast: PanelContainer
+var _toast_label: Label
+var _toast_tween: Tween
+var _logo_taps := 0
+var _logo_last_tap_ms := -DEV_TAP_WINDOW_MS
 var _layout_host: Control
 var _active_layout: Control
 var _selected_host: Dictionary = {}
@@ -83,14 +118,17 @@ func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	theme = UiTheme.build()
 	DisplayServer.screen_set_keep_on(true)
-	Sfx.load_prefs(SETTINGS_PATH)
+	Sfx.load_prefs(settings_path)
+	settings.load_from(settings_path)
 	add_child(Sfx.new())
 	add_child(client)
 	add_child(discovery)
 	client.joined.connect(_on_joined)
 	client.rejected.connect(_on_rejected)
 	client.connection_lost.connect(_on_connection_lost)
-	client.reconnected.connect(func() -> void: _update_header())
+	client.reconnected.connect(func() -> void:
+		_update_header()
+		_signal.level = SignalIcon.level_for_ms(client.rtt_ms))
 	client.gave_up.connect(func() -> void: _show_join("Se cortó la conexión con la TV. Volvé a unirte cuando quieras."))
 	client.layout_changed.connect(_on_layout_changed)
 	client.phase_changed.connect(_on_phase_changed)
@@ -102,6 +140,7 @@ func _ready() -> void:
 	_discovery_failed = discovery.start() != OK
 	_on_hosts_changed(discovery.get_hosts())
 	_show_join("")
+	_apply_settings()
 
 
 func _exit_tree() -> void:
@@ -110,9 +149,8 @@ func _exit_tree() -> void:
 
 
 func _process(delta: float) -> void:
-	if client.rtt_ms >= 0:
-		_latency.text = "%d ms" % roundi(client.rtt_ms)
-		_update_latency_icon(roundi(client.rtt_ms))
+	if client.rtt_ms >= 0 and _signal.level != SignalIcon.LOST:
+		_update_latency(roundi(client.rtt_ms))
 	_send_elapsed += delta
 	_since_last_send += delta
 	if _send_elapsed < 1.0 / SEND_RATE_HZ or _active_layout == null:
@@ -137,15 +175,14 @@ func _process(delta: float) -> void:
 		_since_last_send = 0.0
 
 
-## Señal de color según la latencia (verde, naranja, roja). Solo cambia el
-## ícono cuando cambia de franja: no se redibuja en cada frame.
-func _update_latency_icon(ms: int) -> void:
-	var level := 0 if ms <= LATENCY_OK_MS else (1 if ms <= LATENCY_SLOW_MS else 2)
-	if level == _latency_level:
-		return
-	_latency_level = level
-	_latency_icon.fg = [UiTheme.SUCCESS, UiTheme.WARNING, UiTheme.DANGER][level]
-	_latency_icon.queue_redraw()
+## Señal para todos (Wi-Fi con 3/2/1 barras en verde/naranja/rojo) y los
+## milisegundos solo en modo desarrollador. Nada se redibuja si no cambia:
+## el ícono solo al cambiar de franja y el texto solo si cambió el número.
+func _update_latency(ms: int) -> void:
+	_signal.level = SignalIcon.level_for_ms(ms)
+	if settings.dev_mode and ms != _latency_ms:
+		_latency_ms = ms
+		_latency.text = "%d ms" % ms
 
 
 # --- Eventos de red -------------------------------------------------------------
@@ -157,6 +194,7 @@ func _on_joined(info: Dictionary) -> void:
 	_join_screen.visible = false
 	_play_screen.visible = true
 	_fade_in(_play_screen, Vector2(0, 40))
+	_signal.level = SignalIcon.level_for_ms(client.rtt_ms)
 	_update_header()
 
 
@@ -175,6 +213,7 @@ func _on_rejected(reason: String) -> void:
 func _on_connection_lost() -> void:
 	_header.text = "Reconectando…"
 	_player_card.set_status("Reconectando…", UiTheme.WARNING)
+	_signal.level = SignalIcon.LOST
 
 
 func _on_layout_changed(layout: String, data: Dictionary) -> void:
@@ -202,12 +241,15 @@ func _on_layout_changed(layout: String, data: Dictionary) -> void:
 			pad.label_a = str(data.get("a", ""))
 			pad.label_b = str(data.get("b", ""))
 			_active_layout = pad
+	_apply_settings()
+	_set_instruction(instruction_for(layout, data) if _active_layout else "")
 	var was_waiting := _wait_view.visible
 	_wait_view.visible = _active_layout == null
 	if _wait_view.visible and not was_waiting:
 		_fade_in(_wait_view, Vector2(0, 30))
 	if layout != Protocol.LAYOUT_WAIT:
 		_clear_standing()  # Empieza un juego nuevo: el resultado anterior ya no aplica.
+		_set_mood(PlayerAvatar.Mood.NORMAL)
 		Sfx.play("select")
 		Haptics.buzz("point")
 	if _active_layout:
@@ -224,6 +266,51 @@ func _on_layout_changed(layout: String, data: Dictionary) -> void:
 	_last_sent_btn = -1
 	_update_power_mode()
 	_update_picker()
+
+
+## Qué hacer en el juego actual, en una línea: la instrucción que manda la
+## TV en los datos del layout (`hint`, opcional; texto plano, recortado) o,
+## si no manda, una según el control.
+static func instruction_for(layout: String, data: Dictionary) -> String:
+	var hint: Variant = data.get("hint", "")
+	if typeof(hint) == TYPE_STRING:
+		var clean := (hint as String).replace("\n", " ").replace("\t", " ").strip_edges().left(HINT_MAX_LENGTH)
+		if not clean.is_empty():
+			return clean
+	return LAYOUT_HINTS.get(layout, "")
+
+
+func _set_instruction(text: String) -> void:
+	_instruction.text = text
+	_instruction.visible = not text.is_empty()
+	_instruction_gap.visible = text.is_empty()
+	if _instruction.visible:
+		_fade_in(_instruction)
+
+
+## Aplica los ajustes al control en pantalla y a la barra: zurdo y tamaño,
+## lado de la mascota del fondo (el contrario al control) y latencia visible.
+func _apply_settings() -> void:
+	var control_right := false
+	if _active_layout is VirtualJoystick:
+		(_active_layout as VirtualJoystick).lefty = settings.lefty
+		(_active_layout as VirtualJoystick).control_scale = settings.control_scale()
+		control_right = settings.lefty
+	elif _active_layout is BigButton:
+		(_active_layout as BigButton).lefty = settings.lefty
+		(_active_layout as BigButton).control_scale = settings.control_scale()
+		control_right = not settings.lefty
+	elif _active_layout is SliderPad:
+		(_active_layout as SliderPad).control_scale = settings.control_scale()
+	elif _active_layout is JoystickAB:
+		# Zurdo: botones a la izquierda y joystick a la derecha (en espejo).
+		(_active_layout as JoystickAB).left_handed = settings.lefty
+	# El slider ocupa todo el ancho: la mascota del fondo queda a la derecha.
+	# Joystick + A/B ocupa los dos lados: sin mascota de fondo que tape los botones.
+	_backdrop.set_watermark(_active_layout != null and not _active_layout is JoystickAB, not control_right)
+	_latency.visible = settings.dev_mode
+	if not settings.dev_mode:
+		_latency_ms = -1  # Al volver a prenderlo, se actualiza en el próximo frame.
 
 
 ## Sin control activo: animaciones a IDLE_ANIM_FPS y modo de bajo consumo.
@@ -246,6 +333,8 @@ func _on_phase_changed(phase: String) -> void:
 	_phase = phase
 	if phase != Protocol.PHASE_RESULTS:
 		_clear_standing()
+	if phase == Protocol.PHASE_LOBBY:
+		_set_mood(PlayerAvatar.Mood.HAPPY)  # Saluda mientras se elige mascota.
 	_update_picker()
 
 
@@ -270,6 +359,7 @@ func _on_look_picked(color_index: int, style: int) -> void:
 	_player_card.set_player(_player_card.slot, color, client.player_info.get("name", ""))
 	_header_tag.color = color
 	_header_tag.queue_redraw()
+	_set_backdrop(color, _player_card.slot, style)
 	_wait_avatar.hop(1)
 	client.send_look(color_index, style)
 
@@ -332,10 +422,30 @@ func _show_standing(data: Dictionary) -> void:
 		_standing_panel.visible = true
 		_fade_in(_standing_panel, Vector2(60, 0))
 	_standing_medal.pop()
+	_set_mood(mood_for_standing(data))
 	if medal_place == 1:
 		_wait_avatar.hop()
 	if medal_place >= 1 and medal_place <= 3:
 		_confetti.burst(70 if medal_place == 1 else 36)
+
+
+## La mascota reacciona a cómo te va: feliz si vas ganando (o ganaste la
+## ronda, o quedaste en el podio final), triste si vas último, normal si no.
+static func mood_for_standing(data: Dictionary) -> int:
+	var rank := int(data.get("rank", 0))
+	var players := int(data.get("players", 0))
+	if rank == 1 or int(data.get("place", 0)) == 1 or (bool(data.get("final", false)) and rank >= 1 and rank <= 3):
+		return PlayerAvatar.Mood.HAPPY
+	if players > 1 and rank >= players:
+		return PlayerAvatar.Mood.SAD
+	return PlayerAvatar.Mood.NORMAL
+
+
+func _set_mood(mood: int) -> void:
+	for avatar: PlayerAvatar in [_wait_avatar, _header_avatar]:
+		if avatar.mood != mood:
+			avatar.mood = mood
+			avatar.queue_redraw()
 
 
 static func _cheer_text(is_final: bool, place: int) -> String:
@@ -423,6 +533,8 @@ func _show_join(message: String) -> void:
 	_active_layout = null
 	_wait_view.visible = true
 	_clear_standing()
+	_set_instruction("")
+	_settings_panel.visible = false
 	var was_hidden := not _join_screen.visible
 	_play_screen.visible = false
 	_join_screen.visible = true
@@ -466,6 +578,14 @@ func _update_header() -> void:
 		avatar.color = color
 	_player_card.set_player(slot, color, str(info.get("name", "")))
 	_player_card.set_status("¡Listo para jugar!")
+	_set_backdrop(color, slot, int(info.get("style", -1)))
+
+
+## Fondo con el color del jugador; el texto que va directo encima se
+## adapta (tinta o blanco, UiTheme.text_on) para que se lea con blanco y negro.
+func _set_backdrop(color: Color, slot: int, style: int) -> void:
+	_backdrop.set_player(color, slot, style)
+	_wait_sub.add_theme_color_override("font_color", _backdrop.ink())
 
 
 ## Transición de entrada: aparece y se desliza desde `from` (≤ 0,3 s).
@@ -490,10 +610,18 @@ func _build_ui() -> void:
 	_background.towers = false
 	_background.checker_floor = false
 	add_child(_background)
+	_backdrop = PhoneBackdrop.new()
+	_backdrop.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_backdrop.visible = false
+	add_child(_backdrop)
 	_build_join_screen()
 	_build_play_screen()
 	_confetti = ConfettiBurst.new()
 	add_child(_confetti)
+	_build_toast()
+	_settings_panel = SettingsPanel.new(settings, settings_path)
+	_settings_panel.changed.connect(_apply_settings)
+	add_child(_settings_panel)
 
 
 ## Pantalla para unirse, en dos columnas (celular apaisado):
@@ -529,6 +657,11 @@ func _build_join_screen() -> void:
 	brand.add_child(_join_mascot)
 	var logo := UiTheme.logo_rect()
 	logo.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	# 5 toques seguidos en el logo: modo desarrollador (latencia en ms).
+	logo.mouse_filter = Control.MOUSE_FILTER_STOP
+	logo.gui_input.connect(func(event: InputEvent) -> void:
+		if event is InputEventMouseButton and (event as InputEventMouseButton).pressed:
+			_on_logo_tapped())
 	brand.add_child(logo)
 	var tv_panel := _panel()
 	tv_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -588,6 +721,10 @@ func _build_join_screen() -> void:
 	col.add_child(join)
 
 
+## Pantalla una vez unido. Arriba, de izquierda a derecha: quién soy
+## (mascota, 1P–4P y apodo), qué hacer en este juego (una línea), la señal
+## de Wi-Fi (y los ms en modo desarrollador), Ajustes y "Salir" (mantener).
+## Abajo, el control que pidió la TV o la vista de espera "¡Mirá la TV!".
 func _build_play_screen() -> void:
 	_play_screen = VBoxContainer.new()
 	_play_screen.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -600,10 +737,6 @@ func _build_play_screen() -> void:
 	top.custom_minimum_size = Vector2(0, UiTheme.PHONE_BAR_HEIGHT)
 	top.add_theme_constant_override("separation", 18)
 	top_margin.add_child(top)
-	var leave := ToyButton.new("Salir", "exit", UiTheme.PAPER, 32)
-	leave.custom_minimum_size = Vector2(200, 0)
-	leave.pressed.connect(_on_leave_pressed)
-	top.add_child(leave)
 	# Quién soy: mascota, etiqueta 1P–4P y apodo en una píldora.
 	var me := PanelContainer.new()
 	var me_style := UiTheme.panel_style(UiTheme.PAPER, int(UiTheme.PHONE_BAR_HEIGHT / 2.0), 6)
@@ -623,35 +756,51 @@ func _build_play_screen() -> void:
 	me_row.add_child(_header_tag)
 	_header = UiTheme.label("", 44, UiTheme.INK, true, HORIZONTAL_ALIGNMENT_LEFT)
 	me_row.add_child(_header)
-	var gap := Control.new()
-	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	top.add_child(gap)
+	# Qué hacer en este juego: una línea "de cartel" (blanco con contorno de
+	# tinta), legible sobre cualquier color de fondo.
+	_instruction = UiTheme.headline("", UiTheme.PHONE_TEXT_BAR + 6)
+	_instruction.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_instruction.clip_text = true
+	_instruction.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	_instruction.visible = false
+	top.add_child(_instruction)
+	_instruction_gap = Control.new()
+	_instruction_gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_instruction_gap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	top.add_child(_instruction_gap)
+	# Señal: Wi-Fi con barras de color para todos; ms solo en modo desarrollador.
 	var signal_pill := PanelContainer.new()
-	var pill_style := UiTheme.panel_style(UiTheme.PHONE_GLASS, 40, 10)
-	pill_style.shadow_size = 0
-	pill_style.content_margin_left = 18
-	pill_style.content_margin_right = 26
+	var pill_style := UiTheme.panel_style(UiTheme.PAPER, 40, 10)
+	pill_style.content_margin_left = 20
+	pill_style.content_margin_right = 20
 	signal_pill.add_theme_stylebox_override("panel", pill_style)
 	signal_pill.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	top.add_child(signal_pill)
 	var signal_row := HBoxContainer.new()
 	signal_row.add_theme_constant_override("separation", 8)
 	signal_pill.add_child(signal_row)
-	_latency_icon = GlyphBadge.new("wifi", Color.TRANSPARENT, UiTheme.INK_SOFT, 48)
-	signal_row.add_child(_latency_icon)
+	_signal = SignalIcon.new(60)
+	signal_row.add_child(_signal)
 	_latency = UiTheme.label("— ms", 30, UiTheme.INK_SOFT, true)
 	_latency.custom_minimum_size = Vector2(110, 0)
+	_latency.visible = false
 	signal_row.add_child(_latency)
-	top.add_child(_toggle_button("Sonido", "speaker", func() -> bool: return Sfx.muted,
-		func() -> void: Sfx.muted = not Sfx.muted))
-	top.add_child(_toggle_button("Vibrar", "vibrate", func() -> bool: return not Haptics.enabled,
-		func() -> void: Haptics.enabled = not Haptics.enabled))
+	_settings_button = ToyButton.new("", "gear", UiTheme.PAPER, 30)
+	_settings_button.custom_minimum_size = Vector2(UiTheme.PHONE_BAR_HEIGHT + 12.0, 0)
+	_settings_button.pressed.connect(_open_settings)
+	top.add_child(_settings_button)
+	_leave = HoldButton.new("Salir", "exit", UiTheme.PAPER, 32)
+	_leave.custom_minimum_size = Vector2(220, 0)
+	_leave.held.connect(_on_leave_pressed)
+	_leave.released_early.connect(func() -> void: show_toast("Mantené apretado «Salir» para irte"))
+	top.add_child(_leave)
 	_layout_host = Control.new()
 	_layout_host.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_play_screen.add_child(_layout_host)
 
 	# Vista de espera: tarjeta con la mascota + "¡Mirá la TV!" y, a la
 	# derecha, el selector (lobby) o el resultado propio (resumen y podio).
+	# Detrás de la tarjeta, rayos de fiesta (los dibuja el fondo, una vez).
 	var wait_view := HBoxContainer.new()
 	wait_view.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	wait_view.offset_bottom = -UiTheme.PHONE_MARGIN
@@ -664,7 +813,14 @@ func _build_play_screen() -> void:
 	wait_box.custom_minimum_size = Vector2(620, 0)
 	wait_box.add_theme_constant_override("separation", 14)
 	wait_view.add_child(wait_box)
-	wait_box.add_child(UiTheme.headline("¡Mirá la TV!", 72))
+	var look_row := HBoxContainer.new()
+	look_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	look_row.add_theme_constant_override("separation", 16)
+	wait_box.add_child(look_row)
+	var tv := _TvBadge.new()
+	tv.custom_minimum_size = Vector2(92, 92)
+	look_row.add_child(tv)
+	look_row.add_child(UiTheme.headline("¡Mirá la TV!", 72))
 	_player_card = PlayerCard.new()
 	_player_card.custom_minimum_size = Vector2(560, 580)
 	_player_card.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
@@ -678,7 +834,85 @@ func _build_play_screen() -> void:
 	_look_picker.visible = false
 	_look_picker.look_changed.connect(_on_look_picked)
 	wait_view.add_child(_look_picker)
+	for node: Control in [wait_view, wait_box, _player_card]:
+		node.item_rect_changed.connect(_update_rays)
+	wait_view.visibility_changed.connect(_update_rays)
+	# Unido: el fondo es el del jugador (quieto) y el cielo con nubes se
+	# oculta (deja de animarse). Sigue a la pantalla, se muestre como se muestre.
+	_play_screen.visibility_changed.connect(func() -> void:
+		_backdrop.visible = _play_screen.visible
+		_background.visible = not _play_screen.visible)
 	_play_screen.visible = false
+
+
+## Rayos de fiesta detrás de la tarjeta mientras se espera (el fondo los
+## dibuja una vez; solo se vuelven a dibujar si la tarjeta se movió).
+func _update_rays() -> void:
+	if _backdrop == null or _player_card == null:
+		return
+	var at := Vector2.INF
+	if _wait_view.visible and _player_card.is_inside_tree():
+		# Relativo a la pantalla (no al fondo): así no importa si la pantalla
+		# está entrando con su transición (se desliza unos píxeles).
+		at = _player_card.get_global_rect().get_center() - _play_screen.get_global_rect().position
+	_backdrop.set_rays(at, _player_card.size.length() * 0.75)
+
+
+## Aviso corto arriba al centro (ej. "Mantené apretado «Salir»…"). Se va
+## solo; no queda nada animando.
+func _build_toast() -> void:
+	var row := HBoxContainer.new()
+	row.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
+	row.offset_top = UiTheme.PHONE_MARGIN + UiTheme.PHONE_BAR_HEIGHT + 18.0
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(row)
+	_toast = PanelContainer.new()
+	var style := UiTheme.panel_style(UiTheme.CHIP_DARK, 36, 14)
+	style.content_margin_left = 36
+	style.content_margin_right = 36
+	_toast.add_theme_stylebox_override("panel", style)
+	_toast.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_toast.visible = false
+	row.add_child(_toast)
+	_toast_label = UiTheme.label("", UiTheme.PHONE_TEXT_BAR, UiTheme.PAPER, true)
+	_toast.add_child(_toast_label)
+
+
+func show_toast(text: String) -> void:
+	_toast_label.text = text
+	_toast.visible = true
+	_toast.modulate.a = 1.0
+	if _toast_tween:
+		_toast_tween.kill()
+	if not is_inside_tree():
+		return
+	_toast_tween = create_tween()
+	_toast_tween.tween_interval(UiTheme.PHONE_TOAST_SEC)
+	_toast_tween.tween_property(_toast, "modulate:a", 0.0, 0.3)
+	_toast_tween.tween_callback(func() -> void: _toast.visible = false)
+
+
+func _open_settings() -> void:
+	Sfx.play("select")
+	Haptics.buzz("tap")
+	_settings_panel.open()
+
+
+## 5 toques seguidos en el logo (pantalla de unirse) prenden o apagan el
+## modo desarrollador. Queda guardado.
+func _on_logo_tapped() -> void:
+	var now := Time.get_ticks_msec()
+	_logo_taps = _logo_taps + 1 if now - _logo_last_tap_ms <= DEV_TAP_WINDOW_MS else 1
+	_logo_last_tap_ms = now
+	if _logo_taps < DEV_TAPS:
+		return
+	_logo_taps = 0
+	settings.dev_mode = not settings.dev_mode
+	settings.save_to(settings_path)
+	_apply_settings()
+	Haptics.buzz("go")
+	_set_join_status("Modo desarrollador: se ve la latencia." if settings.dev_mode else "Modo desarrollador apagado.", false)
 
 
 func _build_standing_panel(parent: Control) -> void:
@@ -751,40 +985,25 @@ func _step(n: int, text: String) -> HBoxContainer:
 	return row
 
 
-## Botón que alterna una preferencia de audio, la guarda y muestra su
-## estado: ícono tachado cuando está apagada.
-func _toggle_button(caption: String, glyph: String, is_off: Callable, toggle: Callable) -> ToyButton:
-	var b := ToyButton.new(caption, glyph, UiTheme.PAPER, 30)
-	b.custom_minimum_size = Vector2(230, 0)
-	b.off = is_off.call()
-	b.pressed.connect(func() -> void:
-		toggle.call()
-		Sfx.save_prefs(SETTINGS_PATH)
-		b.off = is_off.call()
-		Sfx.play("select")
-		Haptics.buzz("tap"))
-	return b
-
-
 func _load_name() -> String:
 	var cfg := ConfigFile.new()
-	if cfg.load(SETTINGS_PATH) == OK:
+	if cfg.load(settings_path) == OK:
 		return Protocol.sanitize_name(cfg.get_value("player", "name", ""))
 	return ""
 
 
 func _save_name(player_name: String) -> void:
 	var cfg := ConfigFile.new()
-	cfg.load(SETTINGS_PATH)
+	cfg.load(settings_path)
 	cfg.set_value("player", "name", player_name)
-	cfg.save(SETTINGS_PATH)
+	cfg.save(settings_path)
 
 
 ## Apariencia preferida guardada en el celular (como el apodo). Se valida
 ## igual que lo que llega por red: un archivo editado a mano no rompe nada.
 func _load_look() -> Dictionary:
 	var cfg := ConfigFile.new()
-	if cfg.load(SETTINGS_PATH) != OK:
+	if cfg.load(settings_path) != OK:
 		return {}
 	return Protocol.parse_look({
 		"color": cfg.get_value("player", "color", -1),
@@ -794,10 +1013,24 @@ func _load_look() -> Dictionary:
 
 func _save_look(color_index: int, style: int) -> void:
 	var cfg := ConfigFile.new()
-	cfg.load(SETTINGS_PATH)
+	cfg.load(settings_path)
 	cfg.set_value("player", "color", color_index)
 	cfg.set_value("player", "style", style)
-	cfg.save(SETTINGS_PATH)
+	cfg.save(settings_path)
+
+
+## Televisor dentro de un círculo con bisel, junto a "¡Mirá la TV!".
+class _TvBadge:
+	extends Control
+
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	func _draw() -> void:
+		var c := size / 2.0
+		var r := minf(size.x, size.y) / 2.0
+		UiTheme.draw_bevel_circle(self, c, r - UiTheme.BEVEL_OUTLINE - 1.0, UiTheme.ACCENT)
+		UiTheme.draw_phone_glyph(self, "tv", c - Vector2(0, 3), r * 1.05, UiTheme.INK)
 
 
 ## Etiqueta 1P–4P del encabezado, con el color del jugador.

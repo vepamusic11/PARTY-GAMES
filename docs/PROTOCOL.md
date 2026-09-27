@@ -106,7 +106,7 @@ Seguido del cierre de la conexión con código **4000** y el motivo como razón 
 | `one_button` | Botón gigante | `btn & 1` = apretado |
 | `joystick_ab` | Joystick flotante + botones A (color del jugador) y B (neutro), como un control de consola. Zurdo: en espejo | `axis` = dirección; `btn & 1` = A, `btn & 2` = B (a la vez con el joystick) |
 
-`data` es opcional y solo cambia textos: `one_button` acepta `label` (la letra o palabra del botón) y `joystick_ab` acepta `a` y `b` (un texto chico debajo de cada botón, ej. `{"a":"Patear","b":"Saltar"}`). El celular los recorta a 12 caracteres y los muestra con `draw_string` (nunca BBCode). La TV decide qué hace cada botón: el control solo dice qué está apretado.
+`data` es opcional y solo cambia textos: `one_button` acepta `label` (la letra o palabra del botón) y `joystick_ab` acepta `a` y `b` (un texto chico debajo de cada botón, ej. `{"a":"Patear","b":"Saltar"}`). El celular los recorta a 12 caracteres y los muestra con `draw_string` (nunca BBCode). La TV decide qué hace cada botón: el control solo dice qué está apretado. Cualquier layout acepta además `hint` (opcional): la instrucción del juego que el celular muestra arriba (ej. `"Mové para juntar estrellas"`), texto plano recortado a 48 caracteres; sin `hint` se usa una frase genérica por control. Los celulares que no la conocen la ignoran, así que no cambia `VERSION`.
 
 ### `phase`
 ```json

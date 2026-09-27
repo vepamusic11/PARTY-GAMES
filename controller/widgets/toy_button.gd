@@ -23,6 +23,9 @@ var press := 0.0:
 	set(v):
 		press = v
 		queue_redraw()
+## Dónde quedó el ícono en el último _draw (lo usa HoldButton para su anillo).
+var icon_center := Vector2.ZERO
+var icon_size := 0.0
 
 
 func _init(p_text: String = "", p_glyph: String = "", p_color: Color = UiTheme.PAPER, p_font_size: int = 34) -> void:
@@ -49,14 +52,25 @@ func _draw() -> void:
 	var face := UiTheme.draw_toy_key(self, Rect2(Vector2(4, 2), size - Vector2(8, 10)), color, press, radius, depth)
 	var c := face.get_center()
 	var icon := face.size.y * 0.46
+	icon_size = icon
+	icon_center = c
 	if text.is_empty():
-		UiTheme.draw_phone_glyph(self, glyph, c, icon, ink, off)
+		_draw_icon(c, icon)
 		return
 	var tw := UiTheme.FONT_BOLD.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
 	var gap := icon * 0.35
 	var total := tw + (icon + gap if not glyph.is_empty() else 0.0)
 	var x := c.x - total / 2.0
 	if not glyph.is_empty():
-		UiTheme.draw_phone_glyph(self, glyph, Vector2(x + icon / 2.0, c.y), icon, ink, off)
+		icon_center = Vector2(x + icon / 2.0, c.y)
+		_draw_icon(icon_center, icon)
 		x += icon + gap
 	UiTheme.draw_text(self, text, Vector2(x + tw / 2.0, c.y), font_size, ink)
+
+
+## "gear" (ajustes) es propio del celular; el resto, los íconos de UiTheme.
+func _draw_icon(c: Vector2, s: float) -> void:
+	if glyph == "gear":
+		UiTheme.draw_gear(self, c, s * 1.1, ink, color)
+	else:
+		UiTheme.draw_phone_glyph(self, glyph, c, s, ink, off)

@@ -7,9 +7,22 @@ extends Control
 ## bisel, brillo y sombra. Al tocarlo la tapa baja y se aplasta (squash) y
 ## sale una onda; al soltar rebota. `pressed` cambia en el mismo evento
 ## táctil: la animación es solo visual y no agrega latencia.
+##
+## Se dibuja del lado del pulgar que toca: a la derecha (como los botones de
+## un control de consola) o a la izquierda en modo zurdo (`lefty`). Cuenta
+## el toque en TODA el área (más fácil sin mirar el celular).
+## `control_scale` es el tamaño elegido en Ajustes.
 
 @export var color := Color.WHITE
 @export var label := "A"
+@export var lefty := false:
+	set(v):
+		lefty = v
+		queue_redraw()
+@export var control_scale := 1.0:
+	set(v):
+		control_scale = v
+		queue_redraw()
 
 var pressed := false
 var _touches: Dictionary = {}
@@ -68,9 +81,16 @@ func _animate() -> void:
 		_tween.tween_property(self, "_press", 0.0, 0.24).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 
+## Centro del botón (sin el corrimiento del bisel).
+func button_center() -> Vector2:
+	var side := size.x * UiTheme.PHONE_CONTROL_SIDE
+	return Vector2(side if lefty else size.x - side, size.y / 2.0)
+
+
 func _draw() -> void:
-	var r := minf(size.x, size.y) * 0.36
-	var c := size / 2.0 - Vector2(0, r * 0.06)
+	var fit := minf(size.x * 0.5, size.y)
+	var r := minf(fit * UiTheme.PHONE_BUTTON_RADIUS * control_scale, fit * UiTheme.PHONE_BUTTON_RADIUS_MAX)
+	var c := button_center() - Vector2(0, r * 0.06)
 	var line := maxf(6.0, r * 0.04)
 	# Carcasa: aro oscuro hundido alrededor del botón (como en un arcade).
 	var housing := UiTheme.ShapeBatch.new()
@@ -79,6 +99,9 @@ func _draw() -> void:
 	housing.circle(c + Vector2(0, r * 0.12), r * 1.2, UiTheme.PHONE_DISH)
 	housing.circle(c + Vector2(0, r * 0.12), r * 1.12, UiTheme.PHONE_DISH_RIM)
 	housing.circle(c + Vector2(0, r * 0.16), r * 1.07, UiTheme.PHONE_DISH)
+	if color.get_luminance() < UiTheme.PHONE_BACKDROP_DARK_LUMINANCE:
+		# Negro o grafito sobre la carcasa oscura: un aro claro lo despega.
+		housing.circle(c + Vector2(0, r * 0.1), r * 1.04, UiTheme.PHONE_DARK_KNOB_RIM)
 	housing.flush(self)
 	if _ripple < 1.0:
 		draw_arc(c + Vector2(0, r * 0.12), r * (1.2 + 0.35 * _ripple), 0, TAU, 64,

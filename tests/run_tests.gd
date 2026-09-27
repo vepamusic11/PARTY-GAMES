@@ -2141,6 +2141,136 @@ func test_controller_join_screen() -> void:
 	await process_frame
 
 
+## Celular: ajustes (zurdo invierte el control, tamaño, sonido y vibración),
+## latencia oculta por defecto, todo guardado en el archivo local, y "Salir"
+## que hay que mantener apretado 1 s.
+func test_controller_settings_and_hold() -> void:
+	var path := "user://test_phone_settings.cfg"
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	var was_muted := Sfx.muted
+	var was_vibrating := Haptics.enabled
+	Sfx.muted = false
+	Haptics.enabled = true
+	var ctrl := ControllerMain.new()
+	ctrl.settings_path = path
+	root.add_child(ctrl)
+	await process_frame
+	check(not ctrl.settings.dev_mode and not ctrl._latency.visible, "la latencia en ms está oculta por defecto")
+	check(ctrl._signal.visible, "el ícono de señal se ve para todos")
+	ctrl._update_latency(300)
+	check(ctrl._signal.level == SignalIcon.BAD and ctrl._latency.text == "— ms", "latencia alta: señal roja, sin ms fuera del modo desarrollador")
+	ctrl._update_latency(40)
+	check(ctrl._signal.level == SignalIcon.GOOD, "latencia baja: 3 barras")
+
+	# Zurdo: el joystick pasa a la derecha y el botón a la izquierda.
+	ctrl._on_layout_changed(Protocol.LAYOUT_JOYSTICK, {})
+	var joy := ctrl._active_layout as VirtualJoystick
+	joy.size = Vector2(2000, 900)
+	check(not joy.lefty and joy.rest_position().x < 1000.0, "diestro: joystick a la izquierda")
+	check(ctrl._backdrop.show_watermark and ctrl._backdrop.watermark_right, "mascota del fondo del lado libre (derecha)")
+	ctrl._settings_panel._lefty.pressed.emit()
+	check(ctrl.settings.lefty and joy.lefty and joy.rest_position().x > 1000.0, "zurdo: joystick a la derecha")
+	check(not ctrl._backdrop.watermark_right, "zurdo: la mascota del fondo pasa a la izquierda")
+	ctrl._on_layout_changed(Protocol.LAYOUT_ONE_BUTTON, {"label": "A"})
+	var btn := ctrl._active_layout as BigButton
+	btn.size = Vector2(2000, 900)
+	check(btn.lefty and btn.button_center().x < 1000.0, "zurdo: botón a la izquierda")
+	check(ctrl._backdrop.watermark_right, "zurdo con botón: la mascota del fondo a la derecha")
+	# Joystick + A/B: el ajuste zurdo lo pone en espejo, también en vivo.
+	ctrl._on_layout_changed(Protocol.LAYOUT_JOYSTICK_AB, {"a": "Patear"})
+	var pad := ctrl._active_layout as JoystickAB
+	check(pad != null and pad.left_handed, "zurdo: joystick + A/B en espejo")
+	check(not ctrl._backdrop.show_watermark, "joystick + A/B: sin mascota de fondo tapando botones")
+	ctrl._settings_panel._lefty.pressed.emit()
+	check(not ctrl.settings.lefty and not pad.left_handed, "diestro en vivo: joystick + A/B vuelve")
+	ctrl._settings_panel._lefty.pressed.emit()
+	ctrl._on_layout_changed(Protocol.LAYOUT_ONE_BUTTON, {"label": "A"})
+	btn = ctrl._active_layout as BigButton
+	btn.size = Vector2(2000, 900)
+	ctrl._settings_panel._pick_size(PhoneSettings.SIZE_LARGE)
+	check(btn.control_scale > 1.0, "tamaño grande se aplica al control en pantalla")
+	check(ctrl._instruction.visible and ctrl._instruction.text == ControllerMain.LAYOUT_HINTS[Protocol.LAYOUT_ONE_BUTTON],
+		"instrucción del control arriba")
+
+	# Modo desarrollador: 5 toques seguidos en el logo.
+	for i in 4:
+		ctrl._on_logo_tapped()
+	check(not ctrl.settings.dev_mode, "4 toques no alcanzan")
+	ctrl._on_logo_tapped()
+	check(ctrl.settings.dev_mode and ctrl._latency.visible, "5 toques en el logo: se ve la latencia")
+	ctrl._update_latency(86)
+	check(ctrl._latency.text == "86 ms", "modo desarrollador: ms")
+	ctrl._settings_panel._sound.pressed.emit()
+	ctrl._settings_panel._vibration.pressed.emit()
+	check(Sfx.muted and not Haptics.enabled, "sonido y vibración se apagan desde Ajustes")
+	ctrl.queue_free()
+	await process_frame
+
+	# Otra vez la app: los ajustes quedaron guardados.
+	Sfx.muted = false
+	Haptics.enabled = true
+	var again := ControllerMain.new()
+	again.settings_path = path
+	root.add_child(again)
+	await process_frame
+	check(again.settings.lefty and again.settings.control_size == PhoneSettings.SIZE_LARGE and again.settings.dev_mode,
+		"zurdo, tamaño y modo desarrollador persisten")
+	check(Sfx.muted and not Haptics.enabled, "sonido y vibración persisten")
+	check(again._latency.visible, "al abrir de nuevo, sigue en modo desarrollador")
+
+	# "Salir": un toque corto no sale (avisa); mantener 1 s sí.
+	again._on_joined({"name": "Juli"})
+	check(again._play_screen.visible, "unido")
+	again._leave.begin_hold()
+	again._leave.advance(0.3)
+	again._leave.end_hold()
+	check(again._play_screen.visible and not again._join_screen.visible, "toque corto en Salir: no sale")
+	check(again._toast.visible and again._toast_label.text.contains("Mantené"), "toque corto: avisa que hay que mantener")
+	again._leave.begin_hold()
+	again._leave.advance(0.6)
+	check(again._play_screen.visible, "a mitad de camino todavía no sale")
+	again._leave.advance(0.5)
+	check(not again._play_screen.visible and again._join_screen.visible, "mantener 1 s: sale")
+	again.queue_free()
+	await process_frame
+
+	# Un archivo roto o editado a mano no rompe nada.
+	var cfg := ConfigFile.new()
+	cfg.set_value("controller", "lefty", "sí")
+	cfg.set_value("controller", "control_size", 99)
+	cfg.set_value("controller", "dev_mode", 1)
+	cfg.save(path)
+	var loaded := PhoneSettings.new()
+	loaded.load_from(path)
+	check(not loaded.lefty and loaded.control_size == PhoneSettings.SIZE_LARGE and not loaded.dev_mode, "valores inválidos: por defecto o recortados")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	Sfx.muted = was_muted
+	Haptics.enabled = was_vibrating
+
+
+## Celular: instrucción del juego (la de la TV si viene, recortada), la
+## mascota que reacciona a cómo te va y fondo legible con cualquier color.
+func test_controller_instruction_and_mood() -> void:
+	check(ControllerMain.instruction_for(Protocol.LAYOUT_JOYSTICK, {}) == ControllerMain.LAYOUT_HINTS[Protocol.LAYOUT_JOYSTICK], "sin hint: la del control")
+	check(ControllerMain.instruction_for(Protocol.LAYOUT_JOYSTICK, {"hint": "  Mové para juntar estrellas "}) == "Mové para juntar estrellas", "hint de la TV")
+	check(ControllerMain.instruction_for(Protocol.LAYOUT_ONE_BUTTON, {"hint": 42}) == ControllerMain.LAYOUT_HINTS[Protocol.LAYOUT_ONE_BUTTON], "hint que no es texto: se ignora")
+	check(ControllerMain.instruction_for(Protocol.LAYOUT_ONE_BUTTON, {"hint": "x".repeat(500)}).length() == ControllerMain.HINT_MAX_LENGTH, "hint largo: se recorta")
+	check(ControllerMain.instruction_for(Protocol.LAYOUT_WAIT, {}) == "", "esperando: sin instrucción")
+	var base := {"round": 1, "total_rounds": 3, "place": 2, "points": 70, "total": 170, "rank": 2, "players": 4, "final": false}
+	check(ControllerMain.mood_for_standing(base) == PlayerAvatar.Mood.NORMAL, "en el medio: normal")
+	base.rank = 1
+	check(ControllerMain.mood_for_standing(base) == PlayerAvatar.Mood.HAPPY, "vas ganando: feliz")
+	base.rank = 4
+	base.place = 4
+	check(ControllerMain.mood_for_standing(base) == PlayerAvatar.Mood.SAD, "vas último: triste")
+	for col: Color in Protocol.MASCOT_COLORS:
+		var ink := PhoneBackdrop.ink_for(col)
+		for bg: Color in PhoneBackdrop.gradient(col):
+			var hi := maxf(ink.get_luminance(), bg.get_luminance())
+			var lo := minf(ink.get_luminance(), bg.get_luminance())
+			check(hi - lo > 0.35, "texto legible sobre el fondo del color %s" % col.to_html(false))
+
+
 ## Argumentos de nivel superior de una llamada (desde después del "(").
 func _call_args(src: String, from: int) -> Array[String]:
 	var args: Array[String] = []
