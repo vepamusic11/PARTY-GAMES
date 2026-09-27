@@ -364,6 +364,169 @@ func test_sumo_physics() -> void:
 	await process_frame
 
 
+## Pool loco: tiro al soltar el joystick, física de círculos (choque,
+## fricción, bandas, troneras), puntos, reaparición y determinismo.
+func test_pool_rules() -> void:
+	var script: Script = load("res://host/minigames/pool/pool.gd")
+	var physics: Script = load("res://host/minigames/pool/pool_physics.gd")
+	# Apuntar y soltar.
+	var aim: Dictionary = script.new_aim()
+	check(script.track_aim(aim, Vector2(0.8, 0), 0.0) == Vector2.ZERO, "estirar el joystick no tira")
+	check(script.track_aim(aim, Vector2(0.9, 0), 0.03) == Vector2.ZERO, "seguir estirado no tira")
+	var shot: Vector2 = script.track_aim(aim, Vector2.ZERO, 0.06)
+	check(shot.is_equal_approx(Vector2(0.9, 0)), "al soltar tira con dirección y fuerza (%s)" % shot)
+	check(script.track_aim(aim, Vector2.ZERO, 0.1) == Vector2.ZERO, "soltado no vuelve a tirar")
+	script.track_aim(aim, Vector2(0, -1), 1.0)
+	script.track_aim(aim, Vector2(0, -0.4), 1.03)  # La perilla volviendo al centro.
+	shot = script.track_aim(aim, Vector2.ZERO, 1.06)
+	check(shot.is_equal_approx(Vector2(0, -1)), "tira con lo más estirado, no con lo que mandó al volver (%s)" % shot)
+	script.track_aim(aim, Vector2(0.2, 0), 2.0)
+	check(script.track_aim(aim, Vector2.ZERO, 2.1) == Vector2.ZERO, "un roce apenas estirado no tira")
+	check(script.shot_speed(1.0) == script.SHOT_MAX_SPEED and script.shot_speed(script.ARM_MIN) == script.SHOT_MIN_SPEED
+		and script.shot_speed(0.6) > script.SHOT_MIN_SPEED and script.shot_speed(0.6) < script.SHOT_MAX_SPEED,
+		"más estirado, más fuerza")
+	check(script.credited({"by": 2, "t": 1.0}, 3.0) == 2 and script.credited({"by": 2, "t": 1.0}, 1.1 + script.CREDIT_SEC) == -1
+		and script.credited({}, 0.0) == -1, "los puntos son del último que tocó la bola, si fue hace poco")
+
+	# Física pura: choque de frente entre bolas iguales, fricción, banda y tronera.
+	var t: Variant = physics.new(Rect2(0, 0, 2000, 1000))
+	var a: int = t.add_ball(Vector2(500, 500), 20.0, 1.0)
+	var b: int = t.add_ball(Vector2(600, 500), 20.0, 1.0)
+	t.vel[a] = Vector2(800, 0)
+	var hits := 0
+	for s in 30:
+		hits += (t.step().hits as Array).size()
+	check(hits >= 1, "detecta el choque")
+	check((t.vel[b] as Vector2).x > 500.0 and (t.vel[a] as Vector2).x < 100.0, "B sale con la velocidad de A y A casi frena (%s, %s)" % [t.vel[a], t.vel[b]])
+	check((t.pos[b] as Vector2).distance_to(t.pos[a]) >= 40.0 - 0.01, "las bolas no quedan superpuestas")
+	var f: Variant = physics.new(Rect2(0, 0, 6000, 1000))
+	var fi: int = f.add_ball(Vector2(100, 500), 20.0)
+	f.vel[fi] = Vector2(1900, 0)
+	for s in 120 * 12:
+		f.step()
+	check(f.speed(fi) == 0.0 and (f.pos[fi] as Vector2).x > 1000.0, "la fricción la frena del todo (%s)" % f.pos[fi])
+	var c: Variant = physics.new(Rect2(0, 0, 500, 500))
+	var ci: int = c.add_ball(Vector2(470, 250), 20.0)
+	c.vel[ci] = Vector2(600, 0)
+	for s in 20:
+		c.step()
+	check((c.vel[ci] as Vector2).x < 0.0 and (c.pos[ci] as Vector2).x <= 480.0, "rebota en la banda")
+	var d: Variant = physics.new(Rect2(0, 0, 500, 500), PackedVector2Array([Vector2(500, 500)]), 44.0)
+	var di: int = d.add_ball(Vector2(400, 400), 20.0)
+	d.vel[di] = Vector2(500, 500)
+	var fell := false
+	for s in 60:
+		fell = fell or not (d.step().pocketed as Array).is_empty()
+	check(fell and not d.is_on_table(di), "cae en la tronera")
+
+	# Partida con 3 jugadores, avanzada a mano.
+	var game: Variant = MiniGameRegistry.create("pool")
+	root.add_child(game)
+	game.set_physics_process(false)
+	game.setup(_fake_players(3))
+	var results: Array = []
+	game.finished.connect(func(res: Dictionary) -> void: results.append(res))
+	var dt := 1.0 / 60.0
+	var p1: int = game._ball[1]
+	var p2: int = game._ball[2]
+	var p3: int = game._ball[3]
+	game.on_input(1, {"seq": 0, "axis": Vector2(1, 0), "btn": 0})
+	game.step(dt)
+	game.on_input(1, {"seq": 1, "axis": Vector2.ZERO, "btn": 0})
+	game.step(dt)
+	check(game._phys.speed(p1) == 0.0, "en la cuenta regresiva no se tira")
+	while game._state == 0:
+		game.step(dt)
+	game.on_input(1, {"seq": 2, "axis": Vector2(0, 1), "btn": 0})
+	game.step(dt)
+	check(game._phys.speed(p1) == 0.0, "estirado todavía no tira")
+	game.on_input(1, {"seq": 3, "axis": Vector2.ZERO, "btn": 0})
+	game.step(dt)
+	check((game._phys.vel[p1] as Vector2).y > 1000.0, "al soltar, la bola sale hacia donde apuntaba (%s)" % game._phys.vel[p1])
+	game.on_input(1, {"seq": 4, "axis": Vector2(1, 0), "btn": 0})
+	game.step(dt)
+	game.on_input(1, {"seq": 5, "axis": Vector2.ZERO, "btn": 0})
+	game.step(dt)
+	check((game._phys.vel[p1] as Vector2).x < 1.0, "no se puede volver a tirar enseguida")
+	# Datos raros del control: no rompen nada.
+	game.on_input(1, {"seq": 6, "axis": "hola", "btn": 0})
+	game.on_input(99, {"seq": 7, "axis": Vector2.ONE, "btn": 0})
+	game.step(dt)
+
+	# Dorada a la tronera de abajo a la derecha: 2P se lleva los puntos.
+	var play: Rect2 = script.PLAY
+	var gold: int = game._golds[0]
+	game._phys.place(p1, play.position + Vector2(200, 400))
+	game._phys.place(gold, play.end - Vector2(90, 90))
+	game._phys.place(p2, play.end - Vector2(170, 170))
+	game._cooldown[2] = 0.0
+	game.on_input(2, {"seq": 8, "axis": Vector2(1, 1).normalized() * 0.7, "btn": 0})
+	game.step(dt)
+	game.on_input(2, {"seq": 9, "axis": Vector2.ZERO, "btn": 0})
+	for s in 90:
+		game.step(dt)
+	check(game._score[2] == script.GOLD_POINTS, "meter una dorada suma %d (%s)" % [script.GOLD_POINTS, game._score])
+	check(not game._phys.is_on_table(gold) or game._gold_wait.is_empty(), "la dorada cae")
+	for s in roundi((script.GOLD_RESPAWN_SEC + script.RESPAWN_SEC + 0.2) / dt):
+		game.step(dt)
+	check(game._phys.is_on_table(gold), "la dorada vuelve a la mesa")
+	check(game._phys.is_on_table(p2) and game._respawn.is_empty(), "si tu bola cae, reaparece")
+
+	# 1P mete la bola de 3P en la tronera de arriba al medio.
+	var top: Vector2 = script.pockets()[1]
+	game._phys.place(p3, top + Vector2(0, 75))
+	game._phys.place(p1, top + Vector2(0, 190))
+	game._cooldown[1] = 0.0
+	var before: int = game._score[1]
+	game.on_input(1, {"seq": 10, "axis": Vector2(0, -0.8), "btn": 0})
+	game.step(dt)
+	game.on_input(1, {"seq": 11, "axis": Vector2.ZERO, "btn": 0})
+	for s in 40:
+		game.step(dt)
+	check(game._score[1] == before + script.RIVAL_POINTS, "meter la bola de otro suma %d (%s)" % [script.RIVAL_POINTS, game._score])
+	check(game._respawn.has(3) and not game._phys.is_on_table(p3), "la bola de 3P cayó y espera")
+	var score3: int = game._score[3]
+	for s in roundi(script.RESPAWN_SEC * 0.5 / dt):
+		game.step(dt)
+	check(not game._phys.is_on_table(p3), "no reaparece antes de %.1f s" % script.RESPAWN_SEC)
+	for s in roundi(script.RESPAWN_SEC * 0.5 / dt) + 3:
+		game.step(dt)
+	check(game._phys.is_on_table(p3) and (game._pos[3] as Vector2).is_equal_approx(script.start_spot(2)),
+		"a los %.1f s reaparece en su lugar de salida" % script.RESPAWN_SEC)
+	check(game._score[3] == score3, "caerse no resta puntos")
+
+	# Fin: una sola vez, gana el que más puntos tiene.
+	game._time_left = 0.01
+	for s in roundi((script.END_WAIT_SEC + 0.3) / dt):
+		game.step(dt)
+	check(results.size() == 1, "termina al acabarse el tiempo (%d)" % results.size())
+	if results.size() == 1:
+		check(results[0].winners == [2], "gana el de más puntos (%s)" % [results[0]])
+	game.finish({"winners": [1], "scores": {}})
+	check(results.size() == 1, "finished se emite una sola vez")
+	game.queue_free()
+
+	# Determinismo: misma semilla y mismos inputs -> misma partida.
+	var runs: Array = []
+	for r in 2:
+		var g: Variant = MiniGameRegistry.create("pool")
+		root.add_child(g)
+		g.set_physics_process(false)
+		g.setup(_fake_players(4))
+		g._rng.seed = 77
+		for frame in 60 * 14:
+			for k in 4:
+				var stretched := (frame + k * 7) % 45 < 25
+				var axis := Vector2.from_angle(frame * 0.013 + k * 1.9) * (0.5 + 0.12 * k) if stretched else Vector2.ZERO
+				g.on_input(k + 1, {"seq": frame, "axis": axis, "btn": 0})
+			g.step(dt)
+		runs.append([g._phys.pos, g._phys.vel, g._score.duplicate(), g._respawn.duplicate()])
+		g.queue_free()
+	check(runs[0] == runs[1], "misma semilla y mismos tiros: misma partida")
+	check(runs[0][0] != PackedVector2Array(), "la partida de prueba se jugó")
+	await process_frame
+
+
 func test_result_from_scores() -> void:
 	var r := MiniGame.result_from_scores({1: 3, 2: 5, 3: 5})
 	check(r.winners == [2, 3], "empate devuelve ambos ganadores")

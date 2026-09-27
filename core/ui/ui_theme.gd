@@ -1349,3 +1349,21 @@ static func draw_bot_badge(ci: CanvasItem, center: Vector2, s: float = 1.0) -> v
 	draw_round_rect(ci, Rect2(r.position + Vector2(8.0 * s, 3.0 * s), Vector2(size.x * 0.5, size.y * 0.28)),
 		Color(1, 1, 1, 0.3), size.y * 0.14)
 	draw_text(ci, BOT_TEXT, center - Vector2(0, 2.0 * s), int(BOT_BADGE_FONT * s), PAPER, int(4 * s), INK)
+
+
+# --- Pool (agente) ---------------------------------------------------------------
+# Mesa de Pool loco (host/minigames/pool/pool.gd): paño verde adentro del
+# tablero de bloques, bandas, troneras y bolas doradas.
+
+const POOL_FELT := Color("#2E9E57")          ## Paño.
+const POOL_FELT_LIGHT := Color(0.75, 1.0, 0.75, 0.18)  ## Luz de lámpara en el centro del paño.
+const POOL_CUSHION := Color("#1F7F45")       ## Bandas (más oscuras que el paño).
+const POOL_CUSHION_EDGE := Color("#63CF8A")  ## Filo de luz de las bandas.
+const POOL_MARK := Color(1, 1, 1, 0.22)      ## Marcas del paño (punto del centro).
+const POOL_SIGHT := Color(1, 1, 1, 0.85)     ## Puntitos de las bandas.
+const POOL_POCKET := Color("#0B0E22")        ## Fondo de las troneras.
+const POOL_POCKET_RIM := Color("#3A4070")    ## Borde de las troneras.
+const POOL_BALL_SHADOW := Color(0.02, 0.12, 0.05, 0.38)  ## Sombra de las bolas sobre el paño.
+const POOL_SHINE := Color(1, 1, 1, 0.8)      ## Reflejo de las bolas.
+const POOL_AIM_DOT := Color(1, 1, 1, 0.75)   ## Puntitos de la guía de tiro.
+const POOL_HINT_BG := Color(0.07, 0.08, 0.2, 0.75)  ## Cartel "cómo se tira".

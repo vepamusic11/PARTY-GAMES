@@ -75,6 +75,7 @@ const SHOTS := {
 		"sec": 9.0, "crop": Rect2(740, 406, 440, 248),
 		"orbit": {"c": Vector2(960, 600), "r": Vector2(50, 25), "spread": Vector2(120, 40)},
 	},
+<<<<<<< HEAD
 	"sumo": {"sec": 3.85, "crop": Rect2(692, 405, 480, 270)},
 	"karts": {"sec": 8.0, "crop": Rect2(0, 0, 620, 349), "follow": true},
 	"scroller": {
@@ -86,6 +87,14 @@ const SHOTS := {
 	# el centro), así que la foto es mientras la TV la muestra.
 	"memory": {"sec": 4.1, "crop": Rect2(210, 200, 1088, 612)},
 	"quickdraw": {"sec": 1.15, "crop": Rect2(480, 330, 960, 540)},
+=======
+	"sumo": {"sec": 5.5, "crop": Rect2(690, 420, 540, 304)},
+	# Pool loco: los de prueba apuntan (joystick estirado) hacia las doradas del centro.
+	"pool": {
+		"sec": 12.0, "crop": Rect2(300, 148, 1000, 562),
+		"orbit": {"c": Vector2(960, 578), "r": Vector2(30, 20), "spread": Vector2.ZERO},
+	},
+>>>>>>> d046936 (Pool loco: nuevo minijuego de pool simultáneo para 2 a 4 jugadores)
 }
 
 var _out_dir := OUT_DIR

@@ -15,6 +15,7 @@ const GAMES: Array[Script] = [
 	preload("res://host/minigames/scroller/scroller.gd"),
 	preload("res://host/minigames/memory/memory.gd"),
 	preload("res://host/minigames/quickdraw/quickdraw.gd"),
+	preload("res://host/minigames/pool/pool.gd"),
 ]
 
 

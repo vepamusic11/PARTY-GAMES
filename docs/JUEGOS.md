@@ -7,6 +7,7 @@ Más abajo: qué hace divertidos a los party games de referencia, **modos de jue
 **Regla de oro:** cada juego nuevo tiene que sumar algo distinto, ya sea un control, una dinámica o una emoción. Un juego que se parece mucho a otro ocupa lugar en el lobby sin aportar.
 
 ## Los de hoy
+## Los 8 de hoy
 
 | Juego | Dinámica | Control | Jugadores |
 |---|---|---|---|
@@ -51,6 +52,7 @@ Lo que dicen los números:
 - **La dificultad se nota**: con fácil / normal / difícil / normal, el difícil gana las 50 competencias y el fácil sale último en 47. El juego con más azar es Reloj exacto (el difícil gana el 51 %).
 - **Empujones 1 contra 1** entre bots parejos casi siempre termina por tiempo con los dos arriba (empate): a vigilar con personas, quizás la isla tendría que achicarse más al final.
 - **Carrera de toques es el más corto** (≈ 8 s con la cuenta regresiva): con bots dura lo mismo que con gente rápida.
+| Pool loco | Meter bolas doradas (o la de otro) en las troneras, todos a la vez | Joystick: apuntar y soltar | 2–4 |
 
 ## Propuestos
 
@@ -86,7 +88,7 @@ Lo que dicen los números:
 
 | Juego | Cómo se juega | Control | Qué suma | Dificultad |
 |---|---|---|---|---|
-| **Pool loco** *(recomendado)* | Todos tiran **al mismo tiempo**, sin turnos. Cada jugador tiene su bola y la mesa tiene bolas doradas: meterlas suma puntos, y meter la bola de otro también. Hay rondas de 10 segundos para apuntar y tirar. | Joystick para apuntar; al soltarlo se tira, y cuanto más lejos del centro, más fuerza | Puntería y caos. Sin turnos no hay espera, lo que es clave con 4 jugadores | Media: física de círculos, troneras, rondas |
+| **Pool loco** *(hecho: `host/minigames/pool/`)* | Todos tiran **al mismo tiempo**, sin turnos. Cada mascota va arriba de su bola y la mesa tiene bolas doradas: meter una suma 3 puntos, y meter la bola de otro suma 2. Si tu bola cae, vuelve a los 1,5 s. Una ronda de 50 s. | Joystick para apuntar; al soltarlo se tira, y cuanto más lejos del centro, más fuerza | Puntería y caos. Sin turnos no hay espera, lo que es clave con 4 jugadores | Media: física de círculos, troneras, rondas |
 | **Mini golf** | Hoyos cortos con rampas y molinos. Todos juegan a la vez con bolas que se atraviesan entre sí; gana el de menos golpes. | Joystick para apuntar y soltar para tirar (igual que Pool loco) | Planificar el tiro; comparte el código de física con Pool loco | Media |
 | **Bochas / curling** | Dejar la bola lo más cerca posible del blanco, y también se puede sacar a las de los rivales. | Joystick + soltar | Estrategia tranquila, buen contraste con los juegos de reflejos | Baja-media |
 
@@ -113,6 +115,8 @@ Toda la lógica vive en la TV, que sigue siendo autoritativa: el celular solo ma
 
 1. **Pool loco:** no necesita un layout nuevo y su física se reutiliza en Mini golf y Bochas.
 2. ~~**Karts de mascotas**~~ (hecho): es la carrera que la gente espera en un party game y usa el joystick que ya existe.
+1. **Pool loco** *(hecho)*: no necesitó un layout nuevo y su física (`host/minigames/pool/pool_physics.gd`) se puede reutilizar en Mini golf y Bochas.
+2. **Karts de mascotas:** es la carrera que la gente espera en un party game y usa el joystick que ya existe.
 3. **Carrera de obstáculos:** barata y muy clara para jugadores nuevos.
 4. **Hockey de mesa:** primer juego por equipos.
 5. Después, los que necesitan layouts nuevos (Equilibrio), sumados juntos en una sola versión del protocolo. Memoria de colores ya está hecha con el joystick (cada dirección es un botón), sin cambiar el protocolo.
