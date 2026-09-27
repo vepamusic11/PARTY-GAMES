@@ -2,9 +2,11 @@ class_name ControllerMain
 extends Control
 ## Pantalla del celular. Tres estados:
 ##   JOIN    -> elegir TV (descubierta o IP manual), apodo y código de sala
-##   WAIT    -> unido; esperando que la TV arranque un juego. Durante el
-##              resumen de ronda y el podio muestra además el resultado propio
-##              (puesto, puntos y total) que manda la TV con "standing".
+##   WAIT    -> unido; esperando que la TV arranque un juego. En el lobby
+##              muestra el selector de mascota (color y estilo, LookPicker).
+##              Durante el resumen de ronda y el podio muestra además el
+##              resultado propio (puesto, puntos y total) que manda la TV
+##              con "standing".
 ##   PLAY    -> muestra el control que pidió la TV (joystick, slider o botón)
 
 const SEND_RATE_HZ := 30.0
@@ -44,6 +46,8 @@ var _standing_round: Label
 var _standing_medal: _Medal
 var _standing_main: Label
 var _standing_total: Label
+var _look_picker: LookPicker
+var _phase := Protocol.PHASE_LOBBY
 var _latency: Label
 var _layout_host: Control
 var _active_layout: Control
@@ -72,6 +76,7 @@ func _ready() -> void:
 	client.phase_changed.connect(_on_phase_changed)
 	client.standing_received.connect(_show_standing)
 	client.feedback_received.connect(_on_feedback)
+	client.appearance_changed.connect(_on_appearance_changed)
 	discovery.hosts_changed.connect(_on_hosts_changed)
 	_build_ui()
 	if discovery.start() != OK:
@@ -161,6 +166,7 @@ func _on_layout_changed(layout: String, data: Dictionary) -> void:
 		_layout_host.add_child(_active_layout)
 	_last_sent_btn = -1
 	_update_power_mode()
+	_update_picker()
 
 
 ## Sin control activo: animaciones a IDLE_ANIM_FPS y modo de bajo consumo.
@@ -180,8 +186,45 @@ func _update_power_mode() -> void:
 
 
 func _on_phase_changed(phase: String) -> void:
+	_phase = phase
 	if phase != Protocol.PHASE_RESULTS:
 		_clear_standing()
+	_update_picker()
+
+
+## La TV confirmó color y estilo (al unirse, al cambiarlos o cuando otro
+## jugador ocupa o libera un color).
+func _on_appearance_changed() -> void:
+	_update_header()
+	_update_picker()
+
+
+## El jugador tocó el selector: se ve al instante (la mascota grande es la
+## vista previa), se guarda como preferencia y se pide a la TV, que confirma
+## o corrige con "appearance".
+func _on_look_picked(color_index: int, style: int) -> void:
+	Sfx.play("select")
+	Haptics.buzz("tap")
+	_save_look(color_index, style)
+	for avatar: PlayerAvatar in [_header_avatar, _wait_avatar]:
+		avatar.color = Protocol.mascot_color(color_index)
+		avatar.style = style
+	_wait_avatar.hop(1)
+	client.send_look(color_index, style)
+
+
+## Selector visible solo en el lobby, sin control ni resultado en pantalla,
+## y si la TV entiende de apariencias (una TV vieja no manda colorIndex).
+func _update_picker() -> void:
+	if _look_picker == null:
+		return
+	var info := client.player_info
+	var supported := int(info.get("color_index", -1)) >= 0 and int(info.get("style", -1)) >= 0
+	var shown := supported and _phase == Protocol.PHASE_LOBBY and _active_layout == null and not _standing_panel.visible
+	_look_picker.visible = shown
+	_wait_sub.text = "Elegí tu mascota mientras la TV arranca" if shown else "El juego empieza cuando la TV lo elija"
+	if supported:
+		_look_picker.set_look(info.color_index, info.style, info.get("taken", []))
 
 
 ## Resultado propio (ya validado por Protocol.parse_standing). En el
@@ -238,6 +281,7 @@ func _clear_standing() -> void:
 		return
 	_standing_panel.visible = false
 	_wait_sub.visible = true
+	_update_picker()
 
 
 func _on_hosts_changed(hosts: Array[Dictionary]) -> void:
@@ -277,7 +321,7 @@ func _on_join_pressed() -> void:
 		return
 	var port := int(_selected_host.get("port", Protocol.WS_PORT)) if _selected_host.get("ip") == ip else Protocol.WS_PORT
 	_join_status.text = "Conectando…"
-	client.join(ip, port, code, player_name)
+	client.join(ip, port, code, player_name, _load_look())
 
 
 func _on_leave_pressed() -> void:
@@ -303,6 +347,7 @@ func _update_header() -> void:
 	_header.text = "%s · %s" % [UiTheme.player_tag(slot), info.get("name", "")]
 	for avatar in [_header_avatar, _wait_avatar]:
 		avatar.slot = slot
+		avatar.style = int(info.get("style", -1))  # -1 (TV vieja): el del lugar.
 		avatar.color = color
 
 
@@ -429,6 +474,10 @@ func _build_ui() -> void:
 	_wait_sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	wait_box.add_child(_wait_sub)
 	_build_standing_panel(wait_view)
+	_look_picker = LookPicker.new()
+	_look_picker.visible = false
+	_look_picker.look_changed.connect(_on_look_picked)
+	wait_view.add_child(_look_picker)
 	_play_screen.visible = false
 
 
@@ -503,6 +552,26 @@ func _save_name(player_name: String) -> void:
 	var cfg := ConfigFile.new()
 	cfg.load(SETTINGS_PATH)
 	cfg.set_value("player", "name", player_name)
+	cfg.save(SETTINGS_PATH)
+
+
+## Apariencia preferida guardada en el celular (como el apodo). Se valida
+## igual que lo que llega por red: un archivo editado a mano no rompe nada.
+func _load_look() -> Dictionary:
+	var cfg := ConfigFile.new()
+	if cfg.load(SETTINGS_PATH) != OK:
+		return {}
+	return Protocol.parse_look({
+		"color": cfg.get_value("player", "color", -1),
+		"style": cfg.get_value("player", "style", -1),
+	})
+
+
+func _save_look(color_index: int, style: int) -> void:
+	var cfg := ConfigFile.new()
+	cfg.load(SETTINGS_PATH)
+	cfg.set_value("player", "color", color_index)
+	cfg.set_value("player", "style", style)
 	cfg.save(SETTINGS_PATH)
 
 

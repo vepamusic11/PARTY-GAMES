@@ -19,10 +19,12 @@ Fuente de verdad en código: [`core/protocol/protocol.gd`](../core/protocol/prot
 ```json
 {"v":1,"type":"join","room":"K7QX","name":"Pablo"}
 {"v":1,"type":"join","room":"K7QX","name":"Pablo","token":"9f2c…(32 hex)"}
+{"v":1,"type":"join","room":"K7QX","name":"Juli","color":9,"style":5}
 ```
 - `room`: 4 caracteres de `ABCDEFGHJKLMNPQRSTUVWXYZ23456789` (sin I/O/0/1 para no confundir).
 - `name`: se limpia (sin caracteres de control) y se recorta a 16.
 - `token`: opcional. Si coincide con un jugador existente, se reconecta a su lugar.
+- `color` / `style`: **opcionales**. Apariencia pedida (ver [Apariencia](#apariencia-color-y-estilo)). Si faltan o no son válidos, se usan los del lugar (1P rojo con antena…) y el `join` se acepta igual. En una reconexión se ignoran: vuelve con la apariencia que tenía.
 - Debe llegar dentro de los **5 segundos** de abierta la conexión, o se corta.
 
 ### `input` — estado del control
@@ -33,6 +35,17 @@ Fuente de verdad en código: [`core/protocol/protocol.gd`](../core/protocol/prot
 - `axis`: `[x, y]`, se recorta a longitud ≤ 1.
 - `btn`: máscara de bits. `1` = A, `2` = B. Otros bits se descartan.
 - Límite: **90 por segundo** por jugador; el exceso se descarta.
+
+### `look` — cambiar color y/o estilo (solo en el lobby)
+```json
+{"v":1,"type":"look","color":4,"style":6}
+{"v":1,"type":"look","style":0}
+```
+- Campos opcionales, mismas reglas que en `join`; lo inválido se descarta en silencio.
+- Solo se acepta en la fase `lobby` y antes de que arranque la competencia; si no, se ignora.
+- Si el color lo usa otro jugador, se conserva el propio (el estilo sí cambia).
+- La TV responde siempre con `appearance` (así el celular corrige lo que mostró de antemano).
+- Límite: **8 por segundo** por jugador.
 
 ### `ping`
 ```json
@@ -50,8 +63,9 @@ Salida voluntaria: libera el lugar de inmediato (sin reserva de reconexión).
 
 ### `welcome`
 ```json
-{"v":1,"type":"welcome","playerId":2,"name":"Pablo","color":"378add","token":"9f2c…","phase":"lobby"}
+{"v":1,"type":"welcome","playerId":2,"name":"Pablo","color":"378add","colorIndex":1,"style":1,"token":"9f2c…","phase":"lobby"}
 ```
+`color` es el color en hex (como siempre); `colorIndex` y `style` son los índices de la apariencia (nuevos y compatibles: un celular sin ellos sabe que la TV no permite elegir apariencia).
 El token es secreto de ese control: nunca se envía a otros ni se expone a la lógica de juego.
 
 ### `reject`
@@ -99,6 +113,12 @@ Valores: `lobby`, `playing`, `results`. En modo competencia `results` cubre tant
 ```
 La TV avisa a **un** jugador que le pasó algo en el juego para que su celular vibre y suene: `point` (sumó), `hit` (lo eliminaron), `win`, `lose`, `go` (arranca el juego), `count` y `tap`. Cualquier otro valor se descarta (`Protocol.parse_feedback`). La TV limita a un aviso cada 80 ms por jugador. Es informativo y **compatible**: los controles viejos lo ignoran y `VERSION` no cambia.
 
+### `appearance` — apariencia confirmada
+```json
+{"v":1,"type":"appearance","color":9,"style":5,"taken":[0,5,7]}
+```
+La TV lo manda **a cada jugador por separado** con su color, su estilo y los colores que usan **los demás** (`taken`), cuando alguien entra, sale, se reconecta o cambia de apariencia, y al volver al lobby. El celular los muestra ocupados en el selector. `Protocol.parse_appearance` descarta el mensaje si `color` o `style` no son válidos y limpia `taken`. Informativo y **compatible**.
+
 ### `standing` — resultado propio (resumen y podio)
 ```json
 {"v":1,"type":"standing","round":1,"total_rounds":3,"place":2,"points":70,"total":170,"rank":2,"players":4,"final":false}
@@ -121,6 +141,25 @@ La TV lo manda **a cada jugador por separado**, justo después de `phase: result
 - **El control tampoco confía a ciegas:** `Protocol.parse_standing` descarta el mensaje si falta un campo, un tipo no coincide o hay `NaN`/infinito, y recorta los rangos.
 - **Compatible:** es un tipo nuevo que los controles viejos ignoran, por eso `VERSION` sigue en 1.
 - El celular lo muestra junto a "¡Mirá la TV!" y lo borra al volver al lobby o cuando empieza otro juego.
+
+## Apariencia (color y estilo)
+
+Cada jugador elige desde el celular el color y el estilo de su mascota (ver [ADR 0007](adr/0007-apariencia-del-jugador.md)). Por la red viajan **índices**, nunca colores libres:
+
+| `color` | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Nombre | Rojo | Azul | Amarillo | Verde | Violeta | Rosa | Celeste | Blanco | Grafito | Negro |
+| Hex | `e24b4a` | `378add` | `ef9f27` | `1d9e75` | `8b5cf6` | `ff6fb5` | `2ec4d6` | `f5f7fb` | `2b2d3a` | `16171d` |
+
+| `style` | 0 | 1 | 2 | 3 | 4 | 5 | 6 |
+|---|---|---|---|---|---|---|---|
+| Nombre | Antena | Oso | Gato | Brote | Robot | Diablito | Conejo |
+
+- Por defecto: color = índice del lugar (1P rojo, 2P azul, 3P amarillo, 4P verde) y estilo = lugar.
+- **Colores únicos**: en `join`, si el pedido está ocupado se asigna el del lugar y, si tampoco está libre, el primero libre. Los estilos se pueden repetir (la etiqueta 1P–4P distingue).
+- **Validación** (`Protocol.parse_color_index`, `parse_style_index`, `parse_look`): número entero (se acepta `3.0`, no `3.5`), finito y en rango. Cualquier otra cosa se descarta sin rechazar la conexión.
+- **Solo cosmético**: nunca cambia puntos, puestos, lugar ni nombre.
+- **Compatible**: `VERSION` sigue en 1. Un control viejo (sin `color`/`style` ni `look`) juega con la apariencia de su lugar; con una TV vieja el celular no muestra el selector.
 
 ## Descubrimiento (UDP)
 

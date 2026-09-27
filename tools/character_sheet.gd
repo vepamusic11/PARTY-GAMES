@@ -13,13 +13,9 @@ const SIZE := Vector2i(1920, 1080)
 const OUT_WIDTH := 1280
 
 
-## Paleta de prueba: los 4 colores de jugador y candidatos extra (negro y
-## blanco son los casos difíciles de contraste).
-const PALETTE: Array[Color] = [
-	Color("#E24B4A"), Color("#378ADD"), Color("#EF9F27"), Color("#1D9E75"),
-	Color("#8B5CF6"), Color("#FF6FB5"), Color("#2EC4D6"), Color("#F5F7FB"),
-	Color("#2B2D3A"), Color("#16171D"),
-]
+## Paleta que se elige desde el celular (negro y blanco son los casos
+## difíciles de contraste). Ver Protocol.MASCOT_COLORS y ADR 0007.
+const PALETTE: Array[Color] = Protocol.MASCOT_COLORS
 
 
 class _Styles:

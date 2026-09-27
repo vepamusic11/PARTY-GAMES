@@ -71,6 +71,7 @@ func _podium_column(s: Dictionary, index: int) -> Control:
 		col.add_child(crown)
 	var avatar := PlayerAvatar.new()
 	avatar.slot = s.slot
+	avatar.style = PlayerAvatar.style_of(s)
 	avatar.color = s.color
 	avatar.mood = PlayerAvatar.Mood.HAPPY if s.place == 1 else PlayerAvatar.Mood.NORMAL
 	avatar.custom_minimum_size = Vector2(260, 250 if index == 0 else 210)

@@ -25,6 +25,12 @@ const SHOT_DELAY := {"stop_clock": 5.0, "dodge": 6.0, "paint": 8.0, "sumo": 4.5}
 ## Juegos en los que los controles de prueba mueven el joystick en círculos
 ## mientras esperan la captura (ej. para que se vea el piso pintado).
 const WANDER := ["paint", "sumo"]
+## Apariencia que piden los controles de prueba al unirse (ver Protocol.parse_look).
+const LOOKS := {
+	"Pablo": {},
+	"Sofi": {"color": 5, "style": 6},   # Rosa, conejo.
+	"Tomi": {"color": 7, "style": 4},   # Blanco, robot.
+}
 ## Nombre de la captura del celular según el control que muestra.
 const CONTROL_SHOTS := {
 	Protocol.LAYOUT_JOYSTICK: "ctrl_joy", Protocol.LAYOUT_ONE_BUTTON: "ctrl_button", Protocol.LAYOUT_SLIDER_H: "ctrl_slider",
@@ -71,10 +77,12 @@ func _run() -> void:
 	root.add_child(host)
 	await _frames(5)
 	host._lobby._stepper.set_value(4)
-	for n in ["Pablo", "Sofi", "Tomi"]:
+	# Cada uno con su apariencia (Pablo, la de su lugar): así los juegos
+	# muestran estilos y colores elegidos, blanco incluido.
+	for n in LOOKS:
 		var c := ControllerClient.new()
 		root.add_child(c)
-		c.join("127.0.0.1", PORT, host.server.room_code, n)
+		c.join("127.0.0.1", PORT, host.server.room_code, n, LOOKS[n])
 		_clients.append(c)
 	await _until(func() -> bool: return host.server.get_players().size() == 3)
 	_expect(host.server.get_players().size() == 3, "se unen 3 controles")
@@ -102,6 +110,13 @@ func _run() -> void:
 	_expect(host.server.get_players().size() == 4, "el celular se une desde su pantalla")
 	await _seconds(0.8)
 	await _shot(phone, "ctrl_wait")
+	# Selector de mascota: el celular pide negro + diablito (por la red, como
+	# al tocar el selector, pero sin guardar la preferencia en este equipo).
+	ctrl.client.send_look(9, PlayerAvatar.STYLE_HORNS)
+	await _until(func() -> bool: return int(ctrl.client.player_info.get("color_index", -1)) == 9)
+	_expect(ctrl._look_picker.visible and ctrl._look_picker.color_index == 9, "el celular muestra el selector con el color elegido")
+	await _seconds(0.8)
+	await _shot(phone, "ctrl_look")
 	await _shot(root, "lobby_full")
 	if _lobby_only:
 		quit(0)

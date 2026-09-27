@@ -560,12 +560,12 @@ func test_seat_card_uses_player_look() -> void:
 	var seat := SeatCard.new(1)
 	root.add_child(seat)
 	seat.show_player({}, false)
-	check(seat._avatar.color == Protocol.player_color(1) and seat._avatar.slot == 1,
+	check(seat._avatar.color == Protocol.player_color(1) and seat._avatar.style == -1,
 		"lugar libre: color y estilo del lugar")
 	var black := Color("#16171D")
 	seat.show_player({"id": 7, "slot": 1, "name": "Juli", "connected": true, "color": black,
 		"style": PlayerAvatar.STYLE_ROBOT}, false)
-	check(seat._avatar.color == black and seat._avatar.slot == PlayerAvatar.STYLE_ROBOT,
+	check(seat._avatar.color == black and seat._avatar.style == PlayerAvatar.STYLE_ROBOT,
 		"usa el color y el estilo elegidos por el jugador")
 	check(seat.state == SeatCard.State.READY and seat._name.text == "Juli", "muestra al jugador listo")
 	seat.show_player({}, true)
@@ -1105,6 +1105,268 @@ func test_rejects_raw_garbage() -> void:
 	check(server.get_players().is_empty(), "no crea jugadores")
 	server.stop()
 	server.queue_free()
+
+
+# --- Apariencia del jugador (color y estilo, ver docs/adr/0007) ---------------
+
+func test_parse_look() -> void:
+	check(Protocol.MASCOT_STYLES == PlayerAvatar.STYLE_NAMES.size(), "Protocol.MASCOT_STYLES coincide con los estilos de PlayerAvatar")
+	check(Protocol.MASCOT_COLOR_NAMES.size() == Protocol.MASCOT_COLORS.size(), "un nombre por color")
+	check(Protocol.MASCOT_COLORS.slice(0, 4) == Protocol.PLAYER_COLORS, "los 4 primeros son los colores de siempre (1P–4P)")
+	var unique := {}
+	for c in Protocol.MASCOT_COLORS:
+		unique[c.to_html()] = true
+	check(unique.size() == Protocol.MASCOT_COLORS.size(), "colores sin repetir")
+	check(Protocol.parse_color_index(3) == 3 and Protocol.parse_color_index(9.0) == 9, "enteros y floats sin decimales (JSON)")
+	for bad: Variant in [-1, 10, 2.5, "3", true, null, [1], {"a": 1}, NAN, INF, -INF, 1e300, -0.5]:
+		check(Protocol.parse_color_index(bad) == -1, "color inválido descartado: %s" % [bad])
+	check(Protocol.parse_style_index(6) == 6 and Protocol.parse_style_index(7) == -1, "rango de estilos")
+	check(Protocol.parse_style_index("robot") == -1 and Protocol.parse_style_index(-3) == -1, "estilo con tipo raro o negativo")
+	check(Protocol.parse_look({}) == {}, "join viejo: sin campos, nada")
+	check(Protocol.parse_look({"color": 7.0, "style": 4}) == {"color": 7, "style": 4}, "ambos válidos")
+	check(Protocol.parse_look({"color": "blanco", "style": 4}) == {"style": 4}, "solo el válido")
+	check(Protocol.parse_look({"color": 99, "style": 1.5}) == {}, "ambos inválidos")
+	var app := Protocol.parse_appearance({"color": 2, "style": 5, "taken": [0, 0, 2, "x", 9, 3.5, 99, null]})
+	check(app.color == 2 and app.style == 5, "appearance válido")
+	check(app.taken == ([0, 9] as Array[int]), "taken sin inválidos, repetidos ni el propio (%s)" % [app.taken])
+	check(Protocol.parse_appearance({"color": 2, "style": 5, "taken": "todos"}).taken.is_empty(), "taken con tipo raro: vacío")
+	check(Protocol.parse_appearance({"color": 2}).is_empty() and Protocol.parse_appearance({"color": -1, "style": 0}).is_empty(), "appearance incompleto: {}")
+
+
+func test_style_of() -> void:
+	check(PlayerAvatar.style_of({"slot": 2}) == 2, "sin style: el clásico del lugar")
+	check(PlayerAvatar.style_of({"slot": 0, "style": PlayerAvatar.STYLE_ROBOT}) == PlayerAvatar.STYLE_ROBOT, "usa el estilo elegido")
+	check(PlayerAvatar.style_of({"slot": 1, "style": 7}) == 0 and PlayerAvatar.style_of({"style": -1}) == 6, "fuera de rango: da la vuelta")
+	check(PlayerAvatar.style_of({"style": "gato"}) == 0 and PlayerAvatar.style_of({}) == 0, "tipos raros: 0 (nunca falla)")
+	var avatar := PlayerAvatar.new()
+	avatar.slot = 1
+	avatar.style = PlayerAvatar.STYLE_BUNNY
+	check(avatar.style == PlayerAvatar.STYLE_BUNNY, "el Control acepta un estilo distinto del lugar")
+	avatar.free()
+	check(UiTheme.on_light(Protocol.MASCOT_COLORS[7]).get_luminance() < 0.6, "el blanco se oscurece sobre pisos claros")
+	check(UiTheme.on_light(Protocol.MASCOT_COLORS[9]) == Protocol.MASCOT_COLORS[9], "el negro queda igual")
+
+
+## El estilo elegido llega a los juegos, al torneo y a las pantallas de la TV.
+func test_games_use_player_style() -> void:
+	# Todas las llamadas a draw_mascot de los juegos pasan el estilo del
+	# jugador (PlayerAvatar.style_of), no el número de lugar.
+	var files: Array[String] = []
+	for dir in DirAccess.get_directories_at("res://host/minigames"):
+		for f in DirAccess.get_files_at("res://host/minigames/" + dir):
+			if f.ends_with(".gd"):
+				files.append("res://host/minigames/%s/%s" % [dir, f])
+	var calls := 0
+	for path in files:
+		var src := FileAccess.get_file_as_string(path)
+		var at := src.find("draw_mascot(")
+		while at >= 0:
+			var args := _call_args(src, at + "draw_mascot(".length())
+			calls += 1
+			check(args.size() >= 5 and args[4] == "PlayerAvatar.style_of(p)", "%s: draw_mascot usa el estilo del jugador (%s)" % [path.get_file(), args.slice(4, 5)])
+			at = src.find("draw_mascot(", at + 1)
+	check(calls >= 7, "se revisaron las llamadas de los juegos (%d)" % calls)
+
+	var players := _fake_players(2)
+	players[0]["style"] = PlayerAvatar.STYLE_HORNS
+	players[0]["color"] = Protocol.MASCOT_COLORS[9]
+	var t := Tournament.new(["arena"] as Array[String], players)
+	t.advance(2)
+	var s := t.record({"winners": [1], "scores": {1: 3, 2: 1}}, players)
+	check(s.rows[0].style == PlayerAvatar.STYLE_HORNS and s.rows[1].style == 1, "el resumen de ronda lleva el estilo (o el del lugar)")
+	check(t.standings()[0].style == PlayerAvatar.STYLE_HORNS, "la tabla general lleva el estilo")
+	var bar := ScoreBar.new()
+	bar.setup([{"id": 1, "slot": 0, "total": 5, "color": Protocol.MASCOT_COLORS[9]}] as Array[Dictionary], "Ronda 1/1")
+	check(bar._chips.size() == 1, "el marcador acepta el color del jugador")
+	bar.free()
+	# Un juego real con estilos elegidos corre sin errores.
+	var game := MiniGameRegistry.create("paint")
+	root.add_child(game)
+	game.setup(players)
+	for i in 3:
+		await process_frame
+	check(game._mark[1] == Protocol.MASCOT_COLORS[9], "Pintar usa el color elegido")
+	game.queue_free()
+	await process_frame
+
+
+## Red: join con y sin apariencia, colores únicos, "look" solo en el lobby.
+func test_player_look_network() -> void:
+	var port := TEST_PORT + 7
+	var server := HostServer.new()
+	root.add_child(server)
+	server.start(port, "127.0.0.1")
+	var updated: Array = []
+	server.player_updated.connect(func(p: Dictionary) -> void: updated.append(p))
+
+	# A pide blanco + robot.
+	var a := _client()
+	var a_app: Array = []
+	a.appearance_changed.connect(func() -> void: a_app.append(a.player_info.duplicate()))
+	a.join("127.0.0.1", port, server.room_code, "Ana", {"color": 7, "style": PlayerAvatar.STYLE_ROBOT})
+	await _until(func() -> bool: return not a_app.is_empty())
+	var pa: Dictionary = server.get_players()[0]
+	check(pa.color_index == 7 and pa.color == Protocol.MASCOT_COLORS[7] and pa.style == PlayerAvatar.STYLE_ROBOT, "join con color y estilo (%s)" % [pa])
+	check(a.player_info.color_index == 7 and a.player_info.style == PlayerAvatar.STYLE_ROBOT, "el celular recibe su apariencia")
+	check(not pa.has("token"), "el jugador público sigue sin token")
+
+	# B pide el mismo blanco: le toca el de su lugar (2P azul).
+	var b := _client()
+	var b_app: Array = []
+	b.appearance_changed.connect(func() -> void: b_app.append(b.player_info.duplicate()))
+	b.join("127.0.0.1", port, server.room_code, "Beto", {"color": 7})
+	await _until(func() -> bool: return server.get_players().size() == 2 and not b_app.is_empty())
+	var pb: Dictionary = server.get_players()[1]
+	check(pb.color_index == 1 and pb.style == 1, "color ocupado: se asigna uno libre; estilo por defecto = lugar (%s)" % [pb])
+	check(b.player_info.color_index == 1 and 7 in (b.player_info.taken as Array), "el celular sabe que el blanco está ocupado")
+
+	# C es un control viejo: join sin campos nuevos.
+	var ws := WebSocketPeer.new()
+	ws.connect_to_url("ws://127.0.0.1:%d" % port)
+	await _until(func() -> bool:
+		ws.poll()
+		return ws.get_ready_state() == WebSocketPeer.STATE_OPEN)
+	ws.send_text(JSON.stringify({"v": 1, "type": "join", "room": server.room_code, "name": "Viejo"}))
+	await _until(func() -> bool:
+		ws.poll()
+		return server.get_players().size() == 3)
+	var pc: Dictionary = server.get_players()[2]
+	check(pc.color == Protocol.player_color(2) and pc.style == 2, "join viejo: color y estilo del lugar como siempre")
+
+	# D manda basura en los campos opcionales: igual entra, con lo de su lugar.
+	var ws2 := WebSocketPeer.new()
+	ws2.connect_to_url("ws://127.0.0.1:%d" % port)
+	await _until(func() -> bool:
+		ws2.poll()
+		return ws2.get_ready_state() == WebSocketPeer.STATE_OPEN)
+	ws2.send_text(JSON.stringify({"v": 1, "type": "join", "room": server.room_code, "name": "Raro", "color": "negro", "style": [99]}))
+	await _until(func() -> bool:
+		ws2.poll()
+		return server.get_players().size() == 4)
+	check(server.get_players().size() == 4 and server.get_players()[3].color_index == 3 and server.get_players()[3].style == 3, "campos inválidos se ignoran (no rechaza)")
+	var colors := {}
+	for p in server.get_players():
+		colors[p.color_index] = true
+	check(colors.size() == 4, "colores únicos entre los 4 jugadores")
+
+	# look: A pide el azul de B (ocupado) y el conejo -> cambia solo el estilo.
+	updated.clear()
+	a_app.clear()
+	a.send_look(1, PlayerAvatar.STYLE_BUNNY)
+	await _until(func() -> bool: return not a_app.is_empty())
+	pa = server.get_players()[0]
+	check(pa.color_index == 7 and pa.style == PlayerAvatar.STYLE_BUNNY, "look: color ocupado se conserva el propio, el estilo cambia (%s)" % [pa])
+	check(updated.size() == 1 and updated[0].style == PlayerAvatar.STYLE_BUNNY, "se emite player_updated")
+	check(a.player_info.color_index == 7, "el celular recibe la corrección del color")
+
+	# look: A pasa a negro; B se entera de que el blanco se liberó.
+	a.send_look(9, PlayerAvatar.STYLE_BUNNY)
+	await _until(func() -> bool: return 9 in (b.player_info.taken as Array))
+	check(server.get_players()[0].color_index == 9 and not 7 in (b.player_info.taken as Array), "cambio de color avisado a los demás")
+
+	# look con basura: se ignora sin romper nada.
+	updated.clear()
+	ws.send_text('{"v":1,"type":"look","color":[1],"style":{"a":1}}')
+	ws.send_text('{"v":1,"type":"look","color":1e999}')
+	ws.send_text('{"v":1,"type":"look"}')
+	await _frames(10)
+	ws.poll()
+	check(updated.is_empty() and server.get_players()[2].color_index == 2, "look inválido ignorado")
+
+	# Fuera del lobby, look se rechaza.
+	server.set_phase(Protocol.PHASE_PLAYING)
+	a.send_look(4, 0)
+	await _frames(10)
+	check(updated.is_empty() and server.get_players()[0].color_index == 9, "look rechazado durante la partida")
+	server.set_phase(Protocol.PHASE_LOBBY)
+	server.accepting_new_players = false  # Ya arrancó la competencia (barrido a la intro).
+	a.send_look(4, 0)
+	await _frames(10)
+	check(updated.is_empty(), "look rechazado cuando la competencia ya arrancó")
+	server.accepting_new_players = true
+
+	# Límite de frecuencia: una ráfaga no pasa entera.
+	for i in 30:
+		ws.send_text(JSON.stringify({"v": 1, "type": "look", "style": i % Protocol.MASCOT_STYLES}))
+	await _frames(15)
+	ws.poll()
+	check(updated.size() <= HostServer.LOOK_RATE_LIMIT_PER_SEC, "look con límite de frecuencia (%d)" % updated.size())
+
+	# Si A se va, su color queda libre para los demás.
+	a.leave()
+	await _until(func() -> bool: return server.get_players().size() == 3 and not 9 in (b.player_info.taken as Array))
+	check(not 9 in (b.player_info.taken as Array), "al salir se libera su color")
+	ws.close()
+	ws2.close()
+	server.stop()
+	server.queue_free()
+	await _free_clients()
+
+
+## Celular: el selector aparece en el lobby con lo que confirmó la TV y se
+## esconde fuera del lobby o con una TV vieja.
+func test_controller_look_picker() -> void:
+	var ctrl := ControllerMain.new()
+	root.add_child(ctrl)
+	await process_frame
+	ctrl.client.player_info = {"id": 2, "name": "Sofi", "color": Protocol.MASCOT_COLORS[3], "color_index": 3,
+		"style": PlayerAvatar.STYLE_HORNS, "taken": [0, 1] as Array[int]}
+	ctrl._on_phase_changed(Protocol.PHASE_LOBBY)
+	ctrl._on_appearance_changed()
+	var picker := ctrl._look_picker
+	check(picker.visible and picker.color_index == 3 and picker.style == PlayerAvatar.STYLE_HORNS, "selector visible en el lobby con lo confirmado")
+	check(picker._swatches[0].disabled and not picker._swatches[3].disabled and picker._swatches[3].selected, "colores ocupados deshabilitados")
+	check(ctrl._wait_avatar.style == PlayerAvatar.STYLE_HORNS and ctrl._wait_avatar.color == Protocol.MASCOT_COLORS[3], "la mascota grande muestra la apariencia")
+	for sw in picker._swatches:
+		check(sw.custom_minimum_size.x >= 88 and sw.custom_minimum_size.y >= 88, "botón de color ≥ 88 px")
+	ctrl._on_phase_changed(Protocol.PHASE_PLAYING)
+	check(not picker.visible, "se esconde durante la partida")
+	ctrl._on_phase_changed(Protocol.PHASE_LOBBY)
+	ctrl.client.player_info = {"id": 1, "name": "Viejo", "color": Color.RED, "color_index": -1, "style": -1, "taken": []}
+	ctrl._on_appearance_changed()
+	check(not picker.visible and ctrl._wait_avatar.style == -1, "TV vieja (sin colorIndex): sin selector, estilo del lugar")
+	ctrl.queue_free()
+	await process_frame
+
+	# Selector suelto (sin guardar preferencias): flechas y colores.
+	var lp := LookPicker.new()
+	root.add_child(lp)
+	var got: Array = []
+	lp.look_changed.connect(func(c: int, s: int) -> void: got.append([c, s]))
+	lp.set_look(2, 6, [4, "x", 99])
+	check(got.is_empty() and lp.taken == ([4] as Array[int]), "set_look no emite y filtra ocupados inválidos")
+	lp.step_style(1)
+	check(got == [[2, 0]], "después de Conejo vuelve a Antena")
+	lp._on_color_pressed(4)
+	check(got.size() == 1, "un color ocupado no se puede elegir")
+	lp._on_color_pressed(9)
+	check(got.back() == [9, 0] and lp._color_label.text == "Negro", "elige negro")
+	lp.set_look(99, -1)
+	check(lp.color_index == Protocol.MASCOT_COLORS.size() - 1 and lp.style == Protocol.MASCOT_STYLES - 1, "valores fuera de rango se recortan")
+	lp.queue_free()
+	await process_frame
+
+
+## Argumentos de nivel superior de una llamada (desde después del "(").
+func _call_args(src: String, from: int) -> Array[String]:
+	var args: Array[String] = []
+	var depth := 0
+	var cur := ""
+	for i in range(from, src.length()):
+		var ch := src[i]
+		if ch in "([{":
+			depth += 1
+		elif ch in ")]}":
+			if depth == 0:
+				args.append(cur.strip_edges())
+				return args
+			depth -= 1
+		elif ch == "," and depth == 0:
+			args.append(cur.strip_edges())
+			cur = ""
+			continue
+		cur += ch
+	return args
 
 
 # --- Utilidades -----------------------------------------------------------------

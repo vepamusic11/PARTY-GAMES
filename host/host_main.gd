@@ -65,6 +65,7 @@ func _ready() -> void:
 	server.player_disconnected.connect(_on_player_gone)
 	server.player_left.connect(_on_player_gone)
 	server.input_received.connect(_on_input)
+	server.player_updated.connect(_on_player_updated)
 
 	_build_ui()
 	var err := server.start(server_port)
@@ -318,6 +319,13 @@ func _on_input(player_id: int, input: Dictionary) -> void:
 func _on_player_reconnected(player: Dictionary) -> void:
 	if phase == Protocol.PHASE_RESULTS and _standings_sent.has(player.id):
 		server.send_to(player.id, Protocol.T_STANDING, _standings_sent[player.id])
+	_refresh_lobby()
+
+
+## Un jugador cambió su color o estilo desde el celular (solo pasa en el
+## lobby: HostServer lo rechaza en otras fases). El lobby se redibuja con
+## los datos nuevos (player.color, player.style).
+func _on_player_updated(_player: Dictionary) -> void:
 	_refresh_lobby()
 
 

@@ -31,6 +31,9 @@ const T_JOIN := "join"
 const T_INPUT := "input"
 const T_PING := "ping"
 const T_LEAVE := "leave"
+## Cambiar la apariencia (color y estilo de mascota) desde el lobby. Opcional
+## y compatible: solo se acepta en la fase lobby (ver parse_look).
+const T_LOOK := "look"
 
 # --- Tipos de mensaje: host -> control ---------------------------------------
 const T_WELCOME := "welcome"
@@ -45,6 +48,9 @@ const T_STANDING := "standing"
 ## informativo y compatible: "kind" tiene que ser uno de FEEDBACK_KINDS.
 const T_FEEDBACK := "feedback"
 const FEEDBACK_KINDS: Array[String] = ["point", "hit", "win", "lose", "go", "count", "tap"]
+## Apariencia confirmada por la TV (color, estilo y colores ocupados por
+## otros). Solo informativo y compatible: los controles viejos lo ignoran.
+const T_APPEARANCE := "appearance"
 
 # --- Descubrimiento en red local (UDP broadcast) ------------------------------
 const T_ANNOUNCE := "announce"
@@ -75,13 +81,30 @@ const BTN_A := 1
 const BTN_B := 2
 const BTN_MASK := BTN_A | BTN_B
 
-## Colores de jugador (1..4). Alto contraste sobre fondo oscuro.
+## Colores de jugador por defecto (1P..4P). Son los 4 primeros de
+## MASCOT_COLORS: un control que no pide color recibe el de su lugar.
 const PLAYER_COLORS: Array[Color] = [
 	Color("#E24B4A"), # rojo
 	Color("#378ADD"), # azul
 	Color("#EF9F27"), # amarillo
 	Color("#1D9E75"), # verde
 ]
+
+## Paleta de mascotas que se puede elegir desde el celular (índice = lo que
+## viaja en "join"/"look"). No se reordena: un celular guarda el índice.
+## Blanco y negro se leen bien porque la mascota siempre lleva contorno de
+## tinta y PlayerAvatar aclara las luces de los colores oscuros.
+const MASCOT_COLORS: Array[Color] = [
+	Color("#E24B4A"), Color("#378ADD"), Color("#EF9F27"), Color("#1D9E75"),
+	Color("#8B5CF6"), Color("#FF6FB5"), Color("#2EC4D6"), Color("#F5F7FB"),
+	Color("#2B2D3A"), Color("#16171D"),
+]
+const MASCOT_COLOR_NAMES: Array[String] = [
+	"Rojo", "Azul", "Amarillo", "Verde", "Violeta", "Rosa", "Celeste", "Blanco", "Grafito", "Negro",
+]
+## Cantidad de estilos de mascota (= PlayerAvatar.STYLE_NAMES.size(); lo
+## verifica un test). Protocol no depende de la UI, por eso va el número.
+const MASCOT_STYLES := 7
 
 
 ## Serializa un mensaje agregando versión y tipo.
@@ -233,6 +256,64 @@ static func parse_feedback(msg: Dictionary) -> String:
 
 static func player_color(slot: int) -> Color:
 	return PLAYER_COLORS[clampi(slot, 0, PLAYER_COLORS.size() - 1)]
+
+
+## Color de la paleta por índice (se recorta al rango: nunca falla).
+static func mascot_color(index: int) -> Color:
+	return MASCOT_COLORS[clampi(index, 0, MASCOT_COLORS.size() - 1)]
+
+
+## Índice de color válido (0..MASCOT_COLORS.size()-1) o -1 si no lo es.
+## Acepta enteros y floats sin decimales (JSON trae los números como float);
+## strings, bools, NaN, 1.5 o fuera de rango dan -1.
+static func parse_color_index(value: Variant) -> int:
+	return _parse_index(value, MASCOT_COLORS.size())
+
+
+## Índice de estilo de mascota válido (0..MASCOT_STYLES-1) o -1.
+static func parse_style_index(value: Variant) -> int:
+	return _parse_index(value, MASCOT_STYLES)
+
+
+## Apariencia pedida en "join" o "look": solo los campos válidos.
+## Resultado: {} (nada válido), {"color": int}, {"style": int} o ambos.
+## Lo inválido se descarta en silencio: nunca rechaza ni lanza errores.
+static func parse_look(msg: Dictionary) -> Dictionary:
+	var out := {}
+	var color := parse_color_index(msg.get("color"))
+	if color >= 0:
+		out["color"] = color
+	var style := parse_style_index(msg.get("style"))
+	if style >= 0:
+		out["style"] = style
+	return out
+
+
+## Valida un mensaje "appearance" (host -> control). {} si es inválido.
+## Resultado: {"color": int, "style": int, "taken": Array[int]} (taken:
+## colores que usan otros jugadores; se ignoran los inválidos y repetidos).
+static func parse_appearance(msg: Dictionary) -> Dictionary:
+	var color := parse_color_index(msg.get("color"))
+	var style := parse_style_index(msg.get("style"))
+	if color < 0 or style < 0:
+		return {}
+	var taken: Array[int] = []
+	var raw: Variant = msg.get("taken", [])
+	if typeof(raw) == TYPE_ARRAY:
+		for v: Variant in (raw as Array).slice(0, MASCOT_COLORS.size()):
+			var i := parse_color_index(v)
+			if i >= 0 and i != color and not i in taken:
+				taken.append(i)
+	return {"color": color, "style": style, "taken": taken}
+
+
+static func _parse_index(value: Variant, count: int) -> int:
+	if not _is_number(value):
+		return -1
+	var f := float(value)
+	if not is_finite(f) or f != floorf(f) or f < 0.0 or f >= count:
+		return -1
+	return int(f)
 
 
 static func _is_number(value: Variant) -> bool:

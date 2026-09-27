@@ -132,7 +132,7 @@ func record(result: Dictionary, players: Array[Dictionary]) -> Dictionary:
 
 
 ## Tabla general ordenada: más puntos primero; a igualdad, por lugar (1P, 2P…).
-## Cada fila: {id, slot, name, color, total, place}.
+## Cada fila: {id, slot, name, color, style, total, place}.
 func standings() -> Array[Dictionary]:
 	var rows: Array[Dictionary] = []
 	for pid: int in _roster:
@@ -175,4 +175,5 @@ func _playable(id: String, player_count: int) -> bool:
 
 
 func _remember(p: Dictionary) -> void:
-	_roster[p.id] = {"id": p.id, "slot": p.slot, "name": p.name, "color": p.color}
+	# El estilo de mascota viaja con el jugador (resumen y podio lo dibujan).
+	_roster[p.id] = {"id": p.id, "slot": p.slot, "name": p.name, "color": p.color, "style": PlayerAvatar.style_of(p)}

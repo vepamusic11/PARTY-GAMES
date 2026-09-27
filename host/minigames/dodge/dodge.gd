@@ -276,7 +276,7 @@ func _draw() -> void:
 		# Si un bloque está por caer muy cerca, pone cara de susto.
 		if mood == PlayerAvatar.Mood.NORMAL and _danger_near(feet):
 			mood = PlayerAvatar.Mood.SURPRISED
-		PlayerAvatar.draw_mascot(self, feet, MASCOT_SCALE, p.color, p.slot, mood, 0.0, 0.0, false,
+		PlayerAvatar.draw_mascot(self, feet, MASCOT_SCALE, p.color, PlayerAvatar.style_of(p), mood, 0.0, 0.0, false,
 			mascot_anim(p.id, _axis[p.id]))
 		draw_text_centered(p.name, feet + Vector2(0, NAME_OFFSET), 26, UiTheme.PAPER, 6)
 	draw_hud(_live_scores(), clock_text(DURATION_SEC - _elapsed))
@@ -301,7 +301,7 @@ func _draw_ghosts() -> void:
 		if not _out_time.has(p.id):
 			continue
 		var feet: Vector2 = _pos[p.id]
-		PlayerAvatar.draw_mascot(_ghost_drawer, feet, MASCOT_SCALE, p.color, p.slot, PlayerAvatar.Mood.SAD)
+		PlayerAvatar.draw_mascot(_ghost_drawer, feet, MASCOT_SCALE, p.color, PlayerAvatar.style_of(p), PlayerAvatar.Mood.SAD)
 		UiTheme.draw_text(_ghost_drawer, p.name, feet + Vector2(0, NAME_OFFSET), 26, UiTheme.PAPER, 6, UiTheme.INK)
 
 

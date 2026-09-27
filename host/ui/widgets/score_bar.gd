@@ -14,7 +14,8 @@ func _init() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 
-## rows: [{id, slot, total}] (se ordenan por lugar 1P, 2P…).
+## rows: [{id, slot, total, color?}] (se ordenan por lugar 1P, 2P…). Sin
+## "color" usa el de siempre del lugar.
 func setup(rows: Array[Dictionary], center_text: String) -> void:
 	for c in get_children():
 		c.queue_free()
@@ -29,7 +30,7 @@ func setup(rows: Array[Dictionary], center_text: String) -> void:
 		if i == half:
 			add_child(_center)
 		var row: Dictionary = sorted[i]
-		var chip := HexChip.new(UiTheme.player_tag(row.slot), Protocol.player_color(row.slot))
+		var chip := HexChip.new(UiTheme.player_tag(row.slot), row.get("color", Protocol.player_color(row.slot)))
 		chip.set_value(int(row.total), false)
 		add_child(chip)
 		_chips[row.id] = chip

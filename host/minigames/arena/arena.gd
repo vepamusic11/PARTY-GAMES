@@ -88,7 +88,7 @@ func _draw() -> void:
 	order.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return (_pos[a.id] as Vector2).y < (_pos[b.id] as Vector2).y)
 	for p in order:
 		var pos: Vector2 = _pos[p.id]
-		PlayerAvatar.draw_mascot(self, pos + Vector2(0, RADIUS), 0.8, p.color, p.slot, PlayerAvatar.Mood.NORMAL,
+		PlayerAvatar.draw_mascot(self, pos + Vector2(0, RADIUS), 0.8, p.color, PlayerAvatar.style_of(p), PlayerAvatar.Mood.NORMAL,
 			0.0, 0.0, false, mascot_anim(p.id, _axis[p.id]))
 		draw_text_centered(p.name, pos + Vector2(0, RADIUS + 24), 26, UiTheme.PAPER, 6)
 	draw_hud(_score, clock_text(_time_left))

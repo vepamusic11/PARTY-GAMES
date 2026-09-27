@@ -589,7 +589,7 @@ func _draw_player(p: Dictionary, off: Vector2) -> void:
 		mood = PlayerAvatar.Mood.SURPRISED
 	var anim := mascot_anim(p.id, (_vel[p.id] as Vector2) / MAX_SPEED)
 	anim["wave"] = mood == PlayerAvatar.Mood.HAPPY
-	PlayerAvatar.draw_mascot(self, feet, MASCOT_SCALE, p.color, p.slot, mood, 0.0, 0.0, false, anim)
+	PlayerAvatar.draw_mascot(self, feet, MASCOT_SCALE, p.color, PlayerAvatar.style_of(p), mood, 0.0, 0.0, false, anim)
 	_draw_name(self, p, feet + Vector2(0, NAME_OFFSET))
 
 
@@ -602,7 +602,7 @@ func _draw_falling(ci: CanvasItem, p: Dictionary, off: Vector2) -> void:
 	var spin := k * PI * 1.5 * (1.0 if p.slot % 2 == 0 else -1.0)
 	var xform := Transform2D(spin, Vector2(s, s), 0.0, _pos[p.id] + off)
 	ci.draw_set_transform_matrix(xform)
-	PlayerAvatar.draw_mascot(ci, Vector2(0, FEET_OFFSET), MASCOT_SCALE, p.color, p.slot, PlayerAvatar.Mood.SAD,
+	PlayerAvatar.draw_mascot(ci, Vector2(0, FEET_OFFSET), MASCOT_SCALE, p.color, PlayerAvatar.style_of(p), PlayerAvatar.Mood.SAD,
 		0.0, 0.0, false, {"xform": xform})
 	ci.draw_set_transform(Vector2.ZERO)
 
@@ -666,7 +666,7 @@ func _draw_stands() -> void:
 			var p := _player_in_seat(side + row * 2)
 			if p.is_empty():
 				continue
-			PlayerAvatar.draw_mascot(self, feet, STAND_SCALE, p.color, p.slot, PlayerAvatar.Mood.SAD)
+			PlayerAvatar.draw_mascot(self, feet, STAND_SCALE, p.color, PlayerAvatar.style_of(p), PlayerAvatar.Mood.SAD)
 			_draw_name(self, p, feet + Vector2(0, 58.0), true)
 
 

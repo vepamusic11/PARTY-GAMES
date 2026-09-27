@@ -51,7 +51,7 @@ func show_summary(summary: Dictionary, standings: Array[Dictionary], next_title:
 	var bar_rows: Array[Dictionary] = []
 	var totals := {}
 	for s in standings:
-		bar_rows.append({"id": s.id, "slot": s.slot, "total": s.total - int(gained.get(s.id, 0))})
+		bar_rows.append({"id": s.id, "slot": s.slot, "color": s.color, "total": s.total - int(gained.get(s.id, 0))})
 		totals[s.id] = s.total
 	_bar.setup(bar_rows, "Ronda %d/%d" % [summary.round, summary.total_rounds])
 
@@ -152,6 +152,7 @@ func _make_column(row: Dictionary, unit: String, count: int, last_place: int) ->
 
 	var avatar := PlayerAvatar.new()
 	avatar.slot = row.slot
+	avatar.style = PlayerAvatar.style_of(row)
 	avatar.color = color
 	avatar.custom_minimum_size = Vector2(250, 250)
 	if count > 1 and row.place == 1:

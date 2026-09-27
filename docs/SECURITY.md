@@ -12,11 +12,12 @@ Un party game en la red de una casa. Lo que queremos evitar:
 | Inundación (DoS) | Script que manda miles de mensajes | 90 inputs/seg por jugador, máximo 8 conexiones pendientes, 5 seg para unirse o se corta |
 | Trampa en el juego | Control modificado que "toca" 100 veces por segundo | Host autoritativo + límites propios del juego (ej. 14 toques/seg en Carrera) |
 | Inyección en pantalla | Apodo `[img]http://…[/img]` | Nombres sin caracteres de control, mostrados solo en `Label`/`draw_string` |
+| Apariencia maliciosa | `look` con color `"#000"`, `1e999` o en plena partida para confundir | Solo índices de una paleta fija, validados y recortados; solo en el lobby; 8 `look`/seg; nunca toca puntos ni puestos (ADR 0007) |
 
 ## Decisiones conscientes
 
 - **Tráfico sin cifrar (ws://) en la red local.** Lo que viaja son posiciones de joystick y un apodo; no hay datos personales ni credenciales. Cifrar en LAN requeriría certificados en la TV, con mucha complejidad y poco beneficio. **Cuando exista el relay en la nube, ese tramo va obligatoriamente por `wss://` (TLS).**
-- **Sin cuentas ni datos personales.** Solo un apodo guardado localmente en el celular (`user://settings.cfg`).
+- **Sin cuentas ni datos personales.** Solo un apodo y la apariencia de la mascota (índices de color y estilo) guardados localmente en el celular (`user://settings.cfg`).
 
 ## Privacidad y tiendas
 

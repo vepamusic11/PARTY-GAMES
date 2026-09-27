@@ -120,6 +120,7 @@ func _player_badge(p: Dictionary) -> Control:
 	col.custom_minimum_size = Vector2(170, 0)
 	var avatar := PlayerAvatar.new()
 	avatar.slot = int(p.slot)
+	avatar.style = PlayerAvatar.style_of(p)
 	avatar.color = p.color
 	avatar.mood = PlayerAvatar.Mood.HAPPY
 	avatar.custom_minimum_size = Vector2(150, 150)

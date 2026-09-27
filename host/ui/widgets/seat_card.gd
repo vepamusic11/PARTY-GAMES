@@ -75,7 +75,7 @@ func _build_row() -> void:
 ## desde el celular); si no, los de su lugar.
 func show_player(player: Dictionary, locked: bool) -> void:
 	_avatar.color = player.get("color", Protocol.player_color(slot))
-	_avatar.slot = int(player.get("style", slot))
+	_avatar.style = PlayerAvatar.style_of(player) if not player.is_empty() else -1
 	if not player.is_empty():
 		state = State.READY if player.connected else State.RECONNECTING
 		_name.text = player.name  # Label: el nombre se muestra como texto plano.

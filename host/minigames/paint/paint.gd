@@ -145,7 +145,8 @@ func setup(p_players: Array[Dictionary]) -> void:
 	var starts: Array[Vector2i] = [Vector2i(1, 1), Vector2i(COLS - 2, ROWS - 2), Vector2i(COLS - 2, 1), Vector2i(1, ROWS - 2)]
 	for p in players:
 		var pid: int = p.id
-		var col: Color = p.color
+		# Un color muy claro (blanco) se oscurece: si no, no se ve sobre el piso.
+		var col: Color = UiTheme.on_light(p.color)
 		_pos[pid] = cell_center(starts[posmod(p.slot, starts.size())])
 		_axis[pid] = Vector2.ZERO
 		_tiles[pid] = 0
@@ -496,7 +497,7 @@ func _draw_player(p: Dictionary, best: int) -> void:
 		mood = PlayerAvatar.Mood.HAPPY if int(_tiles[pid]) == best else PlayerAvatar.Mood.NORMAL
 	var anim := mascot_anim(pid, axis)
 	anim["wave"] = mood == PlayerAvatar.Mood.HAPPY
-	PlayerAvatar.draw_mascot(self, feet, MASCOT_SCALE, p.color, p.slot, mood, 0.0, 0.0, false, anim)
+	PlayerAvatar.draw_mascot(self, feet, MASCOT_SCALE, p.color, PlayerAvatar.style_of(p), mood, 0.0, 0.0, false, anim)
 	draw_text_centered(p.name, feet + Vector2(0, NAME_OFFSET), 26, UiTheme.PAPER, 6)
 	# Power-up activo: ícono chico al costado con el tiempo que le queda.
 	var active := maxf(brush, speed)

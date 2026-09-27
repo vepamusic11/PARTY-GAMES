@@ -1,7 +1,9 @@
 class_name PlayerAvatar
 extends Control
-## Mascota del jugador, dibujada por código. Cada lugar (1P–4P) tiene un
-## accesorio propio además del color:
+## Mascota del jugador, dibujada por código. Cada jugador elige desde el
+## celular su color y su estilo (accesorio: antena, oso, gato, brote, robot,
+## diablito, conejo; ver STYLE_NAMES y docs/adr/0007). Si no elige, su lugar
+## da el clásico:
 ##   1P antena · 2P orejas redondas · 3P orejas puntiagudas · 4P brote
 ##
 ## Concepto: *no depender solo del color*. Cerca de 1 de cada 12 hombres
@@ -22,6 +24,12 @@ enum Mood { NORMAL, HAPPY, SAD, SURPRISED }
 
 @export var color := Color.WHITE
 @export var slot := 0
+## Estilo elegido desde el celular (índice de STYLE_NAMES). -1 = el clásico
+## del lugar (slot). Ver style_of().
+@export var style := -1:
+	set(v):
+		style = v
+		queue_redraw()
 var mood := Mood.NORMAL
 var empty := false     ## Lugar libre: silueta sin cara.
 var animate := true:   ## "Respira", parpadea y mira alrededor (idle).
@@ -96,7 +104,7 @@ func _draw() -> void:
 	var bob := sin(_t * 2.4) * 1.3 * u if animate else 0.0
 	# Mirada: de vez en cuando mira a un costado (idle), para que no parezca congelado.
 	var look := Vector2(sin(_t * 0.7 + slot) * 0.8, 0.0) if animate else Vector2.ZERO
-	draw_mascot(self, feet, u, color, slot, mood, bob, hop_height * 20.0 * u, empty, {
+	draw_mascot(self, feet, u, color, slot if style < 0 else style, mood, bob, hop_height * 20.0 * u, empty, {
 		"t": _t, "look": look, "squash": squash,
 		"wave": mood == Mood.HAPPY and animate,
 	})
@@ -112,6 +120,15 @@ const METAL := Color("#C3CADB")   ## Piezas de metal del robot.
 const BLUSH := Color(1.0, 0.45, 0.55, 0.45)
 const TONGUE := Color(1.0, 0.5, 0.55)
 const TEAR := Color(0.45, 0.75, 1.0, 0.9)
+
+
+## Estilo de mascota de un jugador (dict de HostServer.get_players() o de
+## las tablas del torneo). Si no trae "style" (datos viejos, pruebas), usa el
+## clásico de su lugar: 1P antena, 2P oso… Siempre devuelve un índice válido.
+static func style_of(p: Dictionary) -> int:
+	var raw: Variant = p.get("style", p.get("slot", 0))
+	var s := int(raw) if typeof(raw) == TYPE_INT or typeof(raw) == TYPE_FLOAT else 0
+	return posmod(s, STYLE_NAMES.size())
 
 
 ## Dibuja la mascota. feet: punto donde apoya. u: unidad de escala (mide ~105u).

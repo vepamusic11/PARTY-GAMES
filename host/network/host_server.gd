@@ -13,11 +13,15 @@ signal player_reconnected(player: Dictionary)
 signal player_disconnected(player_id: int)  ## Temporal: lugar reservado.
 signal player_left(player_id: int)          ## Definitivo: lugar liberado.
 signal input_received(player_id: int, input: Dictionary)
+## Cambió la apariencia (color/estilo) de un jugador desde el lobby.
+signal player_updated(player: Dictionary)
 
 const JOIN_TIMEOUT_MS := 5000
 const CLOSING_TIMEOUT_MS := 2000
 const MAX_PENDING_CONNECTIONS := 8
 const INPUT_RATE_LIMIT_PER_SEC := 90
+## "look" dispara un aviso a todos los celulares: tope propio, más bajo.
+const LOOK_RATE_LIMIT_PER_SEC := 8
 const RECONNECT_GRACE_MS := 30000
 const INBOUND_BUFFER_BYTES := 4096
 
@@ -47,6 +51,8 @@ class _Peer:
 	var closing_since := -1
 	var window_start := 0
 	var window_count := 0
+	var look_window_start := 0
+	var look_window_count := 0
 
 
 func start(p_port: int = Protocol.WS_PORT, bind_address: String = "*") -> Error:
@@ -105,6 +111,14 @@ func get_connected_count() -> int:
 func set_phase(phase: String) -> void:
 	current_phase = phase
 	broadcast(Protocol.T_PHASE, {"phase": phase})
+	if phase == Protocol.PHASE_LOBBY:
+		_send_appearance_all()  # De vuelta al lobby: el selector del celular se pone al día.
+
+
+## ¿Se puede cambiar la apariencia ahora? Solo en el lobby y antes de que
+## arranque la competencia (el torneo copia color y estilo al empezar).
+func can_change_look() -> bool:
+	return current_phase == Protocol.PHASE_LOBBY and accepting_new_players
 
 
 ## Cambia el control que ven todos los celulares. data es opcional (ej. etiquetas).
@@ -136,6 +150,7 @@ func kick(player_id: int) -> void:
 	if _players.has(player_id):
 		_players.erase(player_id)
 		player_left.emit(player_id)
+		_send_appearance_all()
 
 
 # --- Conexiones ---------------------------------------------------------------
@@ -213,11 +228,16 @@ func _handle_message(key: int, raw: String, now: int) -> void:
 		Protocol.T_PING:
 			var t: Variant = msg.get("t", 0)
 			peer.ws.send_text(Protocol.encode(Protocol.T_PONG, {"t": t if typeof(t) in [TYPE_INT, TYPE_FLOAT] else 0}))
+		Protocol.T_LOOK:
+			if _look_rate_limited(peer, now):
+				return
+			_handle_look(peer.player_id, Protocol.parse_look(msg))
 		Protocol.T_LEAVE:
 			var pid := peer.player_id
 			_close_peer(key, 1000, "bye")
 			if _players.erase(pid):
 				player_left.emit(pid)
+				_send_appearance_all()
 		_:
 			pass # Tipos desconocidos se ignoran: permite extender el protocolo.
 
@@ -237,6 +257,7 @@ func _handle_join(key: int, msg: Dictionary) -> void:
 			if p.token == token:
 				_attach(key, p)
 				player_reconnected.emit(_public_player(p))
+				_send_appearance(p)  # Se reconecta con su apariencia de antes.
 				return
 
 	if not accepting_new_players:
@@ -251,11 +272,16 @@ func _handle_join(key: int, msg: Dictionary) -> void:
 		_reject(key, Protocol.R_ROOM_FULL)
 		return
 
+	# Apariencia pedida (opcional): lo inválido se ignora y se usa la del lugar.
+	var look := Protocol.parse_look(msg)
+	var color_index := _free_color(int(look.get("color", slot)), 0, slot)
 	var player := {
 		"id": slot + 1,
 		"slot": slot,
 		"name": player_name,
-		"color": Protocol.player_color(slot),
+		"color": Protocol.mascot_color(color_index),
+		"color_index": color_index,
+		"style": int(look.get("style", slot)),
 		"token": Protocol.generate_token(),
 		"connected": false,
 		"disconnected_at": -1,
@@ -263,6 +289,29 @@ func _handle_join(key: int, msg: Dictionary) -> void:
 	_players[player.id] = player
 	_attach(key, player)
 	player_joined.emit(_public_player(player))
+	_send_appearance_all()
+
+
+## Aplica un "look" ya validado (Protocol.parse_look). Fuera del lobby se
+## ignora. Si el color pedido lo usa otro jugador, conserva el propio. Se
+## confirma siempre al celular (así corrige lo que mostró de antemano).
+func _handle_look(player_id: int, look: Dictionary) -> void:
+	if not _players.has(player_id) or look.is_empty() or not can_change_look():
+		return
+	var p: Dictionary = _players[player_id]
+	var changed := false
+	if look.has("color") and look.color != p.color_index and not _color_taken(look.color, player_id):
+		p.color_index = look.color
+		p.color = Protocol.mascot_color(look.color)
+		changed = true
+	if look.has("style") and look.style != p.style:
+		p.style = look.style
+		changed = true
+	if changed:
+		player_updated.emit(_public_player(p))
+		_send_appearance_all()
+	else:
+		_send_appearance(p)
 
 
 func _attach(key: int, player: Dictionary) -> void:
@@ -278,6 +327,8 @@ func _attach(key: int, player: Dictionary) -> void:
 		"playerId": player.id,
 		"name": player.name,
 		"color": (player.color as Color).to_html(false),
+		"colorIndex": player.color_index,
+		"style": player.style,
 		"token": player.token,
 		"phase": current_phase,
 	}))
@@ -307,6 +358,7 @@ func _on_peer_closed(key: int) -> void:
 	if pid != 0 and _players.has(pid) and peer.ws.get_close_code() == 1000 and peer.ws.get_close_reason() == "bye":
 		_players.erase(pid)
 		player_left.emit(pid)
+		_send_appearance_all()
 		return
 	if pid != 0 and _players.has(pid) and _peer_key_for_player(pid) == 0:
 		var p: Dictionary = _players[pid]
@@ -321,6 +373,7 @@ func _expire_disconnected_players(now: int) -> void:
 		if not p.connected and p.disconnected_at >= 0 and now - p.disconnected_at > RECONNECT_GRACE_MS:
 			_players.erase(pid)
 			player_left.emit(pid)
+			_send_appearance_all()
 
 
 # --- Utilidades ---------------------------------------------------------------
@@ -331,6 +384,58 @@ func _rate_limited(peer: _Peer, now: int) -> bool:
 		peer.window_count = 0
 	peer.window_count += 1
 	return peer.window_count > INPUT_RATE_LIMIT_PER_SEC
+
+
+func _look_rate_limited(peer: _Peer, now: int) -> bool:
+	if now - peer.look_window_start >= 1000:
+		peer.look_window_start = now
+		peer.look_window_count = 0
+	peer.look_window_count += 1
+	return peer.look_window_count > LOOK_RATE_LIMIT_PER_SEC
+
+
+## ¿Otro jugador (distinto de except_id) ya usa ese color?
+func _color_taken(index: int, except_id: int) -> bool:
+	for p: Dictionary in _players.values():
+		if p.id != except_id and p.color_index == index:
+			return true
+	return false
+
+
+## Colores únicos: el pedido si está libre; si no, el del lugar (1P rojo…);
+## si tampoco, el primero libre de la paleta. Siempre hay uno (10 > 4).
+func _free_color(requested: int, except_id: int, slot: int) -> int:
+	for candidate in [requested, slot]:
+		if Protocol.parse_color_index(candidate) >= 0 and not _color_taken(candidate, except_id):
+			return candidate
+	for i in Protocol.MASCOT_COLORS.size():
+		if not _color_taken(i, except_id):
+			return i
+	return 0
+
+
+## Colores de los demás jugadores (para que el celular los muestre ocupados).
+func _taken_colors(except_id: int) -> Array[int]:
+	var out: Array[int] = []
+	for p: Dictionary in _players.values():
+		if p.id != except_id:
+			out.append(p.color_index)
+	out.sort()
+	return out
+
+
+## Confirma a un celular su apariencia y los colores ocupados.
+func _send_appearance(p: Dictionary) -> void:
+	send_to(p.id, Protocol.T_APPEARANCE, {
+		"color": p.color_index, "style": p.style, "taken": _taken_colors(p.id),
+	})
+
+
+## Avisa a todos: cambió quién usa qué color (alguien entró, salió o cambió).
+func _send_appearance_all() -> void:
+	for p: Dictionary in _players.values():
+		if p.connected:
+			_send_appearance(p)
 
 
 func _free_slot() -> int:
@@ -371,5 +476,7 @@ func _public_player(p: Dictionary) -> Dictionary:
 		"slot": p.slot,
 		"name": p.name,
 		"color": p.color,
+		"color_index": p.color_index,
+		"style": p.style,
 		"connected": p.connected,
 	}

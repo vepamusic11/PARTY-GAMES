@@ -42,11 +42,17 @@ const FLOOR := Color("#F4F6FB")
 const FLOOR_TILE := Color("#E1E6F1")
 const FIELD_TILE := Color("#E3E8F2")
 const LEAF := Color("#8BE36B")          ## Hojitas del brote de la mascota 4P.
+## Umbral de "color muy claro" y cuánto oscurecerlo (ver on_light).
+const LIGHT_COLOR_LUMINANCE := 0.8
+const LIGHT_COLOR_DARKEN := 0.4
 
 # --- Medidas ------------------------------------------------------------------
 const SAFE_MARGIN := 64      ## Margen contra el *overscan* (TVs que recortan bordes).
 const RADIUS := 28
 const FOCUS_WIDTH := 8.0
+## Botones táctiles del celular: más grandes que el mínimo cómodo (88 px),
+## porque se tocan mirando la TV.
+const TOUCH_TARGET := 128.0
 
 # Estilo reutilizado para dibujar rectángulos redondeados sin crear
 # objetos en cada frame (los minijuegos dibujan 60 veces por segundo).
@@ -196,6 +202,13 @@ static func place_color(place: int) -> Color:
 		2: return SILVER
 		3: return BRONZE
 	return PAPER_DIM
+
+
+## Color de jugador visible sobre superficies claras (pisos, papel). Los
+## muy claros (el blanco de la paleta) se oscurecen; el resto queda igual.
+## Ejemplo: en Pintar, una baldosa "blanca" sobre el piso claro no se vería.
+static func on_light(col: Color) -> Color:
+	return col.darkened(LIGHT_COLOR_DARKEN) if col.get_luminance() > LIGHT_COLOR_LUMINANCE else col
 
 
 static func rainbow(t: float) -> Color:

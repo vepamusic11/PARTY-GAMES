@@ -141,7 +141,7 @@ func _draw() -> void:
 		var side := Vector2(TABLE.end.x + 250, TABLE.position.y + 260 if top else TABLE.end.y - 90)
 		# Siguen la pelota con la mirada.
 		var look := (_ball - (side + Vector2(0, -80))).normalized()
-		PlayerAvatar.draw_mascot(self, side, 1.6, p.color, p.slot,
+		PlayerAvatar.draw_mascot(self, side, 1.6, p.color, PlayerAvatar.style_of(p),
 			PlayerAvatar.Mood.HAPPY if _score[pid] > _score[_other(pid)] else PlayerAvatar.Mood.NORMAL,
 			0.0, 0.0, false, {"t": anim_time + p.slot, "look": look})
 		draw_text_centered(p.name, side + Vector2(0, 40), 40, UiTheme.PAPER, 8)

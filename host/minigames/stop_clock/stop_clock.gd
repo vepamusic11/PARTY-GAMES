@@ -248,7 +248,7 @@ func _draw_player(p: Dictionary, feet: Vector2, score: int, best: int) -> void:
 		UiTheme.draw_text(self, "%+.2f s" % (stop_time(pid) - TARGET), pill.get_center(), 30, UiTheme.PAPER)
 
 	# La mascota va parada sobre su cajita (se dibuja después para quedar encima).
-	PlayerAvatar.draw_mascot(self, feet, MASCOT_SCALE, p.color, p.slot, mood, 0.0, hop, false,
+	PlayerAvatar.draw_mascot(self, feet, MASCOT_SCALE, p.color, PlayerAvatar.style_of(p), mood, 0.0, hop, false,
 		{"t": anim_time + p.slot, "look": Vector2(0, -1), "wave": mood == PlayerAvatar.Mood.HAPPY})
 	if mood == PlayerAvatar.Mood.HAPPY:
 		UiTheme.draw_star(self, feet + Vector2(62, -150), 26)

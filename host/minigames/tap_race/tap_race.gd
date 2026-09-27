@@ -90,7 +90,7 @@ func _draw() -> void:
 		var progress := float(_taps[p.id]) / TAPS_TO_WIN
 		var x := lerpf(TRACK_LEFT + 20.0, TRACK_RIGHT - 30.0, progress)
 		var hop := absf(sin(float(_taps[p.id]) * PI / 2.0)) * 6.0
-		PlayerAvatar.draw_mascot(self, Vector2(x, y + LANE_HEIGHT - 16), 1.3, p.color, p.slot,
+		PlayerAvatar.draw_mascot(self, Vector2(x, y + LANE_HEIGHT - 16), 1.3, p.color, PlayerAvatar.style_of(p),
 			PlayerAvatar.Mood.HAPPY if _taps[p.id] >= TAPS_TO_WIN else PlayerAvatar.Mood.NORMAL, 0.0, hop, false,
 			# Cada toque es medio paso: la mascota corre al ritmo del dedo.
 			{"t": anim_time + p.slot, "walk": _taps[p.id] * 0.5 if _taps[p.id] > 0 else -1.0,
