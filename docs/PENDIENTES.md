@@ -21,13 +21,9 @@ Estado al **27/09/2026** (rama `claude/laughing-ramanujan-tfi3ps`, [PR #1](https
 | **Decidir**: enlace definitivo del QR para unirse; pantalla de Créditos antes de publicar | Fase B/D | [RECURSOS.md](RECURSOS.md), [CREDITS.md](../CREDITS.md) |
 | **Conseguir un aparato de gama baja** (Chromecast con Google TV o TV box Android, ~30–40 USD) | Es la única forma de medir 60 fps reales y el 3D horneado en el chip de una TV barata | — |
 
-## 2. Trabajo en curso (agentes de Claude)
+## 2. Trabajo en curso
 
-Un agente quedó trabajando el 27/09 en copias aisladas (`.claude/worktrees/`). Si al retomar ya no están (el contenedor se recicla tras un rato sin uso), **se vuelven a lanzar con el mismo pedido**; lo ya integrado está a salvo en la rama.
-
-| Agente | Qué hace | Al terminar |
-|---|---|---|
-| **Estilos de música** | Estilo "Original" con los temas del dueño (por defecto) + Fiesta / Retro / Relajado (/ Latino) + "Sin música", elegibles en la pausa; muestras para escuchar en `scratchpad/musica_estilos/` | Mandar muestras al dueño, integrar el estilo elegido y los temas de Suno que falten |
+No quedó ningún agente trabajando: todo lo del 27/09 está integrado en la rama (mascotas y piezas 3D, APK de prueba, estilos de música).
 
 ## 3. Diseño (pedido: "3D como la maqueta o mejor")
 
@@ -45,6 +41,14 @@ Un agente quedó trabajando el 27/09 en copias aisladas (`.claude/worktrees/`). 
 - **Siguiente:** *Bombas de mascotas* (tipo Bomberman; estrena el joystick + A/B), *Tanquecitos* (tipo Battle City, 2 contra 2 cuidando la base), *Víboras*, *Come-come*.
 - Regla nueva: no todos los juegos necesitan la mascota entera; alcanza el color del jugador **con** etiqueta 1P–4P y patrón propio ("Cómo se ve cada jugador" en JUEGOS.md).
 - Máximo de jugadores: **4** (confirmado). Juegos por competencia: **sin límite** (confirmado).
+
+## 4b. Música (ver [ADR 0017](adr/0017-estilos-de-musica.md))
+
+- [ ] **El dueño elige** escuchando las muestras (Fiesta, Latino, Relajado, Retro, PARTY-GAME con *Breakpoint Rush*). Fiesta y Latino salen de un generador propio: aprobar o descartar al oírlos.
+- [ ] Tema del lobby del dueño: falta el MP3. Va en `assets/audio/music/original/lobby.ogg` (sumarlo a `SONGS` en `tools/audio/prepare_audio.py` con su punto de bucle). Los dos temas de "batallas" también faltan como archivo.
+- [ ] Selector de estilo también en el lobby (hoy solo en la pausa): `add_child(MusicStyleStepper.new())`.
+- [ ] En una TV lenta, generar Fiesta/Latino tarda ~10–20 s por pista: el lobby puede quedar en silencio la primera vez. Opciones en el ADR 0017 (guardar en disco).
+- [ ] Peso: música ~7,7 MB (presupuesto 8 MB); con el tema del lobby del dueño, ~10 MB.
 
 ## 5. Técnico y calidad
 
