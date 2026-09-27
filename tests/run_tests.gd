@@ -574,6 +574,24 @@ func test_seat_card_uses_player_look() -> void:
 	await process_frame
 
 
+## Contraste WCAG: (L1 + 0,05) / (L2 + 0,05) con luminancia relativa (lineal).
+func _contrast(a: Color, b: Color) -> float:
+	var la := a.srgb_to_linear().get_luminance()
+	var lb := b.srgb_to_linear().get_luminance()
+	return (maxf(la, lb) + 0.05) / (minf(la, lb) + 0.05)
+
+
+func test_text_on_contrast() -> void:
+	# Nombres sobre el color del jugador (Carrera, Reloj exacto): texto grande,
+	# mínimo 3:1 (WCAG AA para texto grande) con cualquier color de la paleta.
+	var worst := 99.0
+	for c: Color in Protocol.MASCOT_COLORS:
+		worst = minf(worst, _contrast(c, UiTheme.text_on(c)))
+	check(worst >= 3.0, "text_on da contraste ≥ 3:1 en toda la paleta (peor: %.2f)" % worst)
+	check(UiTheme.text_on(Color.WHITE) == UiTheme.INK and UiTheme.text_on(Color.BLACK) == UiTheme.PAPER,
+		"tinta sobre blanco y blanco sobre negro")
+
+
 func test_splash_screen() -> void:
 	var splash := SplashScreen.new()
 	root.add_child(splash)

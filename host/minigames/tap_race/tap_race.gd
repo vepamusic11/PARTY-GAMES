@@ -98,7 +98,7 @@ func _draw() -> void:
 		var tag := Rect2(24, y + LANE_HEIGHT / 2.0 - 30, lanes.position.x - 60, 60)
 		UiTheme.draw_round_rect(self, tag.grow(3), UiTheme.INK, 30)
 		UiTheme.draw_round_rect(self, tag, p.color, 28)
-		UiTheme.draw_text_left(self, p.name, Vector2(tag.position.x + 18, tag.get_center().y), 28, UiTheme.PAPER, tag.size.x - 30)
+		UiTheme.draw_text_left(self, p.name, Vector2(tag.position.x + 18, tag.get_center().y), 28, UiTheme.text_on(p.color), tag.size.x - 30)
 	var center := "Meta: %d" % TAPS_TO_WIN
 	draw_hud(_taps, center)
 	if _countdown > 0.0:

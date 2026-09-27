@@ -267,6 +267,11 @@ func _draw() -> void:
 		if b.t >= b.fall:
 			var fade := clampf(1.0 - (b.t - b.fall - LINGER_SEC) / FADE_SEC, 0.0, 1.0)
 			_draw_block(self, _ground_rect(b), b.color, fade)
+	# Nombres de los eliminados a opacidad completa: la mascota va translúcida
+	# (capa _ghosts), pero el nombre tiene que seguir leyéndose.
+	for p in players:
+		if _out_time.has(p.id):
+			draw_text_centered(p.name, (_pos[p.id] as Vector2) + Vector2(0, NAME_OFFSET), 26, UiTheme.PAPER, 6)
 	# Mascotas en pie: de arriba hacia abajo (la de más abajo queda adelante).
 	var order := players.filter(func(p: Dictionary) -> bool: return not _out_time.has(p.id))
 	order.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return (_pos[a.id] as Vector2).y < (_pos[b.id] as Vector2).y)
@@ -302,7 +307,6 @@ func _draw_ghosts() -> void:
 			continue
 		var feet: Vector2 = _pos[p.id]
 		PlayerAvatar.draw_mascot(_ghost_drawer, feet, MASCOT_SCALE, p.color, PlayerAvatar.style_of(p), PlayerAvatar.Mood.SAD)
-		UiTheme.draw_text(_ghost_drawer, p.name, feet + Vector2(0, NAME_OFFSET), 26, UiTheme.PAPER, 6, UiTheme.INK)
 
 
 ## Bloques en el aire, en coordenadas de pantalla (la capa está corrida).

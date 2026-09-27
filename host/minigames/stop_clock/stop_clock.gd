@@ -239,7 +239,7 @@ func _draw_player(p: Dictionary, feet: Vector2, score: int, best: int) -> void:
 	UiTheme.draw_round_rect(self, tag_rect, UiTheme.INK, 14)
 	UiTheme.draw_text(self, tag, tag_rect.get_center(), 28, UiTheme.PAPER)
 	var name_x := tag_rect.end.x + 14
-	UiTheme.draw_text_left(self, p.name, Vector2(name_x, line_y), 32, UiTheme.INK, box.end.x - 20 - name_x)
+	UiTheme.draw_text_left(self, p.name, Vector2(name_x, line_y), 32, UiTheme.text_on(p.color), box.end.x - 20 - name_x)
 
 	# Al revelar: cuánto se pasó o le faltó.
 	if is_revealing():

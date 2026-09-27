@@ -45,6 +45,8 @@ const LEAF := Color("#8BE36B")          ## Hojitas del brote de la mascota 4P.
 ## Umbral de "color muy claro" y cuánto oscurecerlo (ver on_light).
 const LIGHT_COLOR_LUMINANCE := 0.8
 const LIGHT_COLOR_DARKEN := 0.4
+## Desde qué luminancia un fondo es "claro" y lleva texto en tinta (text_on).
+const TEXT_ON_LIGHT_LUMINANCE := 0.55
 
 # --- Medidas ------------------------------------------------------------------
 const SAFE_MARGIN := 64      ## Margen contra el *overscan* (TVs que recortan bordes).
@@ -207,6 +209,13 @@ static func place_color(place: int) -> Color:
 ## Color de jugador visible sobre superficies claras (pisos, papel). Los
 ## muy claros (el blanco de la paleta) se oscurecen; el resto queda igual.
 ## Ejemplo: en Pintar, una baldosa "blanca" sobre el piso claro no se vería.
+## Color de texto legible sobre un fondo cualquiera: tinta sobre fondos
+## claros y blanco sobre oscuros. Ejemplo: el nombre de un jugador que eligió
+## blanco va en tinta; el de uno que eligió negro, en blanco.
+static func text_on(bg: Color) -> Color:
+	return INK if bg.get_luminance() > TEXT_ON_LIGHT_LUMINANCE else PAPER
+
+
 static func on_light(col: Color) -> Color:
 	return col.darkened(LIGHT_COLOR_DARKEN) if col.get_luminance() > LIGHT_COLOR_LUMINANCE else col
 
@@ -486,7 +495,9 @@ static func draw_hex_chip(ci: CanvasItem, rect: Rect2, tag: String, tag_color: C
 		]), Color(CHIP_DARK, alpha))
 		batch.flush(ci)
 		var fs := int(h * 0.6)
-		draw_text(ci, tag, Vector2((x0 + k * 0.6 + xt) / 2.0, ym), fs, Color(PAPER, alpha), maxi(4, fs / 6), Color(INK, alpha))
+		var tag_text := text_on(tag_color)
+		var tag_outline := INK if tag_text == PAPER else PAPER
+		draw_text(ci, tag, Vector2((x0 + k * 0.6 + xt) / 2.0, ym), fs, Color(tag_text, alpha), maxi(4, fs / 6), Color(tag_outline, alpha))
 		var font := FONT_BOLD
 		var tw := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
 		var right := x1 - k * 0.9
