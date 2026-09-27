@@ -1,13 +1,19 @@
 class_name ControllerMain
 extends Control
 ## Pantalla del celular. Tres estados:
-##   JOIN    -> elegir TV (descubierta o IP manual), apodo y código de sala
-##   WAIT    -> unido; esperando que la TV arranque un juego. En el lobby
-##              muestra el selector de mascota (color y estilo, LookPicker).
+##   JOIN    -> elegir TV (tarjetas de las descubiertas o IP manual), apodo
+##              y código de sala (en fichas de colores, como en la TV)
+##   WAIT    -> unido; esperando que la TV arranque un juego. Tarjeta con la
+##              mascota grande, la etiqueta 1P–4P y el apodo. En el lobby
+##              muestra al lado el selector de mascota (LookPicker).
 ##              Durante el resumen de ronda y el podio muestra además el
 ##              resultado propio (puesto, puntos y total) que manda la TV
-##              con "standing".
+##              con "standing", con medalla, rayos y papelitos.
 ##   PLAY    -> muestra el control que pidió la TV (joystick, slider o botón)
+##
+## Look "de consola": botones y perillas con bisel, brillo y sombra
+## (UiTheme.draw_toy_key / draw_toy_disc) que se aplastan al tocarlos.
+## Los cambios de estado entran con transiciones cortas (≤ 0,3 s).
 
 const SEND_RATE_HZ := 30.0
 const KEEPALIVE_SEC := 0.25   ## Reenvía el estado aunque no cambie (por si se perdió).
@@ -21,6 +27,9 @@ const STANDING_FINAL_SIZE := 92    ## "¡Terminaste 1°!": más largo.
 ## 30 y no menos: la mascota de espera saluda con los brazos y a menos fps
 ## el saludo se vería a saltos.
 const IDLE_ANIM_FPS := 30.0
+const FADE_SEC := 0.25            ## Transición entre pantallas.
+const LATENCY_OK_MS := 120        ## Hasta acá la señal se ve verde…
+const LATENCY_SLOW_MS := 250      ## …hasta acá naranja; más, roja.
 
 var client := ControllerClient.new()
 var discovery := DiscoveryListener.new()
@@ -33,22 +42,33 @@ var _hosts_box: VBoxContainer
 var _name_edit: LineEdit
 var _code_edit: LineEdit
 var _ip_edit: LineEdit
+var _join_mascot: PlayerAvatar
+var _join_status_panel: PanelContainer
+var _join_status_badge: GlyphBadge
 var _join_status: Label
+var _discovery_failed := false
 
 var _play_screen: Control
 var _header: Label
 var _header_avatar: PlayerAvatar
+var _header_tag: _Tag
 var _wait_view: Control
+var _player_card: PlayerCard
 var _wait_avatar: PlayerAvatar
 var _wait_sub: Label
 var _standing_panel: PanelContainer
+var _standing_bg: _StandingBg
 var _standing_round: Label
+var _standing_cheer: Label
 var _standing_medal: _Medal
 var _standing_main: Label
 var _standing_total: Label
+var _confetti: ConfettiBurst
 var _look_picker: LookPicker
 var _phase := Protocol.PHASE_LOBBY
 var _latency: Label
+var _latency_icon: GlyphBadge
+var _latency_level := -1
 var _layout_host: Control
 var _active_layout: Control
 var _selected_host: Dictionary = {}
@@ -69,9 +89,9 @@ func _ready() -> void:
 	add_child(discovery)
 	client.joined.connect(_on_joined)
 	client.rejected.connect(_on_rejected)
-	client.connection_lost.connect(func() -> void: _header.text = "Reconectando…")
+	client.connection_lost.connect(_on_connection_lost)
 	client.reconnected.connect(func() -> void: _update_header())
-	client.gave_up.connect(func() -> void: _show_join("Se perdió la conexión con la TV."))
+	client.gave_up.connect(func() -> void: _show_join("Se cortó la conexión con la TV. Volvé a unirte cuando quieras."))
 	client.layout_changed.connect(_on_layout_changed)
 	client.phase_changed.connect(_on_phase_changed)
 	client.standing_received.connect(_show_standing)
@@ -79,8 +99,8 @@ func _ready() -> void:
 	client.appearance_changed.connect(_on_appearance_changed)
 	discovery.hosts_changed.connect(_on_hosts_changed)
 	_build_ui()
-	if discovery.start() != OK:
-		_join_status.text = "No se pudo buscar TVs automáticamente. Ingresá la IP."
+	_discovery_failed = discovery.start() != OK
+	_on_hosts_changed(discovery.get_hosts())
 	_show_join("")
 
 
@@ -92,6 +112,7 @@ func _exit_tree() -> void:
 func _process(delta: float) -> void:
 	if client.rtt_ms >= 0:
 		_latency.text = "%d ms" % roundi(client.rtt_ms)
+		_update_latency_icon(roundi(client.rtt_ms))
 	_send_elapsed += delta
 	_since_last_send += delta
 	if _send_elapsed < 1.0 / SEND_RATE_HZ or _active_layout == null:
@@ -113,6 +134,17 @@ func _process(delta: float) -> void:
 		_since_last_send = 0.0
 
 
+## Señal de color según la latencia (verde, naranja, roja). Solo cambia el
+## ícono cuando cambia de franja: no se redibuja en cada frame.
+func _update_latency_icon(ms: int) -> void:
+	var level := 0 if ms <= LATENCY_OK_MS else (1 if ms <= LATENCY_SLOW_MS else 2)
+	if level == _latency_level:
+		return
+	_latency_level = level
+	_latency_icon.fg = [UiTheme.SUCCESS, UiTheme.WARNING, UiTheme.DANGER][level]
+	_latency_icon.queue_redraw()
+
+
 # --- Eventos de red -------------------------------------------------------------
 
 func _on_joined(info: Dictionary) -> void:
@@ -121,19 +153,25 @@ func _on_joined(info: Dictionary) -> void:
 	_save_name(info.name)
 	_join_screen.visible = false
 	_play_screen.visible = true
+	_fade_in(_play_screen, Vector2(0, 40))
 	_update_header()
 
 
 func _on_rejected(reason: String) -> void:
 	var messages := {
-		Protocol.R_BAD_ROOM: "Código incorrecto. Mirá el código en la TV.",
-		Protocol.R_ROOM_FULL: "La sala está llena. Pedile a quien tiene el control de la TV que sume un lugar.",
-		Protocol.R_GAME_IN_PROGRESS: "Hay una partida en curso. Esperá a que termine.",
-		Protocol.R_BAD_NAME: "Elegí un apodo válido.",
-		Protocol.R_BAD_VERSION: "Versión distinta a la de la TV. Actualizá ambas apps.",
-		"unreachable": "No se pudo conectar con la TV. ¿Están en la misma Wi-Fi?",
+		Protocol.R_BAD_ROOM: "Ese código no es el de la TV. Fijate las 4 fichas de colores en la pantalla.",
+		Protocol.R_ROOM_FULL: "¡La sala está llena! Pedile a quien tiene el control de la TV que sume un lugar.",
+		Protocol.R_GAME_IN_PROGRESS: "Están en medio de una partida. Esperá a que termine y volvé a probar.",
+		Protocol.R_BAD_NAME: "Ese apodo no se puede usar. Probá con otro.",
+		Protocol.R_BAD_VERSION: "Esta app y la de la TV son de versiones distintas. Actualizá las dos.",
+		"unreachable": "No encontramos la TV. ¿Están los dos en la misma Wi-Fi?",
 	}
-	_show_join(messages.get(reason, "No se pudo unir (%s)." % reason))
+	_show_join(messages.get(reason, "No se pudo unir (%s). Probá de nuevo." % reason))
+
+
+func _on_connection_lost() -> void:
+	_header.text = "Reconectando…"
+	_player_card.set_status("Reconectando…", UiTheme.WARNING)
 
 
 func _on_layout_changed(layout: String, data: Dictionary) -> void:
@@ -155,7 +193,10 @@ func _on_layout_changed(layout: String, data: Dictionary) -> void:
 			b.color = color
 			b.label = str(data.get("label", "A")).left(12)
 			_active_layout = b
+	var was_waiting := _wait_view.visible
 	_wait_view.visible = _active_layout == null
+	if _wait_view.visible and not was_waiting:
+		_fade_in(_wait_view, Vector2(0, 30))
 	if layout != Protocol.LAYOUT_WAIT:
 		_clear_standing()  # Empieza un juego nuevo: el resultado anterior ya no aplica.
 		Sfx.play("select")
@@ -164,6 +205,13 @@ func _on_layout_changed(layout: String, data: Dictionary) -> void:
 		_active_layout.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		_active_layout.mouse_filter = Control.MOUSE_FILTER_STOP
 		_layout_host.add_child(_active_layout)
+		# Entra con un "pop" corto. Solo visual: recibe toques desde el primer frame.
+		_active_layout.pivot_offset = _layout_host.size / 2.0
+		_active_layout.scale = Vector2.ONE * 0.92
+		_active_layout.modulate.a = 0.0
+		var tw := _active_layout.create_tween().set_parallel()
+		tw.tween_property(_active_layout, "scale", Vector2.ONE, FADE_SEC).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		tw.tween_property(_active_layout, "modulate:a", 1.0, FADE_SEC * 0.6)
 	_last_sent_btn = -1
 	_update_power_mode()
 	_update_picker()
@@ -177,7 +225,7 @@ func _update_power_mode() -> void:
 	var idle := _active_layout == null
 	var fps := IDLE_ANIM_FPS if idle else 0.0
 	_background.anim_fps = fps
-	for avatar: PlayerAvatar in [_header_avatar, _wait_avatar]:
+	for avatar: PlayerAvatar in [_header_avatar, _wait_avatar, _join_mascot]:
 		avatar.anim_fps = fps
 	var owns_window := is_inside_tree() and get_viewport() == get_tree().root
 	if owns_window and idle != _power_saving:
@@ -206,9 +254,13 @@ func _on_look_picked(color_index: int, style: int) -> void:
 	Sfx.play("select")
 	Haptics.buzz("tap")
 	_save_look(color_index, style)
+	var color := Protocol.mascot_color(color_index)
 	for avatar: PlayerAvatar in [_header_avatar, _wait_avatar]:
-		avatar.color = Protocol.mascot_color(color_index)
+		avatar.color = color
 		avatar.style = style
+	_player_card.set_player(_player_card.slot, color, client.player_info.get("name", ""))
+	_header_tag.color = color
+	_header_tag.queue_redraw()
 	_wait_avatar.hop(1)
 	client.send_look(color_index, style)
 
@@ -221,15 +273,14 @@ func _update_picker() -> void:
 	var info := client.player_info
 	var supported := int(info.get("color_index", -1)) >= 0 and int(info.get("style", -1)) >= 0
 	var shown := supported and _phase == Protocol.PHASE_LOBBY and _active_layout == null and not _standing_panel.visible
+	if shown and not _look_picker.visible:
+		_fade_in(_look_picker, Vector2(40, 0))
 	_look_picker.visible = shown
 	_wait_sub.text = "Elegí tu mascota mientras la TV arranca" if shown else "El juego empieza cuando la TV lo elija"
 	if supported:
 		_look_picker.set_look(info.color_index, info.style, info.get("taken", []))
 
 
-## Resultado propio (ya validado por Protocol.parse_standing). En el
-## resumen de ronda: medalla con el puesto, "+70" y "Total 170 · vas 2°".
-## En el podio: "¡Terminaste 1°!" y el total.
 ## La TV pide vibrar/sonar por algo que le pasó a este jugador en el juego.
 ## El tipo ya viene validado (Protocol.parse_feedback).
 func _on_feedback(kind: String) -> void:
@@ -237,6 +288,10 @@ func _on_feedback(kind: String) -> void:
 	Sfx.play(kind)
 
 
+## Resultado propio (ya validado por Protocol.parse_standing). En el
+## resumen de ronda: medalla con el puesto, "+70" y "Total 170 · vas 2°".
+## En el podio: "¡Terminaste 1°!" y el total. Festejo acorde al puesto
+## (frase, rayos detrás de la medalla y papelitos si quedó en el podio).
 func _show_standing(data: Dictionary) -> void:
 	var celebrate := int(data.place) == 1 or (bool(data.final) and int(data.rank) == 1)
 	Sfx.play("win" if celebrate else "pop")
@@ -246,10 +301,14 @@ func _show_standing(data: Dictionary) -> void:
 	var place: int = data.place
 	var medal_place := rank if is_final else place
 	_standing_round.text = "Resultado final" if is_final else "Ronda %d/%d" % [data.round, data.total_rounds]
+	_standing_cheer.text = _cheer_text(is_final, medal_place)
 	_standing_medal.place = medal_place
 	_standing_medal.visible = medal_place > 0
 	_standing_medal.queue_redraw()
+	_standing_bg.place = medal_place
+	_standing_bg.queue_redraw()
 	_set_headline_size(_standing_main, STANDING_FINAL_SIZE if is_final else STANDING_POINTS_SIZE)
+	_standing_main.add_theme_color_override("font_color", UiTheme.GOLD if medal_place == 1 else UiTheme.ACCENT)
 	if is_final:
 		_standing_main.text = "¡Terminaste %s!" % UiTheme.place_text(rank)
 		_standing_total.text = "%d pts" % data.total
@@ -262,10 +321,26 @@ func _show_standing(data: Dictionary) -> void:
 	_wait_sub.visible = false
 	if not _standing_panel.visible:
 		_standing_panel.visible = true
-		_standing_panel.modulate.a = 0.0
-		create_tween().tween_property(_standing_panel, "modulate:a", 1.0, 0.3)
+		_fade_in(_standing_panel, Vector2(60, 0))
+	_standing_medal.pop()
 	if medal_place == 1:
 		_wait_avatar.hop()
+	if medal_place >= 1 and medal_place <= 3:
+		_confetti.burst(70 if medal_place == 1 else 36)
+
+
+static func _cheer_text(is_final: bool, place: int) -> String:
+	if is_final:
+		match place:
+			1: return "¡Ganaste la competencia!"
+			2, 3: return "¡Llegaste al podio!"
+		return "¡Gracias por jugar!"
+	match place:
+		0: return "Esta ronda no jugaste"
+		1: return "¡Ganaste la ronda!"
+		2: return "¡Casi, casi!"
+		3: return "¡Bien ahí!"
+	return "¡La próxima es tuya!"
 
 
 ## Cambia el tamaño de un UiTheme.headline manteniendo su contorno proporcional.
@@ -281,6 +356,7 @@ func _clear_standing() -> void:
 		return
 	_standing_panel.visible = false
 	_wait_sub.visible = true
+	_confetti.stop()
 	_update_picker()
 
 
@@ -288,20 +364,23 @@ func _on_hosts_changed(hosts: Array[Dictionary]) -> void:
 	for c in _hosts_box.get_children():
 		c.queue_free()
 	if hosts.is_empty():
-		_hosts_box.add_child(_label("Buscando TVs en tu Wi-Fi…", 32, UiTheme.INK_SOFT))
+		var empty := _EmptyHosts.new()
+		empty.failed = _discovery_failed
+		_hosts_box.add_child(empty)
 		return
+	# Una sola TV y nada elegido todavía: se elige sola (un toque menos).
+	if hosts.size() == 1 and _selected_host.is_empty() and _ip_edit.text.strip_edges().is_empty():
+		_selected_host = hosts[0]
+		_ip_edit.text = hosts[0].ip
 	for h in hosts:
-		var b := Button.new()
-		b.text = "%s  (%s)" % [h.name, h.ip]
-		b.toggle_mode = true
-		b.button_pressed = _selected_host.get("ip") == h.ip
-		b.custom_minimum_size = Vector2(0, 104)
-		b.add_theme_font_size_override("font_size", 36)
-		b.pressed.connect(func() -> void:
+		var card := HostCard.new(h.name, "%s · puerto %d" % [h.ip, h.port], _selected_host.get("ip") == h.ip)
+		card.pressed.connect(func() -> void:
+			Sfx.play("select")
+			Haptics.buzz("tap")
 			_selected_host = h
 			_ip_edit.text = h.ip
 			_on_hosts_changed(discovery.get_hosts()))
-		_hosts_box.add_child(b)
+		_hosts_box.add_child(card)
 
 
 # --- Acciones -------------------------------------------------------------------
@@ -311,16 +390,16 @@ func _on_join_pressed() -> void:
 	var code := Protocol.normalize_room_code(_code_edit.text)
 	var ip := _ip_edit.text.strip_edges()
 	if player_name.is_empty():
-		_join_status.text = "Escribí tu apodo."
+		_set_join_status("Contanos cómo te llamás: escribí tu apodo.", true)
 		return
 	if not Protocol.is_valid_room_code(code):
-		_join_status.text = "El código tiene 4 letras/números, como aparece en la TV."
+		_set_join_status("El código son 4 letras o números: copialo de las fichas de la TV.", true)
 		return
 	if not ip.is_valid_ip_address():
-		_join_status.text = "Elegí una TV de la lista o escribí su IP."
+		_set_join_status("Tocá tu TV en la lista, o escribí la dirección que muestra la TV.", true)
 		return
 	var port := int(_selected_host.get("port", Protocol.WS_PORT)) if _selected_host.get("ip") == ip else Protocol.WS_PORT
-	_join_status.text = "Conectando…"
+	_set_join_status("Conectando con la TV…", false)
 	client.join(ip, port, code, player_name, _load_look())
 
 
@@ -333,22 +412,65 @@ func _show_join(message: String) -> void:
 	if is_instance_valid(_active_layout):
 		_active_layout.queue_free()
 	_active_layout = null
+	_wait_view.visible = true
 	_clear_standing()
+	var was_hidden := not _join_screen.visible
 	_play_screen.visible = false
 	_join_screen.visible = true
-	_join_status.text = message
+	if was_hidden:
+		_fade_in(_join_screen, Vector2(0, 40))
+	_set_join_status(message, true)
 	_update_power_mode()
+
+
+## Aviso debajo del botón "Unirme": amable y con ícono. Error: fondo cálido
+## y "!"; información ("Conectando…"): fondo celeste y Wi-Fi. Vacío: oculto.
+func _set_join_status(message: String, is_error: bool) -> void:
+	_join_status.text = message
+	_join_status_panel.visible = not message.is_empty()
+	var style := _join_status_panel.get_theme_stylebox("panel") as StyleBoxFlat
+	style.bg_color = UiTheme.PHONE_ERROR_BG if is_error else UiTheme.PHONE_INFO_BG
+	style.border_color = UiTheme.WARNING if is_error else UiTheme.BRICKS[5]
+	_join_status_badge.bg = UiTheme.WARNING if is_error else UiTheme.BRICKS[5]
+	_join_status_badge.text = "!" if is_error else ""
+	_join_status_badge.glyph = "" if is_error else "wifi"
+	_join_status_badge.queue_redraw()
+	if is_error and not message.is_empty() and _join_screen.visible:
+		# Sacudida corta: se nota que algo falta sin asustar.
+		var x := _join_status_panel.position.x
+		var tw := _join_status_panel.create_tween()
+		for dx: float in [14.0, -10.0, 6.0, 0.0]:
+			tw.tween_property(_join_status_panel, "position:x", x + dx, 0.05)
 
 
 func _update_header() -> void:
 	var info := client.player_info
 	var slot := int(info.get("id", 1)) - 1
 	var color: Color = info.get("color", Color.WHITE)
-	_header.text = "%s · %s" % [UiTheme.player_tag(slot), info.get("name", "")]
+	_header.text = str(info.get("name", ""))
+	_header_tag.slot = slot
+	_header_tag.color = color
+	_header_tag.queue_redraw()
 	for avatar in [_header_avatar, _wait_avatar]:
 		avatar.slot = slot
 		avatar.style = int(info.get("style", -1))  # -1 (TV vieja): el del lugar.
 		avatar.color = color
+	_player_card.set_player(slot, color, str(info.get("name", "")))
+	_player_card.set_status("¡Listo para jugar!")
+
+
+## Transición de entrada: aparece y se desliza desde `from` (≤ 0,3 s).
+## Solo visual: la pantalla ya recibe toques.
+func _fade_in(node: Control, from: Vector2 = Vector2.ZERO) -> void:
+	if not node.is_inside_tree():
+		return
+	node.modulate.a = 0.0
+	var tw := node.create_tween().set_parallel()
+	tw.tween_property(node, "modulate:a", 1.0, FADE_SEC)
+	if from != Vector2.ZERO and node.get_parent() is not Container:
+		var target := node.position
+		node.position = target + from
+		tw.tween_property(node, "position", target, FADE_SEC).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 
 
 # --- UI -------------------------------------------------------------------------
@@ -359,117 +481,186 @@ func _build_ui() -> void:
 	_background.towers = false
 	_background.checker_floor = false
 	add_child(_background)
+	_build_join_screen()
+	_build_play_screen()
+	_confetti = ConfettiBurst.new()
+	add_child(_confetti)
 
-	# Pantalla para unirse: una tarjeta centrada, legible en celular apaisado.
+
+## Pantalla para unirse, en dos columnas (celular apaisado):
+##   izquierda: logo + mascota que saluda y el paso 1 (TVs encontradas)
+##   derecha:   pasos 2 y 3 (apodo y código en fichas) y "Unirme"
+func _build_join_screen() -> void:
 	var margin := MarginContainer.new()
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	for side in ["left", "right", "top", "bottom"]:
-		margin.add_theme_constant_override("margin_" + side, 40)
+		margin.add_theme_constant_override("margin_" + side, UiTheme.PHONE_MARGIN)
 	add_child(margin)
 	_join_screen = margin
-	var card := PanelContainer.new()
-	card.custom_minimum_size = Vector2(1100, 0)
-	card.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	margin.add_child(card)
+	var cols := HBoxContainer.new()
+	cols.add_theme_constant_override("separation", UiTheme.PHONE_MARGIN)
+	margin.add_child(cols)
+
+	# Columna izquierda
+	var left := VBoxContainer.new()
+	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	left.size_flags_stretch_ratio = 0.85
+	left.add_theme_constant_override("separation", 12)
+	cols.add_child(left)
+	var brand := HBoxContainer.new()
+	brand.custom_minimum_size = Vector2(0, 250)
+	brand.add_theme_constant_override("separation", 0)
+	left.add_child(brand)
+	_join_mascot = PlayerAvatar.new()
+	_join_mascot.mood = PlayerAvatar.Mood.HAPPY
+	_join_mascot.custom_minimum_size = Vector2(190, 0)
+	var look := _load_look()
+	_join_mascot.color = Protocol.mascot_color(int(look.get("color", 0)))
+	_join_mascot.style = int(look.get("style", -1))
+	brand.add_child(_join_mascot)
+	var logo := UiTheme.logo_rect()
+	logo.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	brand.add_child(logo)
+	var tv_panel := _panel()
+	tv_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	left.add_child(tv_panel)
+	var tv_col := VBoxContainer.new()
+	tv_col.add_theme_constant_override("separation", 18)
+	tv_panel.add_child(tv_col)
+	tv_col.add_child(_step(1, "Elegí tu TV"))
 	var scroll := ScrollContainer.new()
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	card.add_child(scroll)
-	var col := VBoxContainer.new()
-	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	col.add_theme_constant_override("separation", 20)
-	scroll.add_child(col)
-
-	var logo := UiTheme.logo_rect()
-	logo.custom_minimum_size = Vector2(0, 150)
-	col.add_child(logo)
-	col.add_child(_section("1. Elegí la TV"))
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	tv_col.add_child(scroll)
 	_hosts_box = VBoxContainer.new()
-	_hosts_box.add_theme_constant_override("separation", 12)
-	col.add_child(_hosts_box)
-	_on_hosts_changed([])
-	_ip_edit = _line_edit("…o escribí la IP que muestra la TV", 15)
-	col.add_child(_ip_edit)
+	_hosts_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_hosts_box.add_theme_constant_override("separation", 16)
+	scroll.add_child(_hosts_box)
+	tv_col.add_child(UiTheme.label("¿No aparece? Escribí la dirección que muestra la TV:", 28, UiTheme.INK_SOFT, true,
+		HORIZONTAL_ALIGNMENT_LEFT))
+	_ip_edit = IconField.new("wifi", "Ej.: 192.168.0.10", 15)
+	tv_col.add_child(_ip_edit)
 
-	col.add_child(_section("2. Tu apodo"))
-	_name_edit = _line_edit("Apodo", Protocol.NAME_MAX_LENGTH)
+	# Columna derecha
+	var right := _panel()
+	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	cols.add_child(right)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 18)
+	right.add_child(col)
+	col.add_child(_step(2, "Tu apodo"))
+	_name_edit = IconField.new("person", "¿Cómo te llamás?", Protocol.NAME_MAX_LENGTH)
 	_name_edit.text = _load_name()
 	col.add_child(_name_edit)
-
-	col.add_child(_section("3. Código de la TV"))
-	_code_edit = _line_edit("ABCD", Protocol.ROOM_CODE_LENGTH)
-	_code_edit.text_changed.connect(func(t: String) -> void:
-		var caret := _code_edit.caret_column
-		_code_edit.text = t.to_upper()
-		_code_edit.caret_column = caret)
+	col.add_child(_spacer())
+	col.add_child(_step(3, "Código de la TV"))
+	_code_edit = CodeEntry.new()
 	col.add_child(_code_edit)
-
-	var join := Button.new()
-	join.text = "Unirme"
-	join.custom_minimum_size = Vector2(0, 120)
-	join.add_theme_font_size_override("font_size", 46)
-	join.add_theme_stylebox_override("normal", UiTheme.button_style(UiTheme.ACCENT))
-	join.add_theme_stylebox_override("hover", UiTheme.button_style(UiTheme.ACCENT.lightened(0.1)))
-	join.add_theme_stylebox_override("pressed", UiTheme.button_style(UiTheme.ACCENT, true))
+	col.add_child(UiTheme.label("Lo ves en la TV, en fichas de colores como estas.", 28, UiTheme.INK_SOFT, true))
+	col.add_child(_spacer())
+	_join_status_panel = PanelContainer.new()
+	var status_style := UiTheme.panel_style(UiTheme.PHONE_ERROR_BG, UiTheme.RADIUS, 14)
+	status_style.shadow_size = 0
+	status_style.set_border_width_all(3)
+	_join_status_panel.add_theme_stylebox_override("panel", status_style)
+	col.add_child(_join_status_panel)
+	var status_row := HBoxContainer.new()
+	status_row.add_theme_constant_override("separation", 16)
+	_join_status_panel.add_child(status_row)
+	_join_status_badge = GlyphBadge.new("", UiTheme.WARNING, UiTheme.PAPER, 60, "!")
+	status_row.add_child(_join_status_badge)
+	_join_status = UiTheme.label("", 32, UiTheme.INK, true, HORIZONTAL_ALIGNMENT_LEFT)
+	_join_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_join_status.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	status_row.add_child(_join_status)
+	var join := ToyButton.new("¡Unirme!", "play", UiTheme.ACCENT, 56)
+	join.custom_minimum_size = Vector2(0, 150)
 	join.pressed.connect(_on_join_pressed)
 	col.add_child(join)
-	_join_status = _label("", 30, UiTheme.DANGER)
-	_join_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	col.add_child(_join_status)
 
-	# Pantalla de juego
+
+func _build_play_screen() -> void:
 	_play_screen = VBoxContainer.new()
 	_play_screen.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(_play_screen)
 	var top_margin := MarginContainer.new()
 	for side in ["left", "right", "top"]:
-		top_margin.add_theme_constant_override("margin_" + side, 24)
+		top_margin.add_theme_constant_override("margin_" + side, UiTheme.PHONE_MARGIN)
 	_play_screen.add_child(top_margin)
 	var top := HBoxContainer.new()
-	top.custom_minimum_size = Vector2(0, 100)
-	top.add_theme_constant_override("separation", 16)
+	top.custom_minimum_size = Vector2(0, UiTheme.PHONE_BAR_HEIGHT)
+	top.add_theme_constant_override("separation", 18)
 	top_margin.add_child(top)
-	var leave := Button.new()
-	leave.text = "Salir"
-	leave.custom_minimum_size = Vector2(170, 0)
-	leave.add_theme_font_size_override("font_size", 30)
+	var leave := ToyButton.new("Salir", "exit", UiTheme.PAPER, 32)
+	leave.custom_minimum_size = Vector2(200, 0)
 	leave.pressed.connect(_on_leave_pressed)
 	top.add_child(leave)
+	# Quién soy: mascota, etiqueta 1P–4P y apodo en una píldora.
+	var me := PanelContainer.new()
+	var me_style := UiTheme.panel_style(UiTheme.PAPER, int(UiTheme.PHONE_BAR_HEIGHT / 2.0), 6)
+	me_style.content_margin_right = 36
+	me.add_theme_stylebox_override("panel", me_style)
+	me.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	top.add_child(me)
+	var me_row := HBoxContainer.new()
+	me_row.add_theme_constant_override("separation", 14)
+	me.add_child(me_row)
 	_header_avatar = PlayerAvatar.new()
-	_header_avatar.custom_minimum_size = Vector2(90, 100)
-	top.add_child(_header_avatar)
-	_header = UiTheme.headline("", 44)
-	_header.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	_header.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	top.add_child(_header)
-	_latency = UiTheme.label("", 28, UiTheme.INK_SOFT, true)
-	_latency.custom_minimum_size = Vector2(160, 0)
-	top.add_child(_latency)
-	top.add_child(_toggle_button(func() -> String: return "Sonido: " + ("No" if Sfx.muted else "Sí"),
+	_header_avatar.custom_minimum_size = Vector2(76, 92)
+	me_row.add_child(_header_avatar)
+	_header_tag = _Tag.new()
+	_header_tag.custom_minimum_size = Vector2(92, 60)
+	_header_tag.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	me_row.add_child(_header_tag)
+	_header = UiTheme.label("", 44, UiTheme.INK, true, HORIZONTAL_ALIGNMENT_LEFT)
+	me_row.add_child(_header)
+	var gap := Control.new()
+	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top.add_child(gap)
+	var signal_pill := PanelContainer.new()
+	var pill_style := UiTheme.panel_style(UiTheme.PHONE_GLASS, 40, 10)
+	pill_style.shadow_size = 0
+	pill_style.content_margin_left = 18
+	pill_style.content_margin_right = 26
+	signal_pill.add_theme_stylebox_override("panel", pill_style)
+	signal_pill.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	top.add_child(signal_pill)
+	var signal_row := HBoxContainer.new()
+	signal_row.add_theme_constant_override("separation", 8)
+	signal_pill.add_child(signal_row)
+	_latency_icon = GlyphBadge.new("wifi", Color.TRANSPARENT, UiTheme.INK_SOFT, 48)
+	signal_row.add_child(_latency_icon)
+	_latency = UiTheme.label("— ms", 30, UiTheme.INK_SOFT, true)
+	_latency.custom_minimum_size = Vector2(110, 0)
+	signal_row.add_child(_latency)
+	top.add_child(_toggle_button("Sonido", "speaker", func() -> bool: return Sfx.muted,
 		func() -> void: Sfx.muted = not Sfx.muted))
-	top.add_child(_toggle_button(func() -> String: return "Vibrar: " + ("Sí" if Haptics.enabled else "No"),
+	top.add_child(_toggle_button("Vibrar", "vibrate", func() -> bool: return not Haptics.enabled,
 		func() -> void: Haptics.enabled = not Haptics.enabled))
 	_layout_host = Control.new()
 	_layout_host.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_play_screen.add_child(_layout_host)
 
-	# Vista de espera: mascota + "¡Mirá la TV!" y, a la derecha, el panel
-	# con el resultado propio (solo durante el resumen y el podio).
+	# Vista de espera: tarjeta con la mascota + "¡Mirá la TV!" y, a la
+	# derecha, el selector (lobby) o el resultado propio (resumen y podio).
 	var wait_view := HBoxContainer.new()
 	wait_view.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	wait_view.offset_bottom = -UiTheme.PHONE_MARGIN
 	wait_view.alignment = BoxContainer.ALIGNMENT_CENTER
-	wait_view.add_theme_constant_override("separation", 72)
+	wait_view.add_theme_constant_override("separation", 64)
 	_layout_host.add_child(wait_view)
 	_wait_view = wait_view
 	var wait_box := VBoxContainer.new()
 	wait_box.alignment = BoxContainer.ALIGNMENT_CENTER
-	wait_box.custom_minimum_size = Vector2(760, 0)
+	wait_box.custom_minimum_size = Vector2(620, 0)
+	wait_box.add_theme_constant_override("separation", 14)
 	wait_view.add_child(wait_box)
-	_wait_avatar = PlayerAvatar.new()
-	_wait_avatar.mood = PlayerAvatar.Mood.HAPPY
-	_wait_avatar.custom_minimum_size = Vector2(0, 330)
-	wait_box.add_child(_wait_avatar)
-	var wait := UiTheme.headline("¡Mirá la TV!", 64)
-	wait_box.add_child(wait)
+	wait_box.add_child(UiTheme.headline("¡Mirá la TV!", 72))
+	_player_card = PlayerCard.new()
+	_player_card.custom_minimum_size = Vector2(560, 580)
+	_player_card.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	wait_box.add_child(_player_card)
+	_wait_avatar = _player_card.avatar
 	_wait_sub = UiTheme.label("El juego empieza cuando la TV lo elija", 34, UiTheme.INK, true)
 	_wait_sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	wait_box.add_child(_wait_sub)
@@ -483,22 +674,40 @@ func _build_ui() -> void:
 
 func _build_standing_panel(parent: Control) -> void:
 	_standing_panel = PanelContainer.new()
-	_standing_panel.add_theme_stylebox_override("panel", UiTheme.panel_style(UiTheme.PAPER, UiTheme.RADIUS + 8, 44))
+	_standing_panel.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
 	_standing_panel.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	_standing_panel.custom_minimum_size = Vector2(980, 0)
+	_standing_panel.custom_minimum_size = Vector2(1060, 0)
 	_standing_panel.visible = false
 	parent.add_child(_standing_panel)
+	_standing_bg = _StandingBg.new()
+	_standing_panel.add_child(_standing_bg)
+	var pad := MarginContainer.new()
+	for side in ["left", "right"]:
+		pad.add_theme_constant_override("margin_" + side, 48)
+	pad.add_theme_constant_override("margin_top", 40)
+	pad.add_theme_constant_override("margin_bottom", 48)
+	_standing_panel.add_child(pad)
 	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 16)
-	_standing_panel.add_child(col)
-	_standing_round = UiTheme.label("", 44, UiTheme.INK_SOFT, true)
-	col.add_child(_standing_round)
+	col.add_theme_constant_override("separation", 10)
+	pad.add_child(col)
+	var chip := PanelContainer.new()
+	var chip_style := UiTheme.panel_style(UiTheme.CHIP_DARK, 30, 8)
+	chip_style.shadow_size = 0
+	chip_style.content_margin_left = 34
+	chip_style.content_margin_right = 34
+	chip.add_theme_stylebox_override("panel", chip_style)
+	chip.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	col.add_child(chip)
+	_standing_round = UiTheme.label("", 38, UiTheme.PAPER, true)
+	chip.add_child(_standing_round)
+	_standing_cheer = UiTheme.headline("", 64)
+	col.add_child(_standing_cheer)
 	var row := HBoxContainer.new()
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
-	row.add_theme_constant_override("separation", 40)
+	row.add_theme_constant_override("separation", 24)
 	col.add_child(row)
 	_standing_medal = _Medal.new()
-	_standing_medal.custom_minimum_size = Vector2(260, 260)
+	_standing_medal.custom_minimum_size = Vector2(330, 330)
 	row.add_child(_standing_medal)
 	var text := VBoxContainer.new()
 	text.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -509,36 +718,43 @@ func _build_standing_panel(parent: Control) -> void:
 	text.add_child(_standing_total)
 
 
-func _section(text: String) -> Label:
-	return UiTheme.label(text, 34, UiTheme.INK, true, HORIZONTAL_ALIGNMENT_LEFT)
+## Espacio flexible: reparte el alto sobrante entre los pasos.
+func _spacer() -> Control:
+	var s := Control.new()
+	s.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	s.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return s
 
 
-## Botón que alterna una preferencia de audio, la guarda y muestra su estado.
-func _toggle_button(caption: Callable, toggle: Callable) -> Button:
-	var b := Button.new()
-	b.text = caption.call()
+func _panel() -> PanelContainer:
+	var p := PanelContainer.new()
+	p.add_theme_stylebox_override("panel", UiTheme.panel_style(UiTheme.PAPER, UiTheme.RADIUS + 12, 30))
+	return p
+
+
+## Encabezado de paso: número en un círculo de color (como en la TV) + título.
+func _step(n: int, text: String) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 16)
+	var colors := [UiTheme.BRICKS[2], UiTheme.BRICKS[5], UiTheme.BRICKS[7]]
+	row.add_child(GlyphBadge.new("", colors[(n - 1) % colors.size()], UiTheme.PAPER, 64, str(n)))
+	row.add_child(UiTheme.label(text, 44, UiTheme.INK, true, HORIZONTAL_ALIGNMENT_LEFT))
+	return row
+
+
+## Botón que alterna una preferencia de audio, la guarda y muestra su
+## estado: ícono tachado cuando está apagada.
+func _toggle_button(caption: String, glyph: String, is_off: Callable, toggle: Callable) -> ToyButton:
+	var b := ToyButton.new(caption, glyph, UiTheme.PAPER, 30)
 	b.custom_minimum_size = Vector2(230, 0)
-	b.add_theme_font_size_override("font_size", 26)
+	b.off = is_off.call()
 	b.pressed.connect(func() -> void:
 		toggle.call()
 		Sfx.save_prefs(SETTINGS_PATH)
-		b.text = caption.call()
+		b.off = is_off.call()
 		Sfx.play("select")
 		Haptics.buzz("tap"))
 	return b
-
-
-func _label(text: String, size: int, color: Color = UiTheme.INK,
-		align: HorizontalAlignment = HORIZONTAL_ALIGNMENT_CENTER) -> Label:
-	return UiTheme.label(text, size, color, false, align)
-
-
-func _line_edit(placeholder: String, max_len: int) -> LineEdit:
-	var e := LineEdit.new()
-	e.placeholder_text = placeholder
-	e.max_length = max_len
-	e.custom_minimum_size = Vector2(0, 96)
-	return e
 
 
 func _load_name() -> String:
@@ -575,14 +791,138 @@ func _save_look(color_index: int, style: int) -> void:
 	cfg.save(SETTINGS_PATH)
 
 
-## Medalla con el puesto de la ronda (o el final en el podio).
+## Etiqueta 1P–4P del encabezado, con el color del jugador.
+class _Tag:
+	extends Control
+	var slot := 0
+	var color := UiTheme.PAPER
+
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	func _draw() -> void:
+		var face := UiTheme.draw_toy_key(self, Rect2(Vector2(4, 2), size - Vector2(8, 4)), color, 0.0, size.y * 0.45, 6.0, 4.0)
+		UiTheme.draw_text(self, UiTheme.player_tag(slot), face.get_center(), int(face.size.y * 0.66), UiTheme.PAPER, 6, UiTheme.INK)
+
+
+## Todavía no apareció ninguna TV: tarjeta punteada con el Wi-Fi y qué
+## hacer. Estática (sin animación de "buscando": ahorra batería).
+class _EmptyHosts:
+	extends Control
+	var failed := false
+
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		custom_minimum_size = Vector2(0, UiTheme.PHONE_HOST_CARD_HEIGHT + 20.0)
+
+	func _draw() -> void:
+		var r := Rect2(Vector2(4, 4), size - Vector2(8, 8))
+		UiTheme.draw_round_rect(self, r, UiTheme.PAPER_DIM, UiTheme.RADIUS)
+		# Borde punteado ("todavía no hay nada acá"), con los guiones en un
+		# solo lote: con draw_dashed_rect serían ~100 comandos.
+		var batch := UiTheme.ShapeBatch.new()
+		var inner := r.grow(-4)
+		var corner := float(UiTheme.RADIUS)
+		var ink := Color(UiTheme.INK_SOFT, 0.5)
+		for edge: Array in [[inner.position + Vector2(corner, 0), Vector2(inner.end.x - corner, inner.position.y)],
+				[Vector2(inner.position.x + corner, inner.end.y), inner.end - Vector2(corner, 0)],
+				[inner.position + Vector2(0, corner), Vector2(inner.position.x, inner.end.y - corner)],
+				[Vector2(inner.end.x, inner.position.y + corner), inner.end - Vector2(0, corner)]]:
+			var a: Vector2 = edge[0]
+			var b: Vector2 = edge[1]
+			var length := a.distance_to(b)
+			var dir := (b - a) / maxf(length, 1.0)
+			var n := Vector2(-dir.y, dir.x) * 2.0
+			var t := 0.0
+			while t < length:
+				var p0 := a + dir * t
+				var p1 := a + dir * minf(t + 14.0, length)
+				batch.polygon(PackedVector2Array([p0 - n, p1 - n, p1 + n, p0 + n]), ink)
+				t += 24.0
+		var h := r.size.y
+		var badge := Vector2(r.position.x + h * 0.5, r.get_center().y)
+		batch.circle(badge, h * 0.3, UiTheme.PAPER)
+		batch.flush(self)
+		UiTheme.draw_glyph(self, "wifi", badge, h * 0.36, UiTheme.WARNING if failed else UiTheme.BRICKS[5])
+		var x := badge.x + h * 0.48
+		var title := "No pudimos buscar TVs" if failed else "Buscando TVs en tu Wi-Fi…"
+		var hint := "Escribí abajo la dirección que muestra la TV." if failed else "Abrí PARTY-GAME en la TV y usá la misma Wi-Fi."
+		UiTheme.draw_text_left(self, title, Vector2(x, r.get_center().y - h * 0.15), int(h * 0.24), UiTheme.INK, r.end.x - x - 16.0)
+		UiTheme.draw_text_left(self, hint, Vector2(x, r.get_center().y + h * 0.18), int(h * 0.18), UiTheme.INK_SOFT,
+			r.end.x - x - 16.0, false)
+
+
+## Fondo del resultado: tarjeta blanca con una franja del color de la
+## medalla arriba y papelitos quietos alrededor. Se dibuja una vez por
+## resultado (sin animación continua).
+class _StandingBg:
+	extends Control
+	var place := 0
+
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	func _draw() -> void:
+		var r := Rect2(Vector2(6, 6), size - Vector2(12, 12))
+		UiTheme.draw_round_rect(self, r, UiTheme.PAPER, UiTheme.RADIUS + 16, 0.0, UiTheme.INK, true)
+		# Franja de arriba con el color de la medalla (oro, plata, bronce).
+		var band := UiTheme.place_color(place) if place > 0 else UiTheme.PAPER_DIM
+		var band_h := 104.0
+		UiTheme.draw_round_rect(self, Rect2(r.position, Vector2(r.size.x, band_h)), band.lerp(UiTheme.PAPER, 0.45), UiTheme.RADIUS + 16)
+		draw_rect(Rect2(r.position + Vector2(0, band_h * 0.5), Vector2(r.size.x, band_h * 0.5)), band.lerp(UiTheme.PAPER, 0.45))
+		UiTheme.draw_dashed_line(self, r.position + Vector2(24, band_h), Vector2(r.end.x - 24, r.position.y + band_h),
+			Color(UiTheme.INK, 0.15), 4.0)
+		# Papelitos fijos (siempre los mismos: semilla fija), en un solo lote.
+		var rng := RandomNumberGenerator.new()
+		rng.seed = 5
+		var batch := UiTheme.ShapeBatch.new()
+		for i in 22:
+			var p := Vector2(rng.randf_range(r.position.x + 30.0, r.end.x - 30.0), rng.randf_range(r.position.y + 20.0, r.end.y - 20.0))
+			var angle := rng.randf_range(-1.2, 1.2)
+			# Solo en los bordes: el centro queda libre para el texto.
+			if absf(p.x - r.get_center().x) < r.size.x * 0.36 and absf(p.y - r.get_center().y) < r.size.y * 0.3:
+				continue
+			var col: Color = UiTheme.BRICKS[i % UiTheme.BRICKS.size()]
+			batch.polygon(ConfettiBurst.piece_points(p, Vector2(14, 24), angle), Color(col, 0.85))
+		batch.flush(self)
+
+
+## Medalla con el puesto de la ronda (o el final en el podio), con rayos de
+## sol detrás si quedó en el podio. Entra con un rebote (pop).
 class _Medal:
 	extends Control
 	var place := 1
+	var appear := 1.0:
+		set(v):
+			appear = v
+			queue_redraw()
 
 	func _ready() -> void:
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
 
+	func pop() -> void:
+		if not is_inside_tree():
+			return
+		appear = 0.0
+		create_tween().tween_property(self, "appear", 1.0, 0.45).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
 	func _draw() -> void:
-		var r := minf(size.x, size.y) / 2.0 - 14.0
-		UiTheme.draw_medal(self, size / 2.0, r, place)
+		var c := size / 2.0
+		var full := minf(size.x, size.y) / 2.0
+		var r := (full * 0.66) * appear
+		if r <= 1.0:
+			return
+		if place >= 1 and place <= 3:
+			var ray := Color(UiTheme.place_color(place).lerp(UiTheme.PAPER, 0.3), 0.55)
+			var batch := UiTheme.ShapeBatch.new()
+			for i in 12:
+				var a := TAU * i / 12.0 + 0.2
+				batch.polygon(PackedVector2Array([
+					c + Vector2.from_angle(a - 0.12) * r * 0.9, c + Vector2.from_angle(a) * full * appear,
+					c + Vector2.from_angle(a + 0.12) * r * 0.9,
+				]), ray)
+			batch.flush(self)
+			for k in 3:
+				var a := -PI * 0.8 + k * 0.7
+				UiTheme.draw_star(self, c + Vector2.from_angle(a) * full * 0.86 * appear, full * 0.1 * appear, UiTheme.GOLD, a)
+		UiTheme.draw_medal(self, c, r, place)

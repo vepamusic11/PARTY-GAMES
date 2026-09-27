@@ -24,21 +24,36 @@ var _swatches: Array[_Swatch] = []
 
 
 func _init() -> void:
-	add_theme_stylebox_override("panel", UiTheme.panel_style(UiTheme.PAPER, UiTheme.RADIUS + 8, 36))
+	add_theme_stylebox_override("panel", UiTheme.panel_style(UiTheme.PAPER, UiTheme.RADIUS + 12, 36))
 	size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 22)
 	add_child(col)
-	col.add_child(UiTheme.label("Tu mascota", 44, UiTheme.INK_SOFT, true))
+	var title := HBoxContainer.new()
+	title.alignment = BoxContainer.ALIGNMENT_CENTER
+	title.add_theme_constant_override("separation", 16)
+	col.add_child(title)
+	var star := _Star.new()
+	star.custom_minimum_size = Vector2(64, 64)
+	title.add_child(star)
+	title.add_child(UiTheme.label("Elegí tu mascota", 46, UiTheme.INK, true))
 
 	var row := HBoxContainer.new()
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
 	row.add_theme_constant_override("separation", 20)
 	col.add_child(row)
 	row.add_child(_arrow(Vector2.LEFT, -1))
+	# Nombre del estilo en una "pantallita" hundida entre las flechas.
+	var screen := PanelContainer.new()
+	var screen_style := UiTheme.panel_style(UiTheme.PAPER_DIM, UiTheme.RADIUS, 8)
+	screen_style.shadow_size = 0
+	screen_style.border_width_top = 6
+	screen_style.border_color = Color(UiTheme.INK_SOFT, 0.25)
+	screen.add_theme_stylebox_override("panel", screen_style)
+	screen.custom_minimum_size = Vector2(UiTheme.TOUCH_TARGET * 3.4, 0)
+	row.add_child(screen)
 	_style_label = UiTheme.label("", 60, UiTheme.INK, true)
-	_style_label.custom_minimum_size = Vector2(UiTheme.TOUCH_TARGET * 3.4, 0)
-	row.add_child(_style_label)
+	screen.add_child(_style_label)
 	row.add_child(_arrow(Vector2.RIGHT, 1))
 
 	var grid := GridContainer.new()
@@ -54,7 +69,7 @@ func _init() -> void:
 		sw.pressed.connect(_on_color_pressed.bind(i))
 		grid.add_child(sw)
 		_swatches.append(sw)
-	_color_label = UiTheme.label("", 38, UiTheme.INK_SOFT, true)
+	_color_label = UiTheme.label("", 40, UiTheme.INK_SOFT, true)
 	col.add_child(_color_label)
 	_refresh()
 
@@ -103,7 +118,8 @@ func _arrow(dir: Vector2, step: int) -> _Arrow:
 	return b
 
 
-## Flecha "de juguete" grande (≥ 88 px) para cambiar de estilo.
+## Flecha "de juguete" grande (≥ 88 px) para cambiar de estilo: tecla con
+## bisel que baja al tocarla.
 class _Arrow:
 	extends BaseButton
 	var dir := Vector2.RIGHT
@@ -115,15 +131,13 @@ class _Arrow:
 
 	func _draw() -> void:
 		var down := get_draw_mode() in [DRAW_PRESSED, DRAW_HOVER_PRESSED]
-		var depth := 3.0 if down else 9.0
-		var r := Rect2(Vector2(0, 9.0 - depth), size - Vector2(0, 9.0))
-		UiTheme.draw_round_rect(self, Rect2(Vector2(0, 9.0), size - Vector2(0, 9.0)), UiTheme.ACCENT.darkened(0.25), UiTheme.RADIUS)
-		UiTheme.draw_round_rect(self, r, UiTheme.ACCENT, UiTheme.RADIUS, 4, UiTheme.INK)
-		UiTheme.draw_arrow(self, r.get_center(), r.size.y * 0.5, dir, UiTheme.INK)
+		var face := UiTheme.draw_toy_key(self, Rect2(Vector2(4, 0), size - Vector2(8, 6)), UiTheme.ACCENT,
+			1.0 if down else 0.0, UiTheme.RADIUS, 12.0)
+		UiTheme.draw_arrow(self, face.get_center() + Vector2(dir.x * 3.0, 0), face.size.y * 0.5, dir, UiTheme.INK)
 
 
-## Círculo de color tocable. Seleccionado: anillo de foco y tilde.
-## Ocupado por otro jugador: apagado y tachado.
+## Botón de color tocable, como una gomita con bisel. Seleccionado: hundido,
+## con anillo amarillo y tilde. Ocupado por otro jugador: apagado y tachado.
 class _Swatch:
 	extends BaseButton
 	var index := 0
@@ -131,20 +145,32 @@ class _Swatch:
 
 	func _init() -> void:
 		focus_mode = Control.FOCUS_NONE
+		button_down.connect(queue_redraw)
+		button_up.connect(queue_redraw)
 
 	func _draw() -> void:
-		var c := size / 2.0
-		var r := minf(size.x, size.y) / 2.0 - UiTheme.FOCUS_WIDTH - 2.0
+		var r := minf(size.x, size.y) / 2.0 - UiTheme.FOCUS_WIDTH - 6.0
+		var c := size / 2.0 - Vector2(0, r * 0.08)
 		var col := Protocol.mascot_color(index)
-		var a := 0.35 if disabled else 1.0
 		if selected:
-			draw_circle(c, r + UiTheme.FOCUS_WIDTH + 2.0, UiTheme.ACCENT)
-		draw_circle(c, r, Color(UiTheme.INK, a))
-		draw_circle(c, r - 4.0, Color(col, a))
-		draw_circle(c + Vector2(-r, -r) * 0.32, r * 0.22, Color(1, 1, 1, 0.35 * a))
+			draw_circle(c + Vector2(0, r * 0.1), r + UiTheme.FOCUS_WIDTH + 4.0, UiTheme.ACCENT)
+		var down := selected or get_draw_mode() in [DRAW_PRESSED, DRAW_HOVER_PRESSED]
+		var face := UiTheme.draw_toy_disc(self, c, r, col.lerp(UiTheme.PAPER_DIM, 0.6) if disabled else col,
+			1.0 if down else 0.0, r * 0.18)
 		# Tilde con contraste: tinta sobre colores claros, papel sobre oscuros.
 		var mark := UiTheme.INK if col.get_luminance() > 0.5 else UiTheme.PAPER
 		if selected:
-			UiTheme.draw_check(self, c, r * 0.9, mark, 8.0)
+			UiTheme.draw_check(self, face, r * 0.9, mark, 9.0)
 		elif disabled:
-			draw_line(c + Vector2(-r, r) * 0.6, c + Vector2(r, -r) * 0.6, UiTheme.INK, 6.0, true)
+			draw_line(face + Vector2(-r, r) * 0.55, face + Vector2(r, -r) * 0.55, UiTheme.INK, 7.0, true)
+
+
+## Estrella dibujada del título (la tipografía no trae ★).
+class _Star:
+	extends Control
+
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	func _draw() -> void:
+		UiTheme.draw_star(self, size / 2.0, minf(size.x, size.y) * 0.44, UiTheme.GOLD, -0.2)

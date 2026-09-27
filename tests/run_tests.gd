@@ -1398,6 +1398,37 @@ func test_controller_look_picker() -> void:
 	await process_frame
 
 
+## Celular: pantalla para unirse (tarjetas de TV, código en fichas, avisos)
+## y festejo del resultado que no queda animando.
+func test_controller_join_screen() -> void:
+	var ctrl := ControllerMain.new()
+	root.add_child(ctrl)
+	await process_frame
+	ctrl._selected_host = {}
+	ctrl._ip_edit.text = ""
+	ctrl._on_hosts_changed([{"ip": "192.168.0.5", "port": 47999, "name": "Living"}] as Array[Dictionary])
+	check(ctrl._ip_edit.text == "192.168.0.5" and ctrl._selected_host.get("port") == 47999, "una sola TV: se elige sola")
+	await process_frame
+	var cards := ctrl._hosts_box.get_children().filter(func(c: Node) -> bool: return c is HostCard and not c.is_queued_for_deletion())
+	check(cards.size() == 1 and (cards[0] as HostCard).selected, "tarjeta de la TV elegida")
+	check((cards[0] as HostCard).custom_minimum_size.y >= 88, "tarjeta de TV ≥ 88 px")
+	ctrl._code_edit.text = "ab1"
+	ctrl._code_edit._on_text_changed("ab1")
+	check(ctrl._code_edit.text == "AB1", "el código pasa a mayúsculas")
+	ctrl._name_edit.text = ""
+	ctrl._on_join_pressed()
+	check(ctrl._join_status_panel.visible and ctrl._join_status.text.contains("apodo"), "aviso amable si falta el apodo")
+	ctrl._show_join("")
+	check(not ctrl._join_status_panel.visible, "sin mensaje, sin aviso")
+	# Resultado en el podio: papelitos que se apagan solos al empezar otro juego.
+	ctrl._show_standing({"round": 1, "total_rounds": 3, "place": 1, "points": 100, "total": 100, "rank": 1, "players": 2, "final": false})
+	check(ctrl._confetti.is_processing() and ctrl._standing_cheer.text == "¡Ganaste la ronda!", "festeja el primer puesto")
+	ctrl._on_layout_changed(Protocol.LAYOUT_ONE_BUTTON, {"label": "A"})
+	check(not ctrl._confetti.is_processing(), "los papelitos se cortan al empezar otro juego")
+	ctrl.queue_free()
+	await process_frame
+
+
 ## Argumentos de nivel superior de una llamada (desde después del "(").
 func _call_args(src: String, from: int) -> Array[String]:
 	var args: Array[String] = []

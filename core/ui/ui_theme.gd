@@ -828,3 +828,152 @@ static func draw_radial(ci: CanvasItem, center: Vector2, rx: float, inner: Color
 	for i in steps:
 		idx.append_array([0, 1 + i, 1 + (i + 1) % steps])
 	RenderingServer.canvas_item_add_triangle_array(ci.get_canvas_item(), idx, pts, cols)
+
+
+# --- Celular (agente) -----------------------------------------------------------
+## Tokens y dibujos de la app del celular: controles "de consola" (bisel,
+## brillo y sombra), fichas del código de sala y los íconos que usa.
+## Medidas pensadas para un celular apaisado de 1080 px de alto.
+##
+## Concepto: *bisel*. Una tecla de juguete tiene una cara de color y un
+## canto más oscuro debajo; al apretarla, la cara baja sobre el canto
+## (squash). Así se "siente" el toque aunque la pantalla sea plana.
+
+const PHONE_MARGIN := 28                     ## Margen de las pantallas del celular.
+const PHONE_BAR_HEIGHT := 112.0              ## Barra superior (Salir, 4P, sonido…).
+const PHONE_FIELD_HEIGHT := 104.0            ## Campos de texto (apodo, IP).
+const PHONE_HOST_CARD_HEIGHT := 128.0        ## Tarjeta de cada TV encontrada.
+const PHONE_TILE_SIZE := Vector2(150, 172)   ## Fichas del código de sala.
+const PHONE_KEY_DEPTH := 14.0                ## Alto del canto de los botones grandes.
+const PHONE_BEVEL_DARKEN := 0.3              ## Canto respecto de la cara.
+const PHONE_SHINE := Color(1, 1, 1, 0.5)     ## Reflejo chico "de plástico".
+const PHONE_SHINE_SOFT := Color(1, 1, 1, 0.22)  ## Brillo ancho de la mitad de arriba.
+const PHONE_DISH := Color("#2A3163")         ## Hueco del joystick y canal del slider.
+const PHONE_DISH_RIM := Color("#454E8C")     ## Aro interno del hueco.
+const PHONE_TINT := 0.82                     ## Mezcla color del jugador → papel en tarjetas.
+const PHONE_ERROR_BG := Color("#FFE9E6")     ## Fondo de los avisos de error (amables, no rojos).
+const PHONE_INFO_BG := Color("#E4F2FF")      ## Fondo de "Conectando…" y ayudas.
+const PHONE_GLASS := Color(1, 1, 1, 0.55)    ## Paneles translúcidos sobre el cielo.
+const PHONE_PRESS_SQUASH := 0.08             ## Cuánto se ensancha la perilla al tocarla.
+
+
+## Tecla de juguete dentro de `rect` (incluye el canto): sombra, canto
+## oscuro, cara de color con contorno de tinta y brillo arriba.
+## `press` 0..1 baja la cara. Devuelve el rectángulo de la cara, para
+## dibujar encima el texto o el ícono.
+static func draw_toy_key(ci: CanvasItem, rect: Rect2, color: Color, press: float = 0.0,
+		radius: float = RADIUS, depth: float = PHONE_KEY_DEPTH, outline: float = 4.0) -> Rect2:
+	var lift := depth * (1.0 - 0.8 * clampf(press, 0.0, 1.0))
+	var body := Rect2(rect.position + Vector2(0, depth), rect.size - Vector2(0, depth))
+	var face := Rect2(body.position - Vector2(0, lift), body.size)
+	# Contorno como borde del mismo StyleBox: canto y cara son un comando cada uno.
+	draw_round_rect(ci, body.grow(outline), color.darkened(PHONE_BEVEL_DARKEN), radius + outline, outline, INK, true)
+	draw_round_rect(ci, face.grow(outline), color, radius + outline, outline, INK)
+	# Brillo: franja clara arriba y un reflejo chico a la izquierda.
+	var band := Rect2(face.position + Vector2(outline + 4.0, outline + 2.0),
+		Vector2(face.size.x - (outline + 4.0) * 2.0, face.size.y * 0.42))
+	draw_round_rect(ci, band, PHONE_SHINE_SOFT, minf(radius, band.size.y / 2.0))
+	var gloss_h := clampf(face.size.y * 0.12, 6.0, 18.0)
+	draw_round_rect(ci, Rect2(face.position + Vector2(radius * 0.7, face.size.y * 0.1), Vector2(minf(face.size.x * 0.22, 90.0), gloss_h)),
+		PHONE_SHINE, gloss_h / 2.0)
+	return face
+
+
+## Disco de juguete (botón de arcade, perilla del joystick): sombra, canto,
+## cara con contorno y brillo. `press` 0..1 lo baja y lo aplasta un poco
+## (squash: más ancho y más bajo). Devuelve el centro de la cara.
+static func draw_toy_disc(ci: CanvasItem, c: Vector2, r: float, color: Color, press: float = 0.0,
+		depth: float = -1.0) -> Vector2:
+	if depth < 0.0:
+		depth = r * 0.16
+	press = clampf(press, 0.0, 1.0)
+	var outline := maxf(4.0, r * 0.05)
+	var lift := depth * (1.0 - 0.8 * press)
+	var sx := r * (1.0 + PHONE_PRESS_SQUASH * press)
+	var sy := r * (1.0 - PHONE_PRESS_SQUASH * press)
+	var steps := 64
+	var base := c + Vector2(0, depth)
+	var face := base - Vector2(0, lift)
+	var batch := ShapeBatch.new()
+	batch.polygon(ellipse_points(base + Vector2(0, r * 0.1), sx + outline * 2.0, sy * 0.9 + outline, 0.0, steps), SHADOW)
+	batch.polygon(ellipse_points(base, sx + outline, sy + outline, 0.0, steps), INK)
+	batch.polygon(ellipse_points(base, sx, sy, 0.0, steps), color.darkened(PHONE_BEVEL_DARKEN))
+	batch.polygon(ellipse_points(face, sx + outline, sy + outline, 0.0, steps), INK)
+	batch.polygon(ellipse_points(face, sx, sy, 0.0, steps), color)
+	# Mitad de abajo un poco más oscura: da volumen (se ve "abombado").
+	batch.polygon(ellipse_points(face + Vector2(0, sy * 0.18), sx * 0.86, sy * 0.78, 0.0, steps), color.darkened(0.06))
+	batch.polygon(ellipse_points(face - Vector2(0, sy * 0.06), sx * 0.8, sy * 0.72, 0.0, steps), color)
+	batch.polygon(ellipse_points(face - Vector2(0, sy * 0.4), sx * 0.6, sy * 0.3, 0.0, steps), PHONE_SHINE_SOFT)
+	batch.polygon(ellipse_points(face + Vector2(-sx * 0.38, -sy * 0.46), sx * 0.15, sy * 0.09, -0.6, 24), PHONE_SHINE)
+	batch.flush(ci)
+	return face
+
+
+## Color de la ficha `i` del código de sala: el mismo orden que la TV,
+## así el código se ve igual en los dos.
+static func code_tile_color(i: int) -> Color:
+	return BRICKS[(i * 2 + 1) % BRICKS.size()]
+
+
+## Ficha grande de una letra del código (como en la TV). `lit`: es la que
+## sigue por escribir (anillo de foco). Sin letra: ficha apagada.
+static func draw_letter_tile(ci: CanvasItem, rect: Rect2, letter: String, color: Color, lit: bool = false) -> void:
+	var empty := letter.is_empty()
+	var face := draw_toy_key(ci, rect, PAPER_DIM if empty else color, 0.0, RADIUS * 0.8, rect.size.y * 0.07)
+	if lit:
+		draw_round_rect(ci, face.grow(FOCUS_WIDTH + 2.0), Color.TRANSPARENT, RADIUS * 0.8 + FOCUS_WIDTH, FOCUS_WIDTH, ACCENT)
+	var size := int(face.size.y * 0.66)
+	var c := face.get_center()
+	if empty:
+		# Guion bajo: "acá va una letra".
+		draw_round_rect(ci, Rect2(c + Vector2(-face.size.x * 0.22, face.size.y * 0.18), Vector2(face.size.x * 0.44, 8.0)), MUTED, 4.0)
+		return
+	var px := maxi(6, size / 7)
+	draw_text(ci, letter, c + Vector2(0, maxf(3.0, size / 18.0)), size, Color(INK, 0.6), px, Color(INK, 0.6))
+	draw_text(ci, letter, c, size, PAPER, px, INK)
+
+
+## Íconos que usa el celular además de los de draw_glyph:
+##   tv · person · speaker · vibrate · exit · signal
+## (otro nombre se pasa a draw_glyph). `off` tacha el ícono (sonido apagado).
+static func draw_phone_glyph(ci: CanvasItem, glyph: String, c: Vector2, s: float, color: Color = INK,
+		off: bool = false) -> void:
+	var w := maxf(3.0, s * 0.11)
+	match glyph:
+		"tv":
+			var screen := Rect2(c - Vector2(s * 0.55, s * 0.4), Vector2(s * 1.1, s * 0.7))
+			draw_round_rect(ci, screen, color, s * 0.12)
+			draw_round_rect(ci, screen.grow(-s * 0.1), color.lerp(INK, 0.55), s * 0.06)
+			ci.draw_line(Vector2(c.x - s * 0.22, screen.end.y + s * 0.14), Vector2(c.x + s * 0.22, screen.end.y + s * 0.14), color, w, true)
+			ci.draw_line(Vector2(c.x, screen.end.y), Vector2(c.x, screen.end.y + s * 0.14), color, w)
+		"person":
+			ci.draw_circle(c - Vector2(0, s * 0.2), s * 0.22, color)
+			draw_round_rect(ci, Rect2(c + Vector2(-s * 0.38, s * 0.08), Vector2(s * 0.76, s * 0.4)), color, s * 0.2)
+		"speaker":
+			ci.draw_colored_polygon(PackedVector2Array([
+				c + Vector2(-s * 0.45, -s * 0.15), c + Vector2(-s * 0.22, -s * 0.15), c + Vector2(s * 0.08, -s * 0.42),
+				c + Vector2(s * 0.08, s * 0.42), c + Vector2(-s * 0.22, s * 0.15), c + Vector2(-s * 0.45, s * 0.15),
+			]), color)
+			if not off:
+				ci.draw_arc(c + Vector2(s * 0.06, 0), s * 0.22, -PI * 0.3, PI * 0.3, 12, color, w, true)
+				ci.draw_arc(c + Vector2(s * 0.06, 0), s * 0.4, -PI * 0.3, PI * 0.3, 12, color, w, true)
+		"vibrate":
+			var body := Rect2(c - Vector2(s * 0.2, s * 0.38), Vector2(s * 0.4, s * 0.76))
+			draw_round_rect(ci, body, color, s * 0.08)
+			draw_round_rect(ci, body.grow(-s * 0.07), color.lerp(INK, 0.55), s * 0.04)
+			if not off:
+				for k: int in [-1, 1]:
+					var x := c.x + k * s * 0.34
+					ci.draw_polyline(PackedVector2Array([Vector2(x, c.y - s * 0.26), Vector2(x + k * s * 0.08, c.y - s * 0.1),
+						Vector2(x, c.y + s * 0.06), Vector2(x + k * s * 0.08, c.y + s * 0.22)]), color, w * 0.8, true)
+		"exit":
+			ci.draw_arc(c, s * 0.34, -PI * 0.3, PI * 1.3, 20, color, w, true)
+			ci.draw_line(c - Vector2(0, s * 0.46), c + Vector2(0, s * 0.02), color, w, true)
+		"signal":
+			for i in 3:
+				var h := s * (0.3 + 0.25 * i)
+				draw_round_rect(ci, Rect2(c + Vector2(-s * 0.42 + i * s * 0.3, s * 0.4 - h), Vector2(s * 0.22, h)), color, s * 0.06)
+		_:
+			draw_glyph(ci, glyph, c, s, color)
+	if off:
+		ci.draw_line(c + Vector2(-s, -s) * 0.45, c + Vector2(s, s) * 0.45, DANGER, w * 1.2, true)
