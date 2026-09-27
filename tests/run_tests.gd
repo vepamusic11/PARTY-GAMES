@@ -2423,13 +2423,18 @@ func test_bot_driver_only_moves_bots() -> void:
 	game.setup(players)
 	var driver := BotDriver.new()
 	driver.auto_step = false
+	driver.seed_value = 11  # Reproducible: sin semilla, el último cuadro podía caer justo al frenar.
 	driver.start(game, players)
 	check(driver.bots.size() == 1 and driver.bots[0].player_id == 2, "un bot, solo para el jugador bot")
+	var human_moved := false
+	var bot_max := 0.0
 	for i in 60:
 		driver.step(BotMatch.STEP)
 		game.simulate_frame(BotMatch.STEP)
-	check(game._axis[1] == Vector2.ZERO, "la persona no se mueve sola")
-	check((game._axis[2] as Vector2).length() > 0.2, "el bot mueve su joystick")
+		human_moved = human_moved or game._axis[1] != Vector2.ZERO
+		bot_max = maxf(bot_max, (game._axis[2] as Vector2).length())
+	check(not human_moved, "la persona no se mueve sola")
+	check(bot_max > 0.2, "el bot mueve su joystick (%.2f)" % bot_max)
 	driver.stop()
 	check(driver.bots.is_empty() and driver.game == null, "stop suelta el juego")
 	driver.free()
