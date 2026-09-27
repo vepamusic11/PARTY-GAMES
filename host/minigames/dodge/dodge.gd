@@ -118,7 +118,12 @@ func on_input(player_id: int, input: Dictionary) -> void:
 
 
 func _physics_process(delta: float) -> void:
-	if is_finished():
+	if is_finished() or hit_stopped(delta):
+		return
+	if in_finale():  # Festejo final: todo quieto, los que quedaron en pie saltan.
+		for pid: int in _pos:
+			advance_walk(pid, 0.0, delta)
+		_redraw()
 		return
 	_anim += delta
 	if _countdown > -GO_SEC:
@@ -147,6 +152,7 @@ func _move_players(delta: float) -> void:
 		p.x = clampf(p.x, FIELD.position.x + MOVE_MARGIN_X, FIELD.end.x - MOVE_MARGIN_X)
 		p.y = clampf(p.y, FIELD.position.y + MOVE_MARGIN_TOP, FIELD.end.y - MOVE_MARGIN_BOTTOM)
 		_pos[pid] = p
+		juice().stop_dust(pid, (_axis[pid] as Vector2).length(), p)
 
 
 ## 0 al empezar, 1 a los RAMP_SEC segundos.
@@ -180,7 +186,10 @@ func _spawn_block(ground: Vector2, size: float, fall_time: float) -> void:
 
 func _update_blocks(delta: float) -> void:
 	for b in _blocks:
+		var landed: bool = b.t < b.fall and b.t + delta >= b.fall
 		b.t += delta
+		if landed:
+			_land_fx(b)
 	_blocks = _blocks.filter(func(b: Dictionary) -> bool: return b.t < b.fall + LINGER_SEC + FADE_SEC)
 
 
@@ -199,6 +208,10 @@ func _check_hits() -> void:
 				_axis[pid] = Vector2.ZERO
 				play_sfx("hit")
 				notify_player(pid, "hit")
+				# Alcanzado: pausa de impacto, sacudida leve y estrellitas.
+				hit_stop(0.08)
+				juice().shake(0.8)
+				juice().sparkles(feet + Vector2(0, -50), UiTheme.GOLD, 10, 420.0)
 
 
 func _check_end() -> void:
@@ -212,11 +225,24 @@ func _end(alive: Array[int]) -> void:
 	var scores := {}
 	for p in players:
 		scores[p.id] = float(_out_time.get(p.id, snappedf(_elapsed, 0.1)))
+	var result := {"winners": alive, "scores": scores, "summary": "Último en pie gana"}
 	if alive.is_empty():
-		finish(result_from_scores(scores, "Más segundos en pie gana"))
-	else:
-		finish({"winners": alive, "scores": scores, "summary": "Último en pie gana"})
+		result = result_from_scores(scores, "Más segundos en pie gana")
+	# Festejo antes del resumen: "¡Tiempo!" o "¡Último en pie!" y confeti.
+	var party := {}
+	for pid in alive:
+		party[pid] = _pos[pid]
+	finish_after(result, "¡Tiempo!" if _elapsed >= DURATION_SEC else ("¡Último en pie!" if not alive.is_empty() else "¡Fin!"), party)
 	_redraw()
+
+
+## Un bloque toca el piso: polvo a los costados y un golpe sordo.
+func _land_fx(b: Dictionary) -> void:
+	var r := _ground_rect(b)
+	var y := r.end.y - 6.0
+	juice().dust(Vector2(r.position.x + 8.0, y), 2, Vector2(-1, -0.3), 12.0)
+	juice().dust(Vector2(r.end.x - 8.0, y), 2, Vector2(1, -0.3), 12.0)
+	play_sfx("thud", _rng.randf_range(0.85, 1.15))
 
 
 func _alive_ids() -> Array[int]:
@@ -260,8 +286,9 @@ func _draw() -> void:
 			var r := _ground_rect(b)
 			var shadow := Rect2(r.get_center() - r.size * lerpf(0.5, 1.0, k) / 2.0, r.size * lerpf(0.5, 1.0, k))
 			UiTheme.draw_round_rect(self, shadow, Color(UiTheme.SHADOW, lerpf(0.12, 0.42, k)), BLOCK_RADIUS)
-			if k > 0.4:  # Aviso final: marco punteado donde va a caer.
-				UiTheme.draw_dashed_rect(self, r, Color(UiTheme.DANGER, (k - 0.4) / 0.6), 4.0, BLOCK_RADIUS, 12.0, 8.0)
+			if k > 0.4:  # Aviso final: marco punteado que titila cada vez más rápido.
+				var blink := 0.75 + 0.25 * sin(_anim * lerpf(10.0, 36.0, k))
+				UiTheme.draw_dashed_rect(self, r, Color(UiTheme.DANGER, (k - 0.4) / 0.6 * blink), 4.0, BLOCK_RADIUS, 12.0, 8.0)
 	# Bloques apoyados (al final se desvanecen).
 	for b in _blocks:
 		if b.t >= b.fall:
@@ -272,21 +299,20 @@ func _draw() -> void:
 	order.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return (_pos[a.id] as Vector2).y < (_pos[b.id] as Vector2).y)
 	for p in order:
 		var feet: Vector2 = _pos[p.id]
-		var mood := PlayerAvatar.Mood.HAPPY if is_finished() else PlayerAvatar.Mood.NORMAL
+		var party := is_finished() or is_celebrating(p.id)
+		var mood := PlayerAvatar.Mood.HAPPY if party else PlayerAvatar.Mood.NORMAL
 		# Si un bloque está por caer muy cerca, pone cara de susto.
-		if mood == PlayerAvatar.Mood.NORMAL and _danger_near(feet):
+		if mood == PlayerAvatar.Mood.NORMAL and not in_finale() and _danger_near(feet):
 			mood = PlayerAvatar.Mood.SURPRISED
-		PlayerAvatar.draw_mascot(self, feet, MASCOT_SCALE, p.color, PlayerAvatar.style_of(p), mood, 0.0, 0.0, false,
-			mascot_anim(p.id, _axis[p.id]))
+		var anim := mascot_anim(p.id, _axis[p.id])
+		anim["wave"] = party
+		PlayerAvatar.draw_mascot(self, feet, MASCOT_SCALE, p.color, PlayerAvatar.style_of(p), mood, 0.0, celebrate_hop(p.id), false, anim)
 	# Globitos y nombres de todos, también de los eliminados y a opacidad
 	# completa: la mascota va translúcida (capa _ghosts), pero quién es tiene
 	# que seguir leyéndose.
 	draw_player_tags(players.map(func(p: Dictionary) -> Array: return [p, _pos[p.id], MASCOT_SCALE, NAME_OFFSET]))
 	draw_hud(_live_scores(), clock_text(DURATION_SEC - _elapsed), "clock")
-	if _countdown > 0.0:
-		draw_text_centered("%d" % ceili(_countdown), SCREEN / 2.0, 260, UiTheme.PAPER, 22)
-	elif _countdown > -GO_SEC:
-		draw_text_centered("¡YA!", SCREEN / 2.0, 260, UiTheme.ACCENT, 22)
+	draw_countdown(_countdown, GO_SEC)
 
 
 ## ¿Hay un bloque a punto de caer (último 40 % de la caída) cerca de estos pies?

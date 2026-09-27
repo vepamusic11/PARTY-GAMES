@@ -57,6 +57,7 @@ func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	theme = UiTheme.build()
 	Sfx.load_prefs(SETTINGS_PATH)
+	UiTheme.load_effects_prefs(SETTINGS_PATH)
 	add_child(Sfx.new())
 	add_child(server)
 	add_child(beacon)
@@ -380,6 +381,13 @@ func _toggle_sound() -> void:
 	Sfx.play("select")
 
 
+func _toggle_motion() -> void:
+	UiTheme.reduce_motion = not UiTheme.reduce_motion
+	UiTheme.save_effects_prefs(SETTINGS_PATH)
+	_pause.set_motion_reduced(UiTheme.reduce_motion)
+	Sfx.play("select")
+
+
 func _refresh_lobby() -> void:
 	_lobby.refresh(server.get_players())
 
@@ -417,8 +425,10 @@ func _build_ui() -> void:
 	_pause.skip_requested.connect(_go.bind(_skip_game))
 	_pause.quit_requested.connect(_go.bind(_quit_tournament))
 	_pause.sound_toggled.connect(_toggle_sound)
+	_pause.motion_toggled.connect(_toggle_motion)
 	add_child(_pause)
 	_pause.set_sound_on(not Sfx.muted)
+	_pause.set_motion_reduced(UiTheme.reduce_motion)
 	get_viewport().gui_focus_changed.connect(_on_focus_changed)
 
 	_transition = Transition.new()

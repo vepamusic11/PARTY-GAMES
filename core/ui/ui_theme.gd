@@ -1213,3 +1213,75 @@ const PLATE_GLOSS := Color(1, 1, 1, 0.3)
 ## Podio: puntos totales en un visor oscuro sobre el bloque.
 const PODIUM_SCORE_SIZE := 36
 const PODIUM_WELL_H := 58.0
+
+
+# --- Efectos (agente) -----------------------------------------------------------
+## Respuesta visual a cada acción (*juice*): partículas, números flotantes,
+## sacudida, pausa de impacto y zoom. Ver host/minigames/juice.gd,
+## core/ui/widgets/fx_particles.gd y docs/adr/0011-efectos.md.
+
+## "Reducir movimiento" (accesibilidad, menú de pausa): sin sacudida ni zoom,
+## sin golpes de escala y con menos partículas. Se guarda con los ajustes.
+static var reduce_motion := false
+
+## Duraciones (segundos).
+const DUR_POP := 0.3            ## Golpe de escala de un texto o número al aparecer.
+const DUR_FLOAT := 0.9          ## Número flotante "+1": sube y se desvanece.
+const DUR_SHAKE := 0.24         ## Sacudida de cámara.
+const DUR_HITSTOP := 0.07       ## Pausa de impacto (50–80 ms).
+const DUR_ZOOM := 0.4           ## Zoom sutil (ej. al frenar en Reloj exacto).
+const DUR_FINALE := 1.4         ## "¡Tiempo!": festejo antes de pasar al resumen.
+## Curvas: EASE_POP es el rebote de "back out" (se pasa y vuelve).
+const EASE_POP := 2.2           ## Cuánto se pasa el rebote (1,7 = suave; 3 = exagerado).
+const EASE_POP_FROM := 1.7      ## Escala inicial del golpe de escala ("¡Tiempo!" entra grande).
+
+## Medidas.
+const FX_SHAKE_MAX := 9.0       ## px de la sacudida más fuerte (leve a propósito).
+const FX_ZOOM := 0.035          ## Zoom sutil: +3,5 %.
+const FX_MAX_PARTICLES := 192   ## Tope del pool de partículas de cada juego.
+const FX_REDUCED := 0.35        ## Fracción de partículas con "Reducir movimiento".
+const FX_FLOAT_SIZE := 40       ## Números flotantes.
+const FX_FLOAT_RISE := 70.0
+const FX_BANNER_SIZE := 200     ## "¡Tiempo!", "¡Meta!".
+
+## Colores.
+const FX_DUST := Color(0.58, 0.63, 0.78, 0.75)   ## Polvo sobre el piso claro.
+const FX_SPARK := Color("#FFF1B8")               ## Chispas y destellos.
+const FX_SHINE := Color(1.0, 0.93, 0.55, 0.9)    ## Anillo de brillo al juntar un premio.
+const FX_WATER := Color(1, 1, 1, 0.85)           ## Gotas del chapuzón en Empujones.
+
+
+## Rebote "back out": 0 -> 1 pasándose un poco (EASE_POP) antes de asentarse.
+static func ease_pop(k: float) -> float:
+	k = clampf(k, 0.0, 1.0) - 1.0
+	return 1.0 + (EASE_POP + 1.0) * k * k * k + EASE_POP * k * k
+
+
+## Escala de un golpe de escala `t` segundos después de empezar: de
+## EASE_POP_FROM (grande) a 1 con rebote. Con "Reducir movimiento", siempre 1.
+static func pop_scale(t: float, dur: float = DUR_POP) -> float:
+	if reduce_motion or t >= dur:
+		return 1.0
+	return lerpf(EASE_POP_FROM, 1.0, ease_pop(maxf(t, 0.0) / dur))
+
+
+## Escala de algo que aparece `t` segundos después de nacer: de 0 a 1 con
+## rebote (ej. una estrella nueva en Arena). Con "Reducir movimiento", 1.
+static func appear_scale(t: float, dur: float = DUR_POP) -> float:
+	if reduce_motion or t >= dur:
+		return 1.0
+	return ease_pop(maxf(t, 0.0) / dur)
+
+
+## Ajustes de efectos (sección [video] del archivo de ajustes de la TV).
+static func load_effects_prefs(path: String) -> void:
+	var cfg := ConfigFile.new()
+	if cfg.load(path) == OK:
+		reduce_motion = bool(cfg.get_value("video", "reduce_motion", false))
+
+
+static func save_effects_prefs(path: String) -> void:
+	var cfg := ConfigFile.new()
+	cfg.load(path)  # Conserva el resto de las secciones (sonido, apodo…).
+	cfg.set_value("video", "reduce_motion", reduce_motion)
+	cfg.save(path)

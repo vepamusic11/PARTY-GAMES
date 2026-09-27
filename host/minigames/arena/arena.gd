@@ -13,6 +13,7 @@ var _pos: Dictionary = {}     # player_id -> Vector2
 var _axis: Dictionary = {}    # player_id -> Vector2
 var _score: Dictionary = {}   # player_id -> int
 var _stars: Array[Vector2] = []
+var _star_born: Array[float] = []   # anim_time en que apareció cada estrella (entra con rebote)
 var _time_left := DURATION_SEC
 var _rng := RandomNumberGenerator.new()
 
@@ -42,6 +43,7 @@ func setup(p_players: Array[Dictionary]) -> void:
 		_score[p.id] = 0
 	for i in STAR_COUNT:
 		_stars.append(_random_star())
+		_star_born.append(-1.0)
 
 
 func on_input(player_id: int, input: Dictionary) -> void:
@@ -52,6 +54,11 @@ func on_input(player_id: int, input: Dictionary) -> void:
 func _physics_process(delta: float) -> void:
 	if is_finished():
 		return
+	if in_finale():  # "¡Tiempo!": quietos, los ganadores festejan.
+		for pid: int in _pos:
+			advance_walk(pid, 0.0, delta)
+		queue_redraw()
+		return
 	_time_left -= delta
 	for pid: int in _pos:
 		var p: Vector2 = _pos[pid] + (_axis[pid] as Vector2) * SPEED * delta
@@ -59,15 +66,32 @@ func _physics_process(delta: float) -> void:
 		p.x = clampf(p.x, ARENA.position.x + RADIUS, ARENA.end.x - RADIUS)
 		p.y = clampf(p.y, ARENA.position.y + RADIUS, ARENA.end.y - RADIUS)
 		_pos[pid] = p
+		juice().stop_dust(pid, (_axis[pid] as Vector2).length(), p + Vector2(0, RADIUS))
 		for i in _stars.size():
 			if p.distance_to(_stars[i]) < RADIUS + STAR_RADIUS:
 				_score[pid] += 1
+				_collect_fx(pid, _stars[i])
 				_stars[i] = _random_star()
+				_star_born[i] = anim_time
 				play_sfx("point", 1.0 + 0.04 * p.x / SCREEN.x)
 				notify_player(pid, "point")
 	queue_redraw()
 	if _time_left <= 0.0:
-		finish(result_from_scores(_score, "Más estrellas gana"))
+		_time_left = 0.0
+		var result := result_from_scores(_score, "Más estrellas gana")
+		var winners := {}
+		for pid: int in result.winners:
+			winners[pid] = (_pos[pid] as Vector2) + Vector2(0, RADIUS)
+		finish_after(result, "¡Tiempo!", winners)
+
+
+## Brillo al juntar una estrella: estrellitas, anillo de luz y "+1" del color
+## del jugador (solo efectos: el puntaje ya se sumó).
+func _collect_fx(pid: int, at: Vector2) -> void:
+	juice().sparkles(at)
+	juice().shine(at)
+	# Arriba del globito 1P–4P (que no lo tape).
+	juice().float_text("+1", (_pos[pid] as Vector2) + Vector2(0, -130), player_by_id(pid).get("color", UiTheme.GOLD))
 
 
 func _random_star() -> Vector2:
@@ -86,15 +110,20 @@ func _draw() -> void:
 		GameArt.add_glow(batch, _stars[i], STAR_RADIUS + 26.0, UiTheme.GLOW, anim_time + i * 0.7, 8)
 	for i in _stars.size():
 		var bob := Vector2(0, sin(anim_time * 3.0 + i) * 3.0)
-		batch.star(_stars[i] + bob, STAR_RADIUS + 6.0, UiTheme.GOLD, sin(anim_time * 2.0 + i) * 0.25)
+		var grow := UiTheme.appear_scale(anim_time - _star_born[i]) if _star_born[i] >= 0.0 else 1.0
+		if grow > 0.01:
+			batch.star(_stars[i] + bob, (STAR_RADIUS + 6.0) * grow, UiTheme.GOLD, sin(anim_time * 2.0 + i) * 0.25)
 	batch.flush(self)
 	# Se dibuja de arriba hacia abajo: el que está más abajo queda "adelante".
 	var order := players.duplicate()
 	order.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return (_pos[a.id] as Vector2).y < (_pos[b.id] as Vector2).y)
 	for p in order:
 		var pos: Vector2 = _pos[p.id]
-		PlayerAvatar.draw_mascot(self, pos + Vector2(0, RADIUS), 0.8, p.color, PlayerAvatar.style_of(p), PlayerAvatar.Mood.NORMAL,
-			0.0, 0.0, false, mascot_anim(p.id, _axis[p.id]))
+		var party := is_celebrating(p.id)
+		var anim := mascot_anim(p.id, _axis[p.id])
+		anim["wave"] = party
+		PlayerAvatar.draw_mascot(self, pos + Vector2(0, RADIUS), 0.8, p.color, PlayerAvatar.style_of(p),
+			PlayerAvatar.Mood.HAPPY if party else PlayerAvatar.Mood.NORMAL, 0.0, celebrate_hop(p.id), false, anim)
 	# Globitos 1P–4P y nombres encima de todas las mascotas.
 	draw_player_tags(order.map(func(p: Dictionary) -> Array: return [p, (_pos[p.id] as Vector2) + Vector2(0, RADIUS), 0.8, 24.0]))
 	draw_hud(_score, clock_text(_time_left), "clock")

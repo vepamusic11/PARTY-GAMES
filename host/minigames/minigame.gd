@@ -33,6 +33,13 @@ var _hud_shape: Array = []     # lo que dibuja _hud (sin números): cambia casi 
 var _hud_requested := false    # se llamó a draw_hud() en el _draw en curso
 var _portraits: Dictionary = {}  # [color, estilo] -> textura de la mascota del marcador
 
+# Efectos (ver "Efectos" más abajo y host/minigames/juice.gd).
+var _juice: Juice
+var _hitstop_left := 0.0
+var _finale_left := -1.0         # >= 0: festejando antes de terminar (finish_after)
+var _finale_result: Dictionary = {}
+var _celebrating: Array = []     # player_id de los que festejan (celebrate)
+
 
 ## Metadatos del juego. Sobrescribir en cada juego.
 static func get_info() -> Dictionary:
@@ -98,6 +105,10 @@ static func result_from_scores(scores: Dictionary, summary: String = "") -> Dict
 
 func _process(delta: float) -> void:
 	anim_time += delta
+	if _finale_left >= 0.0:
+		_finale_left -= delta
+		if _finale_left < 0.0:
+			finish(_finale_result)
 
 
 # --- Animación de mascotas -------------------------------------------------------
@@ -145,6 +156,97 @@ func tick_countdown(left_before: float, left_after: float) -> void:
 		notify_all("go")
 	elif ceili(left_after) < ceili(left_before):
 		play_sfx("count")
+
+
+# --- Efectos ("juice") --------------------------------------------------------
+#
+# Respuesta visual a cada acción, sin tocar reglas ni puntajes (ADR 0011):
+#   juice().sparkles(pos)            estrellitas (también dust, sparks, confetti, splash, shine)
+#   juice().float_text("+1", pos, p.color)   número flotante del color del jugador
+#   juice().shake(0.8)               sacudida leve (nada con "Reducir movimiento")
+#   juice().zoom_punch(pos)          zoom sutil hacia un punto
+#   hit_stop()                       pausa de impacto: el juego se congela 70 ms
+#   finish_after(result, "¡Tiempo!", pies_de_los_ganadores)   festejo y después finish
+
+## Efectos del juego (se crea la primera vez que se pide: un juego sin
+## efectos no paga nada).
+func juice() -> Juice:
+	if _juice == null:
+		_juice = Juice.new(self)
+		add_child(_juice, false, Node.INTERNAL_MODE_BACK)
+	return _juice
+
+
+## Pausa de impacto (*hit-stop*): congela la lógica del juego `sec` segundos
+## en el momento del golpe, así se "siente". Los juegos llaman
+## `if hit_stopped(delta): return` al principio de _physics_process.
+func hit_stop(sec: float = UiTheme.DUR_HITSTOP) -> void:
+	_hitstop_left = maxf(_hitstop_left, sec)
+
+
+## true mientras dura la pausa de impacto (y la va descontando).
+func hit_stopped(delta: float) -> bool:
+	if _hitstop_left <= 0.0:
+		return false
+	_hitstop_left -= delta
+	return true
+
+
+## Momento final: muestra `text` con golpe de escala, tira confeti sobre los
+## ganadores (`winners`: {player_id: pies}) y emite finished(result) después de
+## UiTheme.DUR_FINALE. Mientras tanto el juego debería quedarse quieto
+## (in_finale()) y dibujar a los ganadores festejando (is_celebrating(),
+## celebrate_hop()). `sound`: "" si el juego ya sonó lo suyo.
+func finish_after(result: Dictionary, text: String, winners: Dictionary = {}, sound: String = "time_up",
+		delay: float = UiTheme.DUR_FINALE) -> void:
+	if _finished or in_finale():
+		return
+	_finale_result = result
+	_finale_left = maxf(delay, 0.0)
+	celebrate(text, winners, sound)
+
+
+## Cartel del final y confeti sobre cada ganador, sin terminar el juego: lo
+## usa finish_after y los juegos que ya tienen su propia pausa final (Pintar
+## el piso, Empujones).
+func celebrate(text: String, winners: Dictionary = {}, sound: String = "time_up") -> void:
+	_celebrating = winners.keys()
+	juice().banner(text)
+	if not sound.is_empty():
+		play_sfx(sound)
+	for pid: int in winners:
+		juice().confetti((winners[pid] as Vector2) + Vector2(0, -110))
+
+
+func in_finale() -> bool:
+	return _finale_left >= 0.0
+
+
+## ¿Este jugador está festejando (ganó y ya se mostró el cartel del final)?
+func is_celebrating(player_id: int) -> bool:
+	return player_id in _celebrating
+
+
+## Saltito de festejo (px, para el parámetro `lift` de PlayerAvatar.draw_mascot).
+func celebrate_hop(player_id: int) -> float:
+	return absf(sin(anim_time * 7.0 + player_id)) * 18.0 if is_celebrating(player_id) else 0.0
+
+
+## Cuenta regresiva grande en el centro ("3", "2", "1", "¡YA!"): cada número
+## entra con un golpe de escala. `left`: segundos que faltan (negativo después
+## del "¡YA!"); `go_sec`: cuánto se ve el "¡YA!".
+func draw_countdown(left: float, go_sec: float = 0.8) -> void:
+	if left > 0.0:
+		_draw_popped("%d" % ceili(left), ceilf(left) - left, UiTheme.PAPER)
+	elif left > -go_sec:
+		_draw_popped("¡YA!", -left, UiTheme.ACCENT)
+
+
+func _draw_popped(text: String, t: float, color: Color) -> void:
+	var s := UiTheme.pop_scale(t, 0.25)
+	draw_set_transform(SCREEN / 2.0, 0.0, Vector2(s, s))
+	draw_text_centered(text, Vector2.ZERO, 260, color, 22)
+	draw_set_transform(Vector2.ZERO)
 
 
 ## Texto centrado con la tipografía del juego. outline > 0 le pone contorno.

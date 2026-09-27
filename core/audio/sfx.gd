@@ -42,6 +42,12 @@ const RECIPES := {
 	"memo_heart": [[659, 659, 0.3, "tri", 0.55]],
 	"memo_diamond": [[523, 523, 0.3, "tri", 0.55]],
 	"memo_circle": [[392, 392, 0.3, "tri", 0.6]],
+	# Efectos de los juegos (ADR 0011). Una nota en 0 Hz senoidal es silencio.
+	"time_up": [[1900, 2100, 0.1, "sin", 0.45], [0, 0, 0.05, "sin", 0.0], [2100, 1750, 0.32, "sin", 0.45]],  # Silbato de "¡Tiempo!".
+	"thud": [[0, 0, 0.04, "noise", 0.16], [150, 60, 0.09, "sin", 0.4]],        # Bloque que cae al piso.
+	"splash": [[0, 0, 0.3, "noise", 0.3], [320, 110, 0.14, "sin", 0.3]],       # Chapuzón.
+	"warn": [[700, 700, 0.07, "sq", 0.22]],                                    # Aviso: algo está por pasar.
+	"power": [[520, 1040, 0.08, "tri", 0.5], [1040, 1560, 0.1, "tri", 0.5]],   # Agarrar un power-up.
 }
 
 static var muted := false

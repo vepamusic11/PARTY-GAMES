@@ -5,6 +5,8 @@ extends Control
 ##   Saltar este juego     -> pasa al siguiente sin dar puntos (solo en partida)
 ##   Terminar competencia  -> muestra el podio con los puntos hasta ahora
 ##   Sonido: Sí/No         -> silencia la TV (se recuerda entre sesiones)
+##   Movimiento: Normal/Reducido -> "Reducir movimiento" (accesibilidad): sin
+##                            sacudidas ni zoom y menos partículas (se recuerda)
 ## Antes, "Atrás" cortaba la partida sin preguntar: un toque accidental
 ## arruinaba la ronda.
 
@@ -12,11 +14,13 @@ signal resume_requested
 signal skip_requested
 signal quit_requested
 signal sound_toggled
+signal motion_toggled
 
 var _subtitle: Label
 var _resume: Button
 var _skip: Button
 var _sound: Button
+var _motion: Button
 
 
 func _ready() -> void:
@@ -47,6 +51,8 @@ func _ready() -> void:
 	box.add_child(_button("Terminar competencia", quit_requested))
 	_sound = _button("Sonido: Sí", sound_toggled)
 	box.add_child(_sound)
+	_motion = _button("Movimiento: Normal", motion_toggled)
+	box.add_child(_motion)
 
 
 func open(subtitle: String, can_skip: bool) -> void:
@@ -58,6 +64,10 @@ func open(subtitle: String, can_skip: bool) -> void:
 
 func set_sound_on(on: bool) -> void:
 	_sound.text = "Sonido: Sí" if on else "Sonido: No"
+
+
+func set_motion_reduced(reduced: bool) -> void:
+	_motion.text = "Movimiento: Reducido" if reduced else "Movimiento: Normal"
 
 
 func close() -> void:

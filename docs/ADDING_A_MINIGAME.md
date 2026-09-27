@@ -104,6 +104,26 @@ tick_countdown(antes, despues)    # "3, 2, 1, ¡YA!" con sonido y vibración
 
 *Ejemplo:* en Arena, al juntar una estrella: `play_sfx("point")` y `notify_player(pid, "point")`. Tipos válidos para el celular: `Protocol.FEEDBACK_KINDS`.
 
+## Efectos ("juice")
+
+Que cada acción se *sienta*: partículas, números que saltan, un temblor leve. Sin tocar reglas ni puntajes (ver [ADR 0011](adr/0011-efectos.md)):
+
+```gdscript
+juice().sparkles(pos)                           # estrellitas (también shine, dust, sparks, confetti, splash)
+juice().float_text("+1", cabeza, p.color)       # número flotante del color del jugador
+juice().stop_dust(pid, axis.length(), pies)     # polvo al frenar de golpe (llamar en cada paso)
+juice().shake(0.8)                              # sacudida leve en golpes grandes
+juice().zoom_punch(pos)                         # zoom sutil hacia un punto
+hit_stop()                                      # pausa de impacto (50–80 ms) en el golpe…
+if hit_stopped(delta): return                   # …y esto al principio de _physics_process
+draw_countdown(_countdown)                      # "3, 2, 1, ¡YA!" con golpe de escala
+finish_after(result, "¡Tiempo!", {pid: pies})   # cartel, confeti y festejo; después finished
+```
+
+*Ejemplo:* en Arena, al juntar una estrella: `juice().sparkles(estrella)`, `juice().shine(estrella)` y `juice().float_text("+1", pos + Vector2(0, -130), p.color)`; al llegar a 0:00, `finish_after(resultado, "¡Tiempo!", ganadores)` y, mientras `in_finale()`, nadie se mueve y los ganadores festejan (`is_celebrating(pid)`, `celebrate_hop(pid)`).
+
+Todo respeta **"Reducir movimiento"** (`UiTheme.reduce_motion`, menú de pausa): sin sacudida ni zoom y menos partículas. Todas las partículas van en un draw call y la cámara no redibuja nada.
+
 ## Cómo entra en la competencia
 
 El juego **solo reporta su puntaje propio** en `finish(...)`. El modo competencia lo convierte en puestos y puntos (1° 100 · 2° 70 · 3° 50 · 4° 30) y arma el resumen de ronda.

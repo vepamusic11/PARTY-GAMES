@@ -51,6 +51,7 @@ const PICKUP_RADIUS := 52.0
 const POWER_BADGE := 34.0         ## Radio del círculo del power-up en el piso.
 
 const POP_SEC := 0.18             ## Animación al pintar una baldosa.
+const TILE_HOP := 7.0             ## Cuánto se levanta la baldosa al saltar (px).
 const PAINT_SOFTEN := 0.5         ## Cuánto se aclara el color del jugador.
 const PATTERN_WIDTH := 7.0
 const DOT_RADIUS := 7.5
@@ -183,7 +184,10 @@ func _physics_process(delta: float) -> void:
 			if _time_left <= 0.0:
 				_state = State.TIME_UP
 				_end_wait = END_WAIT_SEC
+				_time_up_fx()
 		State.TIME_UP:
+			for pid: int in _pos:
+				advance_walk(pid, 0.0, delta)
 			_end_wait -= delta
 			if _end_wait <= 0.0:
 				finish(result_from_scores(_tiles, "Más baldosas gana"))
@@ -197,6 +201,7 @@ func _move_players(delta: float) -> void:
 		p.x = clampf(p.x, FIELD.position.x + MOVE_MARGIN_X, FIELD.end.x - MOVE_MARGIN_X)
 		p.y = clampf(p.y, FIELD.position.y + MOVE_MARGIN_Y, FIELD.end.y - MOVE_MARGIN_Y)
 		_pos[pid] = p
+		juice().stop_dust(pid, (_axis[pid] as Vector2).length(), p)
 
 
 func _speed_of(pid: int) -> float:
@@ -279,9 +284,33 @@ func _check_pickup() -> void:
 				_brush_left[pid] = POWER_SEC
 			else:
 				_speed_left[pid] = POWER_SEC
+			_pickup_fx(pid, at, _powerup.kind)
 			_powerup = {}
 			_powerup_timer = POWER_EVERY_SEC
 			return
+
+
+## Agarrar un power-up: sonido, vibración, brillo y el nombre del poder en
+## una píldora del color del jugador.
+func _pickup_fx(pid: int, at: Vector2, kind: int) -> void:
+	play_sfx("power")
+	notify_player(pid, "point")
+	if not is_inside_tree():
+		return
+	juice().sparkles(at)
+	juice().shine(at, 80.0)
+	juice().float_text("¡Brocha!" if kind == PowerUp.BRUSH else "¡Rápido!", (_pos[pid] as Vector2) + Vector2(0, -165),
+		player_by_id(pid).get("color", UiTheme.GOLD))
+
+
+## "¡Tiempo!": cartel con golpe de escala y confeti sobre los que van ganando.
+func _time_up_fx() -> void:
+	var best := _best_score()
+	var party := {}
+	for pid: int in _tiles:
+		if best > 0 and int(_tiles[pid]) == best:
+			party[pid] = _pos[pid]
+	celebrate("¡Tiempo!", party)
 
 
 # --- Dibujo ---------------------------------------------------------------------
@@ -301,12 +330,9 @@ func _draw() -> void:
 	# Globitos 1P–4P y nombres encima de todas las mascotas.
 	draw_player_tags(order.map(func(p: Dictionary) -> Array: return [p, _pos[p.id], MASCOT_SCALE, NAME_OFFSET]))
 	draw_hud(_tiles, clock_text(_time_left), "clock")
-	if _state == State.COUNTDOWN:
-		draw_text_centered("%d" % ceili(_countdown), SCREEN / 2.0, 260, UiTheme.PAPER, 22)
-	elif _state == State.PLAYING and _countdown > -GO_SEC:
-		draw_text_centered("¡YA!", SCREEN / 2.0, 260, UiTheme.ACCENT, 22)
-	elif _state == State.TIME_UP or is_finished():
-		draw_text_centered("¡Tiempo!", SCREEN / 2.0, 200, UiTheme.ACCENT, 22)
+	# "¡Tiempo!" lo muestra el cartel de los efectos (_time_up_fx).
+	if _state != State.TIME_UP:
+		draw_countdown(_countdown, GO_SEC)
 
 
 ## Rendimiento: las baldosas quietas están en capas propias, una por fila
@@ -332,13 +358,15 @@ func _draw_tiles() -> void:
 			var pid := _owner[i]
 			if pid == EMPTY:
 				continue
-			# Al pintarse, la baldosa "salta" de chica a su tamaño.
+			# Al pintarse, la baldosa "salta": crece de chica a su tamaño
+			# pasándose un poco (rebote) y se levanta un instante del piso.
 			var k := clampf((_anim - _painted_at[i]) / POP_SEC, 0.0, 1.0)
 			if k >= 1.0:
 				continue  # Quieta: la dibuja _floor.
 			still[i] = EMPTY
-			var s := lerpf(0.55, 1.0, 1.0 - (1.0 - k) * (1.0 - k))
-			var origin := FIELD.position + Vector2(x, y) * CELL + Vector2.ONE * CELL * (1.0 - s) / 2.0
+			var s := lerpf(0.55, 1.0, UiTheme.ease_pop(k))
+			var origin := FIELD.position + Vector2(x, y) * CELL + Vector2.ONE * CELL * (1.0 - s) / 2.0 \
+				- Vector2(0, sin(k * PI) * TILE_HOP)
 			_add_tile(popping, pid, Transform2D(0.0, Vector2(s, s), 0.0, origin))
 	popping.flush(self)
 	for y in ROWS:
@@ -446,7 +474,7 @@ func _draw_player(p: Dictionary, best: int) -> void:
 		mood = PlayerAvatar.Mood.HAPPY if int(_tiles[pid]) == best else PlayerAvatar.Mood.NORMAL
 	var anim := mascot_anim(pid, axis)
 	anim["wave"] = mood == PlayerAvatar.Mood.HAPPY
-	PlayerAvatar.draw_mascot(self, feet, MASCOT_SCALE, p.color, PlayerAvatar.style_of(p), mood, 0.0, 0.0, false, anim)
+	PlayerAvatar.draw_mascot(self, feet, MASCOT_SCALE, p.color, PlayerAvatar.style_of(p), mood, 0.0, celebrate_hop(pid), false, anim)
 	# Power-up activo: ícono chico al costado con el tiempo que le queda.
 	var active := maxf(brush, speed)
 	if active > 0.0:

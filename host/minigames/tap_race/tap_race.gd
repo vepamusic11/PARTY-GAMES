@@ -42,7 +42,7 @@ func setup(p_players: Array[Dictionary]) -> void:
 
 
 func on_input(player_id: int, input: Dictionary) -> void:
-	if not _taps.has(player_id) or is_finished():
+	if not _taps.has(player_id) or is_finished() or in_finale():
 		return
 	var down := (int(input.btn) & Protocol.BTN_A) != 0
 	if down and not _was_down[player_id] and _countdown <= 0.0:
@@ -59,10 +59,28 @@ func _register_tap(player_id: int) -> void:
 		return
 	times.append(now)
 	_taps[player_id] += 1
+	# Cada toque levanta un poco de polvo detrás de la mascota.
+	var feet := _feet_of(player_id)
+	juice().dust(feet + Vector2(-24, -6), 2, Vector2(-1, -0.4), 10.0)
 	if _taps[player_id] >= TAPS_TO_WIN:
 		play_sfx("win")
 		notify_player(player_id, "win")
-		finish({"winners": [player_id], "scores": _taps.duplicate(), "summary": "Primero en la meta"})
+		finish_after({"winners": [player_id], "scores": _taps.duplicate(), "summary": "Primero en la meta"},
+			"¡Meta!", {player_id: feet}, "")
+
+
+## Pies de la mascota del jugador en su carril (mismas cuentas que _draw).
+func _feet_of(player_id: int) -> Vector2:
+	for i in players.size():
+		if players[i].id == player_id:
+			var y := _lanes().position.y + LANE_HEIGHT * i
+			var x := lerpf(TRACK_LEFT + 20.0, TRACK_RIGHT - 30.0, float(_taps[player_id]) / TAPS_TO_WIN)
+			return Vector2(x, y + LANE_HEIGHT - 16)
+	return Vector2.ZERO
+
+
+func _lanes() -> Rect2:
+	return Rect2(TRACK_LEFT - 40, (SCREEN.y - LANE_HEIGHT * players.size()) / 2.0 + 40, TRACK_RIGHT - TRACK_LEFT + 140, LANE_HEIGHT * players.size())
 
 
 func _physics_process(delta: float) -> void:
@@ -75,7 +93,7 @@ func _physics_process(delta: float) -> void:
 
 func _draw() -> void:
 	draw_sky()
-	var lanes := Rect2(TRACK_LEFT - 40, (SCREEN.y - LANE_HEIGHT * players.size()) / 2.0 + 40, TRACK_RIGHT - TRACK_LEFT + 140, LANE_HEIGHT * players.size())
+	var lanes := _lanes()
 	draw_play_field(lanes, LANE_HEIGHT / 2.0)
 	# Meta a cuadros, separadores de carril y carteles con el nombre: todo en
 	# un lote (un draw call) armado una vez; los textos y las mascotas van después.
@@ -87,7 +105,7 @@ func _draw() -> void:
 		var y := lanes.position.y + LANE_HEIGHT * i
 		var progress := float(_taps[p.id]) / TAPS_TO_WIN
 		var x := lerpf(TRACK_LEFT + 20.0, TRACK_RIGHT - 30.0, progress)
-		var hop := absf(sin(float(_taps[p.id]) * PI / 2.0)) * 6.0
+		var hop := absf(sin(float(_taps[p.id]) * PI / 2.0)) * 6.0 + celebrate_hop(p.id)
 		PlayerAvatar.draw_mascot(self, Vector2(x, y + LANE_HEIGHT - 16), 1.3, p.color, PlayerAvatar.style_of(p),
 			PlayerAvatar.Mood.HAPPY if _taps[p.id] >= TAPS_TO_WIN else PlayerAvatar.Mood.NORMAL, 0.0, hop, false,
 			# Cada toque es medio paso: la mascota corre al ritmo del dedo.
@@ -99,10 +117,7 @@ func _draw() -> void:
 			UiTheme.text_on(p.color), tag.end.x - 16.0 - (tag.position.x + 68.0))
 	var center := "Meta: %d" % TAPS_TO_WIN
 	draw_hud(_taps, center, "flag")
-	if _countdown > 0.0:
-		draw_text_centered("%d" % ceili(_countdown), SCREEN / 2.0, 260, UiTheme.PAPER, 22)
-	elif _countdown > -0.8:
-		draw_text_centered("¡YA!", SCREEN / 2.0, 260, UiTheme.ACCENT, 22)
+	draw_countdown(_countdown)
 
 
 ## Cartel del carril `i`: a la izquierda de la pista.

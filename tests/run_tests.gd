@@ -187,8 +187,13 @@ func test_dodge_elimination() -> void:
 	var results: Array = []
 	game.finished.connect(func(r: Dictionary) -> void: results.append(r))
 	game._spawn_block(game._pos[1], 120.0, 0.0)  # cae ya, sobre Pablo
-	await physics_frame
-	await physics_frame
+	for i in 12:  # (la pausa de impacto congela unos frames)
+		await physics_frame
+	check(game.in_finale() and results.is_empty(), "festeja antes de terminar (¡Último en pie!)")
+	check(game.is_celebrating(2) and not game.is_celebrating(1), "festeja la que sigue en pie")
+	game._finale_left = 0.0  # Sin esperar el festejo entero.
+	await process_frame
+	await process_frame
 	check(results.size() == 1, "termina al quedar uno en pie (%d)" % results.size())
 	if results.size() == 1:
 		var r: Dictionary = results[0]
@@ -552,6 +557,105 @@ func test_stop_clock_scoring() -> void:
 		"resultado final (%s)" % [results])
 	game.queue_free()
 	await process_frame
+
+# --- Efectos ("juice") -------------------------------------------------------------
+
+## Partículas: pool fijo que se reutiliza (nunca crece) y se apaga solo.
+func test_fx_particles_pool() -> void:
+	var fx := FxParticles.new(32)
+	check(fx.alive_count() == 0 and not fx.is_processing(), "arranca vacío y sin _process")
+	fx.burst(FxParticles.Kind.STAR, Vector2(100, 100), 500, UiTheme.GOLD, 300.0, 10.0, 0.5)
+	check(fx.alive_count() == 32 and fx.is_processing(), "500 pedidas: quedan 32 vivas (%d), el pool no crece" % fx.alive_count())
+	check(fx._pos.size() == 32 and fx._dur.size() == 32 and fx._col.size() == 32, "los arreglos siguen del tamaño del pool")
+	fx._process(0.2)
+	fx.emit(FxParticles.Kind.SPARK, Vector2.ZERO, Vector2.RIGHT * 100.0, 5.0, 2.0, UiTheme.PAPER)
+	check(fx.alive_count() == 32, "emitir con el pool lleno pisa la más vieja (%d)" % fx.alive_count())
+	for i in 3:
+		fx._process(0.5)
+	check(fx.alive_count() == 1, "las de 0,5 s se liberan; la de 2 s sigue (%d)" % fx.alive_count())
+	fx._process(2.0)
+	fx._process(0.016)
+	check(fx.alive_count() == 0 and not fx.is_processing(), "sin partículas apaga su _process")
+	for round in 5:
+		fx.burst(FxParticles.Kind.CONFETTI, Vector2.ZERO, 20, UiTheme.PAPER, 200.0, 8.0, 0.3)
+		fx._process(1.0)
+	check(fx._pos.size() == 32 and fx.alive_count() == 0, "muchos estallidos seguidos reutilizan los mismos lugares")
+	UiTheme.reduce_motion = true
+	fx.burst(FxParticles.Kind.PUFF, Vector2.ZERO, 20, UiTheme.FX_DUST, 100.0, 8.0, 0.5)
+	check(fx.alive_count() == roundi(20 * UiTheme.FX_REDUCED), "con Reducir movimiento salen menos (%d)" % fx.alive_count())
+	UiTheme.reduce_motion = false
+	fx.free()
+
+
+## "Reducir movimiento": sin sacudida ni zoom en ningún juego (y siguen andando).
+func test_reduce_motion_no_shake() -> void:
+	var game: Variant = MiniGameRegistry.create("arena")
+	root.add_child(game)
+	game.setup(_fake_players(2))
+	await process_frame
+	game.juice().shake(1.0)
+	await process_frame
+	await process_frame
+	check(game.transform != Transform2D.IDENTITY and game.juice().shake_offset() != Vector2.ZERO, "sin el ajuste, la sacudida mueve el juego")
+	await create_timer(UiTheme.DUR_SHAKE + 0.15).timeout
+	await process_frame
+	check(game.transform == Transform2D.IDENTITY, "la sacudida es breve: vuelve a su lugar")
+	UiTheme.reduce_motion = true
+	game.juice().shake(1.0)
+	game.juice().zoom_punch(Vector2(500, 500))
+	for i in 3:
+		await process_frame
+	check(game.transform == Transform2D.IDENTITY and game.juice().shake_offset() == Vector2.ZERO, "con Reducir movimiento no hay sacudida ni zoom")
+	check(UiTheme.pop_scale(0.0) == 1.0, "con Reducir movimiento no hay golpe de escala")
+	game.queue_free()
+	# Todos los juegos, con golpes de verdad (Esquivar: un bloque cae sobre 1P).
+	for info in MiniGameRegistry.all_info():
+		var g: Variant = MiniGameRegistry.create(info.id)
+		var players := _fake_players(info.max_players)
+		root.add_child(g)
+		g.setup(players)
+		if info.id == "dodge":
+			g._countdown = 0.0
+			g._spawn_block(g._pos[1], 120.0, 0.0)
+		var moved := false
+		for f in 20:
+			for p in players:
+				g.on_input(p.id, {"seq": f, "axis": Vector2(1, 0.3), "btn": f % 2})
+			await physics_frame
+			moved = moved or g.transform != Transform2D.IDENTITY
+		check(is_instance_valid(g) and not moved, "%s: corre sin sacudirse con Reducir movimiento" % info.id)
+		g.queue_free()
+	UiTheme.reduce_motion = false
+	await process_frame
+
+
+## Momento final: "¡Tiempo!" con cartel, festejo de los ganadores y un solo finished.
+func test_game_finale() -> void:
+	var game: Variant = MiniGameRegistry.create("arena")
+	root.add_child(game)
+	game.setup(_fake_players(2))
+	var results: Array = []
+	game.finished.connect(func(r: Dictionary) -> void: results.append(r))
+	game._score[2] = 3
+	game._time_left = 0.01
+	await physics_frame
+	await physics_frame
+	check(game.in_finale() and results.is_empty(), "al llegar a 0:00 festeja antes de terminar")
+	check(game.juice().has_banner() and game.is_celebrating(2) and not game.is_celebrating(1), "cartel ¡Tiempo! y festeja el ganador")
+	check(game.celebrate_hop(2) >= 0.0 and game.juice().particles.alive_count() > 0, "confeti sobre el ganador")
+	var pos: Vector2 = game._pos[2]
+	game.on_input(2, {"seq": 9, "axis": Vector2(1, 0), "btn": 0})
+	await physics_frame
+	check(game._pos[2] == pos, "durante el festejo nadie se mueve")
+	game._finale_left = 0.0
+	await process_frame
+	await process_frame
+	check(results.size() == 1 and results[0].winners == [2], "termina una sola vez con el resultado de 0:00 (%s)" % [results])
+	game.finish({"winners": [1], "scores": {}})
+	check(results.size() == 1, "finished no se repite")
+	game.queue_free()
+	await process_frame
+
 
 # --- Sonido y vibración ------------------------------------------------------------
 

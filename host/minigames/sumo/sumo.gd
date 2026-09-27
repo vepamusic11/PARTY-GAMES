@@ -47,15 +47,12 @@ const NAME_SIZE := 26
 const FALL_SEC := 0.6
 const FALL_DRAG := 3.0
 
-# --- Efectos --------------------------------------------------------------------
+# --- Efectos (ver MiniGame.juice) -----------------------------------------------
 const HIT_FX_MIN_SPEED := 150.0   ## Choques más suaves no muestran estrellitas.
-const HIT_FX_SEC := 0.4
 const HIT_FX_COOLDOWN := 0.3     ## Entre dos efectos del mismo par (empujarse sin parar no satura).
-const SPLASH_SEC := 0.55
-const POPUP_SEC := 1.0
-const SHAKE_SEC := 0.22
-const SHAKE_MAX := 9.0
+const BIG_HIT := 0.6              ## Desde esta fuerza (0..1) el choque sacude y congela un instante.
 const ANNOUNCE_SEC := 2.5
+const WARN_SEC := 1.5             ## Antes de achicarse, el borde de la isla titila y suena un aviso.
 
 # --- Tribuna --------------------------------------------------------------------
 const STAND_W := 320.0
@@ -70,15 +67,11 @@ var _out_time: Dictionary = {}    # player_id -> segundos sobrevividos (solo los
 var _fall_t: Dictionary = {}      # player_id -> segundos desde que se cayó
 var _kos: Dictionary = {}         # player_id -> rivales que tiró
 var _last_hit: Dictionary = {}    # player_id -> {by: id, t: segundos de juego}
-var _effects: Array = []          # {kind: "hit"|"splash", pos, t, power}
 var _pair_fx: Dictionary = {}     # Vector2i(a, b) -> segundos de juego del último efecto
-var _popups: Array = []           # {text, pos, t}
 var _radius := RADIUS_START
 var _countdown := COUNTDOWN_SEC
 var _elapsed := 0.0
 var _anim := 0.0
-var _shake_t := 0.0
-var _shake_power := 0.0
 var _ending := false
 var _end_timer := 0.0
 var _result: Dictionary = {}
@@ -123,7 +116,7 @@ func on_input(player_id: int, input: Dictionary) -> void:
 
 
 func _physics_process(delta: float) -> void:
-	if is_finished():
+	if is_finished() or hit_stopped(delta):
 		return
 	step(delta)
 	queue_redraw()
@@ -133,8 +126,6 @@ func _physics_process(delta: float) -> void:
 ## puedan avanzar a mano.
 func step(delta: float) -> void:
 	_anim += delta
-	_shake_t = maxf(_shake_t - delta, 0.0)
-	_update_effects(delta)
 	_update_falls(delta)
 	if _ending:
 		_end_timer -= delta
@@ -145,6 +136,7 @@ func step(delta: float) -> void:
 		_countdown -= delta
 	if _countdown > 0.0:
 		return  # Nadie se mueve hasta el "¡YA!".
+	_warn_beeps(_elapsed, minf(_elapsed + delta, DURATION_SEC))
 	_elapsed = minf(_elapsed + delta, DURATION_SEC)
 	_radius = platform_radius(_elapsed)
 	_move_players(delta)
@@ -251,10 +243,7 @@ func _collide_players() -> void:
 			if impact >= HIT_FX_MIN_SPEED and _elapsed - float(_pair_fx.get(pair, -INF)) >= HIT_FX_COOLDOWN:
 				_pair_fx[pair] = _elapsed
 				var power := clampf(impact / (MAX_SPEED * 1.5), 0.3, 1.0)
-				_effects.append({"kind": "hit", "pos": ((r.pa as Vector2) + (r.pb as Vector2)) / 2.0, "t": 0.0, "power": power})
-				if power >= _shake_power or _shake_t <= 0.0:
-					_shake_power = power
-					_shake_t = SHAKE_SEC
+				_hit_fx(((r.pa as Vector2) + (r.pb as Vector2)) / 2.0, (r.pb as Vector2) - (r.pa as Vector2), power)
 
 
 func _check_falls() -> void:
@@ -267,7 +256,9 @@ func _check_falls() -> void:
 		var by := credited_pusher(_last_hit.get(pid, {}), _elapsed)
 		if by != -1 and by != pid and _kos.has(by):
 			_kos[by] += 1
-			_popups.append({"text": "+%d" % int(KO_BONUS), "pos": _pos[by], "t": 0.0})
+			if is_inside_tree():
+				juice().float_text("+%d" % int(KO_BONUS), (_pos[by] as Vector2) + Vector2(0, -140),
+					player_by_id(by).get("color", UiTheme.GOLD))
 
 
 func _update_falls(delta: float) -> void:
@@ -278,18 +269,33 @@ func _update_falls(delta: float) -> void:
 		_vel[pid] = (_vel[pid] as Vector2) * exp(-FALL_DRAG * delta)
 		_pos[pid] += (_vel[pid] as Vector2) * delta
 		_fall_t[pid] = t + delta
-		if t + delta >= FALL_SEC:
-			_effects.append({"kind": "splash", "pos": _pos[pid], "t": 0.0, "power": 1.0})
+		if t + delta >= FALL_SEC and is_inside_tree():
+			# Chapuzón: gotas, onda y una sacudida leve.
+			juice().splash(_pos[pid])
+			juice().shake(0.7)
+			play_sfx("splash")
 
 
-func _update_effects(delta: float) -> void:
-	for e in _effects:
-		e.t += delta
-	_effects = _effects.filter(func(e: Dictionary) -> bool:
-		return e.t < (HIT_FX_SEC if e.kind == "hit" else SPLASH_SEC))
-	for p in _popups:
-		p.t += delta
-	_popups = _popups.filter(func(p: Dictionary) -> bool: return p.t < POPUP_SEC)
+## Choque: estrellitas y chispas en el punto de contacto; los fuertes además
+## sacuden la pantalla y la congelan un instante (hit-stop).
+func _hit_fx(at: Vector2, dir: Vector2, power: float) -> void:
+	if not is_inside_tree():
+		return
+	juice().sparkles(at, UiTheme.GOLD, roundi(3 + 5 * power), 200.0 + 220.0 * power)
+	juice().sparks(at, dir.orthogonal(), UiTheme.FX_SPARK, 2)
+	juice().sparks(at, -dir.orthogonal(), UiTheme.FX_SPARK, 2)
+	if power >= BIG_HIT:
+		juice().shake(power * 0.8)
+		hit_stop(0.06)
+
+
+## Anticipación: WARN_SEC antes de que la isla empiece a achicarse suena un
+## aviso por cada titileo del borde (ver _draw).
+func _warn_beeps(before: float, after: float) -> void:
+	var b := SHRINK_START_SEC - before
+	var a := SHRINK_START_SEC - after
+	if b > 0.0 and b <= WARN_SEC + 0.001 and ceili(a * 2.0) < ceili(b * 2.0):
+		play_sfx("warn", 1.0 if a > 0.0 else 0.7)
 
 
 func _check_end() -> void:
@@ -308,11 +314,15 @@ func _start_end(alive: Array[int]) -> void:
 		_result = result_from_scores(scores, "Más puntos gana")
 	else:
 		_result = {"winners": alive, "scores": scores, "summary": "Último en pie gana"}
+	var party := {}
 	for pid in alive:
 		_vel[pid] = Vector2.ZERO
 		_axis[pid] = Vector2.ZERO
+		party[pid] = (_pos[pid] as Vector2) + Vector2(0, FEET_OFFSET)
 	_ending = true
 	_end_timer = END_DELAY_SEC
+	if is_inside_tree():
+		celebrate("¡Tiempo!" if _elapsed >= DURATION_SEC else ("¡Último en pie!" if not alive.is_empty() else "¡Fin!"), party)
 
 
 func _alive_ids() -> Array[int]:
@@ -334,15 +344,20 @@ func _live_scores() -> Dictionary:
 # --- Dibujo ------------------------------------------------------------------
 
 func _draw() -> void:
+	# La sacudida ahora es de cámara (MiniGame.juice().shake): mueve el juego
+	# entero sin redibujar las capas. `shake` queda en cero.
 	var shake := Vector2.ZERO
-	if _shake_t > 0.0:
-		shake = Vector2(sin(_anim * 93.0), cos(_anim * 71.0)) * SHAKE_MAX * _shake_power * (_shake_t / SHAKE_SEC)
 	# Agua, los que caen por el lado de atrás e isla: capas propias (ver
 	# "Capas" más abajo), que quedan detrás de todo lo que se dibuja acá.
 	_update_layers(shake)
 	draw_static(_draw_stand_panels)  # Paneles y bancos de las tribunas: fijos.
-	# Mientras se achica, el borde titila en rojo.
-	if _elapsed >= SHRINK_START_SEC and _radius > RADIUS_END and not _ending:
+	# Mientras se achica, el borde titila en rojo. Anticipación: WARN_SEC antes
+	# ya titila (más fuerte y a saltos, con un aviso sonoro en cada uno).
+	var warn := SHRINK_START_SEC - _elapsed
+	if warn > 0.0 and warn <= WARN_SEC and _countdown <= 0.0 and not _ending:
+		if fmod(warn, 0.5) > 0.2:
+			draw_arc(CENTER + shake, _radius - 12.0, 0, TAU, 96, Color(UiTheme.DANGER, 0.9), 18.0, true)
+	elif _elapsed >= SHRINK_START_SEC and _radius > RADIUS_END and not _ending:
 		var blink := 0.35 + 0.35 * sin(_anim * 8.0)
 		draw_arc(CENTER + shake, _radius - 10.0, 0, TAU, 96, Color(UiTheme.DANGER, blink), 8.0, true)
 	var order := players.filter(func(p: Dictionary) -> bool:
@@ -365,13 +380,9 @@ func _draw() -> void:
 	for p in order:
 		if not _out_time.has(p.id):
 			_draw_kos(self, p, (_pos[p.id] as Vector2) + shake + Vector2(0, FEET_OFFSET + NAME_OFFSET), p.name)
-	_draw_effects(shake)
 	_draw_stands()
 	draw_hud(_live_scores(), clock_text(DURATION_SEC - _elapsed))
-	if _countdown > 0.0:
-		draw_text_centered("%d" % ceili(_countdown), SCREEN / 2.0, 260, UiTheme.PAPER, 22)
-	elif _countdown > -GO_SEC:
-		draw_text_centered("¡YA!", SCREEN / 2.0, 260, UiTheme.ACCENT, 22)
+	draw_countdown(_countdown, GO_SEC)
 	var since_shrink := _elapsed - SHRINK_START_SEC
 	if since_shrink >= 0.0 and since_shrink < ANNOUNCE_SEC and not _ending:
 		draw_text_centered("¡La isla se achica!", Vector2(CENTER.x, 140), 52, UiTheme.ACCENT, 12)
@@ -599,7 +610,7 @@ func _draw_player(p: Dictionary, off: Vector2) -> void:
 		mood = PlayerAvatar.Mood.SURPRISED
 	var anim := mascot_anim(p.id, (_vel[p.id] as Vector2) / MAX_SPEED)
 	anim["wave"] = mood == PlayerAvatar.Mood.HAPPY
-	PlayerAvatar.draw_mascot(self, feet, MASCOT_SCALE, p.color, PlayerAvatar.style_of(p), mood, 0.0, 0.0, false, anim)
+	PlayerAvatar.draw_mascot(self, feet, MASCOT_SCALE, p.color, PlayerAvatar.style_of(p), mood, 0.0, celebrate_hop(p.id), false, anim)
 
 
 ## Caída: la mascota gira y se achica hasta desaparecer en el agua.
@@ -633,32 +644,6 @@ func _draw_kos(ci: CanvasItem, p: Dictionary, center: Vector2, text: String) -> 
 	var w := UiTheme.FONT_BOLD.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, NAME_SIZE).x
 	for i in kos:
 		UiTheme.draw_star(ci, center + Vector2(w / 2.0 + 20.0 + i * 28.0, -1.0), 11.0, UiTheme.GOLD)
-
-
-func _draw_effects(off: Vector2) -> void:
-	for e in _effects:
-		var pos: Vector2 = e.pos + off
-		if e.kind == "hit":
-			var k: float = e.t / HIT_FX_SEC
-			var power: float = e.power
-			draw_arc(pos, lerpf(12.0, 70.0 * power + 20.0, k), 0, TAU, 32, Color(UiTheme.PAPER, 1.0 - k), lerpf(10.0, 2.0, k), true)
-			for i in 5:
-				var a := TAU * i / 5.0 + pos.x * 0.01
-				var star_pos := pos + Vector2.from_angle(a) * lerpf(14.0, 50.0 + 50.0 * power, k)
-				UiTheme.draw_star(self, star_pos, (8.0 + 8.0 * power) * (1.0 - k * 0.8), UiTheme.GOLD, k * 2.0)
-		else:
-			var k: float = e.t / SPLASH_SEC
-			var ring := Color(UiTheme.PAPER, 1.0 - k)
-			draw_arc(pos, lerpf(10.0, 80.0, k), 0, TAU, 32, ring, 8.0 * (1.0 - k) + 2.0, true)
-			draw_arc(pos, lerpf(4.0, 46.0, k), 0, TAU, 24, ring, 5.0 * (1.0 - k) + 1.0, true)
-			for i in 6:
-				var a := -PI + PI * (i + 0.5) / 6.0
-				var drop := pos + Vector2(cos(a) * 60.0 * k, sin(a) * 70.0 * k + 120.0 * k * k)
-				draw_circle(drop, 7.0 * (1.0 - k) + 2.0, ring)
-	for p in _popups:
-		var k: float = p.t / POPUP_SEC
-		UiTheme.draw_text(self, p.text, (p.pos as Vector2) + off - Vector2(0, 110.0 + 60.0 * k), 48,
-			Color(UiTheme.GOLD, 1.0 - k * k), 10, Color(UiTheme.INK, 1.0 - k * k))
 
 
 ## Tribunas a los costados: los que se cayeron miran tristes desde ahí.

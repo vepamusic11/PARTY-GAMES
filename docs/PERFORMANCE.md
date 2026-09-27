@@ -91,7 +91,7 @@ Los dos quedan dentro de lo pedido para la TV (p95 ≤ 8 ms en el benchmark y �
 
 - Cada `draw_arc` con antialiasing son **3 draw calls**; `UiTheme.ShapeBatch.arc/polyline` arma la misma línea (tira central + bordes que se desvanecen, mismo algoritmo que el motor) dentro del lote. Se usa en lo que se redibuja poco (olas, anillos enteros). En lo que cambia en cada frame (borde que se achica, anillos de los jugadores) se deja `draw_arc` del motor: en C++ cuesta menos CPU que armarlo en GDScript.
 - Los bloques de cada anillo van en lote como tiras de cuadriláteros (cubren los mismos píxeles que el polígono). Para respetar el orden bloque → costura → bloque…, el único bloque que tapa una costura ajena (el último, sobre la primera) se vuelve a dibujar después de ella: es opaco, así que queda igual.
-- El temblor no mueve las capas: cuando tiembla, las capas de la isla se redibujan con el desplazamiento (≈ 13 frames por golpe), así el resultado es idéntico.
+- ~~El temblor no mueve las capas: cuando tiembla, las capas de la isla se redibujan con el desplazamiento (≈ 13 frames por golpe).~~ Desde [ADR 0011](adr/0011-efectos.md) el temblor es de cámara (`Juice.shake`: se mueve el nodo del juego entero) y las capas ya no se redibujan por un golpe.
 
 **Pintar el piso** (`host/minigames/paint/paint.gd`, `_draw_tiles`): las baldosas quietas van en **una capa por fila** (11), que se redibuja solo cuando cambia alguna baldosa de esa fila; las que están "saltando" (recién pintadas, 0,18 s) se dibujan en `_draw` como antes. Con 4 jugadores se pintan decenas de baldosas por segundo: con una sola capa para todo el piso se redibujaba casi en cada frame; por fila, cada cambio redibuja 20 baldosas y no 220. Los puntos del patrón de 3P van en un lote por fila (antes eran 5 draw calls por baldosa).
 
@@ -164,6 +164,27 @@ Medido con Empujones en la misma corrida como control (la máquina tenía varias
 
 - Tablero, botones apagados, tarjetas y ayuda van en `draw_static` (un lote). Por frame: un lote con el botón encendido, el halo, el arco del tiempo y las fichas de todos; los botones de cada estado se arman una vez (`_pad_mesh`).
 - Scripts ≈ +10 % sobre Esquivar por las cuatro mascotas más grandes (escala 1,5); dentro del ruido de la máquina.
+
+### Efectos (ADR 0011)
+
+Partículas en lote con pool fijo (`FxParticles`, un draw call), números flotantes, cartel del final y cámara (sacudida/zoom moviendo el nodo del juego, sin redibujar). Medido intercalando la punta sin el cambio (`8576fbb`) y con el cambio, 4 corridas de cada uno (promedio; la máquina tenía otras corridas en paralelo y el control `lobby`, que no cambia, varió +7 %):
+
+| Escena | Scripts prom. (ms) | Scripts p95 (ms) | Draw calls |
+|---|---:|---:|---:|
+| lobby (control) | 1,79 → 1,84 | 2,41 → 2,59 | 355 → 355 |
+| arena | 2,26 → 2,59 | 3,38 → 3,81 (+13 %) | 30 → 31 |
+| pingpong | 1,32 → 1,47 | 1,87 → 2,14 (+14 %) | 35 → 37 |
+| tap_race | 2,16 → 2,25 | 3,23 → 3,40 (+5 %) | 32 → 32 |
+| stop_clock | 2,70 → 2,75 | 4,16 → 4,09 | 61 → 61 |
+| dodge | 2,76 → 2,85 | 4,43 → 4,36 | 42 → 42 |
+| paint | 2,73 → 2,76 | 4,01 → 4,15 | 45 → 45 |
+| sumo | 3,65 → 3,72 | 5,30 → 5,61 (+6 %) | 93 → 91 |
+| sumo_tarde | 4,35 → 4,62 | 6,41 → 7,23 (+13 %) | 95 → 95 |
+
+- Todo dentro del presupuesto (p95 ≤ 8 ms en el benchmark, ≤ 150 draw calls) y ninguno sube más de 15 %. `sumo_tarde` es el más ruidoso (p95 de 5,4 a 7,5 ms en la línea base y de 5,4 a 9,5 en una corrida con el cambio).
+- **Qué cuesta**: en Arena y Ping Pong los efectos se disparan todo el tiempo en el benchmark (estrellas y rebotes cada pocos frames): ≈ 0,15–0,3 ms por frame con partículas vivas. El pool recorre solo los lugares ocupados (`_hi`), reusa los arreglos de colores por forma y ubica cada forma con `Transform2D * PackedVector2Array`; 200 partículas ≈ 0,1 ms de armado.
+- **Empujones**: la sacudida ya no redibuja las capas de la isla (antes ≈ 13 frames por golpe) y los efectos a mano (varios `draw_arc`/`draw_star` por golpe) pasaron al lote: 93 → 91 draw calls.
+- Sin efectos activos, `Juice` y `FxParticles` apagan su `_process` y no se redibujan.
 
 ## Qué se cambió y por qué
 

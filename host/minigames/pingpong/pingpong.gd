@@ -11,6 +11,9 @@ const BALL_RADIUS := 16.0
 const BALL_START_SPEED := 620.0
 const BALL_SPEEDUP := 1.06
 const PADDLE_FOLLOW := 18.0  ## Suavizado: evita saltos si llegan inputs con jitter.
+const TRAIL_LEN := 7           ## Estela: posiciones anteriores de la pelota.
+const SQUASH_SEC := 0.14       ## La pelota se aplasta un instante al pegarle.
+const HITSTOP_SPEED := 1.35    ## Desde esta velocidad (× la inicial), pausa de impacto al pegarle.
 
 var _paddle_x: Dictionary = {}   # player_id -> x actual
 var _target_x: Dictionary = {}   # player_id -> x objetivo (del slider)
@@ -21,6 +24,9 @@ var _ball := Vector2.ZERO
 var _vel := Vector2.ZERO
 var _serve_delay := 1.0
 var _rng := RandomNumberGenerator.new()
+var _trail := PackedVector2Array()   # últimas posiciones de la pelota (la más nueva al final)
+var _trail_col: Color = UiTheme.PAPER  # color del último que le pegó
+var _since_hit := 1.0
 
 
 static func get_info() -> Dictionary:
@@ -60,7 +66,11 @@ func on_input(player_id: int, input: Dictionary) -> void:
 
 
 func _physics_process(delta: float) -> void:
-	if is_finished():
+	if is_finished() or hit_stopped(delta):
+		return
+	_since_hit += delta
+	if in_finale():  # Punto final: la pelota queda quieta y el ganador festeja.
+		queue_redraw()
 		return
 	for pid: int in _paddle_x:
 		_paddle_x[pid] = lerpf(_paddle_x[pid], _target_x[pid], clampf(PADDLE_FOLLOW * delta, 0.0, 1.0))
@@ -72,6 +82,9 @@ func _physics_process(delta: float) -> void:
 
 
 func _step_ball(delta: float) -> void:
+	_trail.append(_ball)
+	if _trail.size() > TRAIL_LEN:
+		_trail.remove_at(0)
 	_ball += _vel * delta
 	if _ball.x < TABLE.position.x + BALL_RADIUS or _ball.x > TABLE.end.x - BALL_RADIUS:
 		_vel.x = -_vel.x
@@ -99,6 +112,14 @@ func _check_paddle(pid: int, y: float, dir: int) -> void:
 	play_sfx("pong", 1.0 + minf(speed / BALL_START_SPEED - 1.0, 0.5))
 	notify_player(pid, "tap")
 	_ball.y = y + dir * (BALL_RADIUS + PADDLE_SIZE.y / 2.0)
+	# Efectos: chispas hacia donde sale, estela del color de quien le pegó,
+	# pelota aplastada un instante y, si viene rápida, pausa de impacto.
+	var col: Color = player_by_id(pid).get("color", UiTheme.PAPER)
+	_trail_col = col
+	_since_hit = 0.0
+	juice().sparks(_ball, _vel)
+	if speed >= BALL_START_SPEED * HITSTOP_SPEED:
+		hit_stop(0.05)
 
 
 func _point(winner_id: int, next_dir: int) -> void:
@@ -106,8 +127,15 @@ func _point(winner_id: int, next_dir: int) -> void:
 	play_sfx("point")
 	notify_player(winner_id, "point")
 	notify_player(_bottom_id if winner_id == _top_id else _top_id, "lose")
+	# Efectos: estrellitas donde salió la pelota y "+1" sobre el que sumó.
+	var p := player_by_id(winner_id)
+	var out := Vector2(_ball.x, clampf(_ball.y, TABLE.position.y, TABLE.end.y))
+	juice().sparkles(out, UiTheme.GOLD, 10)
+	var feet := _mascot_feet(winner_id == _top_id)
+	juice().float_text("+1", feet + Vector2(0, -300), p.get("color", UiTheme.GOLD))
 	if _score[winner_id] >= POINTS_TO_WIN:
-		finish(result_from_scores(_score, "Primero a %d puntos" % POINTS_TO_WIN))
+		finish_after(result_from_scores(_score, "Primero a %d puntos" % POINTS_TO_WIN),
+			"¡Gana %s!" % UiTheme.player_tag(int(p.get("slot", 0))), {winner_id: feet})
 		return
 	_reset_ball(next_dir)
 
@@ -116,6 +144,8 @@ func _reset_ball(dir: int) -> void:
 	_ball = TABLE.get_center()
 	_vel = Vector2(_rng.randf_range(-0.5, 0.5), dir).normalized() * BALL_START_SPEED
 	_serve_delay = 1.0
+	_trail.clear()
+	_trail_col = UiTheme.PAPER
 
 
 func _draw() -> void:
@@ -134,11 +164,29 @@ func _draw() -> void:
 		var look := (_ball - (side + Vector2(0, -80))).normalized()
 		PlayerAvatar.draw_mascot(self, side, 1.6, p.color, PlayerAvatar.style_of(p),
 			PlayerAvatar.Mood.HAPPY if _score[pid] > _score[_other(pid)] else PlayerAvatar.Mood.NORMAL,
-			0.0, 0.0, false, {"t": anim_time + p.slot, "look": look})
+			0.0, celebrate_hop(pid), false, {"t": anim_time + p.slot, "look": look, "wave": is_celebrating(pid)})
 	UiTheme.draw_ellipse(self, _ball + Vector2(6, 10), BALL_RADIUS, BALL_RADIUS * 0.7, Color(0, 0, 0, 0.25))
-	draw_circle(_ball, BALL_RADIUS + 3.0, UiTheme.INK)
-	draw_circle(_ball, BALL_RADIUS, Color.WHITE)
+	_draw_trail()
+	# Recién golpeada, la pelota se aplasta en la dirección del golpe y vuelve.
+	var squash := 0.0 if UiTheme.reduce_motion else maxf(0.0, 1.0 - _since_hit / SQUASH_SEC) * 0.3
+	draw_set_transform(_ball, _vel.angle(), Vector2(1.0 + squash, 1.0 - squash))
+	draw_circle(Vector2.ZERO, BALL_RADIUS + 3.0, UiTheme.INK)
+	draw_circle(Vector2.ZERO, BALL_RADIUS, Color.WHITE)
+	draw_set_transform(Vector2.ZERO)
 	draw_hud(_score, "Gana: %d" % POINTS_TO_WIN, "star")
+
+
+## Estela de la pelota: círculos cada vez más chicos y transparentes en las
+## posiciones anteriores, del color del último que le pegó (un lote).
+func _draw_trail() -> void:
+	var n := _trail.size()
+	if n == 0:
+		return
+	var batch := GameArt.TriBatch.new()
+	for i in n:
+		var k := float(i + 1) / (n + 1)   # 0 = la más vieja
+		batch.circle(_trail[i], BALL_RADIUS * lerpf(0.35, 0.9, k), Color(_trail_col, 0.45 * k), 12)
+	batch.flush(self)
 
 
 ## Lo fijo (se dibuja una vez, ver MiniGame.draw_static): la mesa con canto

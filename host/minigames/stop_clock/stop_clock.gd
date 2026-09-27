@@ -76,6 +76,7 @@ func on_input(player_id: int, input: Dictionary) -> void:
 		_stops[player_id] = elapsed()
 		play_sfx("stop")
 		notify_player(player_id, "tap")
+		_stop_fx(player_id)
 		if _all_stopped():
 			_start_reveal()
 	_was_down[player_id] = down
@@ -127,6 +128,28 @@ func _start_reveal() -> void:
 	_final_clock = elapsed()
 	_reveal_left = REVEAL_TIME
 	play_sfx("pop")
+	# Confeti sobre los que quedaron más cerca (festejan saltando, ver _draw_player).
+	var sc := scores()
+	var best := 0
+	for pid: int in sc:
+		best = maxi(best, int(sc[pid]))
+	for i in players.size():
+		if best > 0 and int(sc.get(players[i].id, 0)) == best:
+			juice().confetti(_feet_of(i) + Vector2(0, -110))
+
+
+## Al frenar: zoom sutil hacia la cajita del jugador y chispas en su pantallita
+## (el número "se congela" con un golpe de escala, ver _draw_player). Durante
+## el apagón las chispas no delatan nada: el número sigue oculto.
+func _stop_fx(player_id: int) -> void:
+	for i in players.size():
+		if players[i].id == player_id:
+			var mini := _mini_of(_box_of(_feet_of(i)))
+			juice().zoom_punch(mini.get_center())
+			# Salen de los costados de la pantallita: no tapan el número.
+			for side: float in [-1.0, 1.0]:
+				var at := mini.get_center() + Vector2(side * (mini.size.x / 2.0 + 6.0), 0)
+				juice().particles.burst(FxParticles.Kind.STAR, at, 4, UiTheme.GOLD, 320.0, 12.0, 0.5, Vector2(side, -0.4), 1.6, 0.0, 4.0)
 
 
 func _physics_process(delta: float) -> void:
@@ -227,7 +250,11 @@ func _draw_big_clock() -> void:
 		UiTheme.draw_round_rect(self, screen.grow(-10), Color(UiTheme.ACCENT, 0.06), 24)
 		_draw_lcd_text(format_time(shown), digits_center, LCD_DIGIT_SIZE, UiTheme.ACCENT)
 		var status := "¡Tiempo!" if is_revealing() else ("¡YA!" if elapsed() < 0.8 else "¡Frená en %s!" % format_time(TARGET))
-		UiTheme.draw_text(self, status, status_center, 40, UiTheme.PAPER)
+		# "¡Tiempo!" (y "¡YA!") entran con un golpe de escala.
+		var s := UiTheme.pop_scale(REVEAL_TIME - _reveal_left) if is_revealing() else UiTheme.pop_scale(elapsed())
+		draw_set_transform(status_center, 0.0, Vector2(s, s))
+		UiTheme.draw_text(self, status, Vector2.ZERO, 40, UiTheme.PAPER)
+		draw_set_transform(Vector2.ZERO)
 
 
 ## Dígitos en celdas de ancho fijo: la tipografía no es monoespaciada y el
@@ -261,10 +288,15 @@ func _draw_player(p: Dictionary, feet: Vector2, score: int, best: int) -> void:
 	var mini := _mini_of(box)
 	var text := "--.--"
 	var color := UiTheme.MUTED
+	var pop := 1.0
 	if has_stopped(pid):
 		color = UiTheme.ACCENT
 		text = "??.??" if is_blackout() else format_time(stop_time(pid))
-	_draw_lcd_text(text, mini.get_center(), MINI_DIGIT_SIZE, color)
+		if is_running():
+			pop = UiTheme.pop_scale(elapsed() - stop_time(pid))  # Se "congela" con un golpe.
+	draw_set_transform(mini.get_center(), 0.0, Vector2(pop, pop))
+	_draw_lcd_text(text, Vector2.ZERO, MINI_DIGIT_SIZE, color)
+	draw_set_transform(Vector2.ZERO)
 
 	# Al revelar: cuánto se pasó o le faltó.
 	if is_revealing():

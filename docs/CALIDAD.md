@@ -106,17 +106,17 @@ Criterios: pistas ≥ 24 px, texto de lectura ≥ 30 px, nombres de jugador ≥ 
 
 | Técnica | Qué es | Ejemplo en el juego | ¿Está? |
 |---|---|---|---|
-| **Anticipación** | Avisar antes de que pase algo | Esquivar marca con sombra punteada dónde cae el bloque | ✅ Esquivar · ❌ Empujones (la isla se achica sin aviso previo: debería titilar el anillo 1 s antes) |
+| **Anticipación** | Avisar antes de que pase algo | Esquivar marca con sombra punteada dónde cae el bloque | ✅ Esquivar (el aviso titila cada vez más rápido) · ✅ Empujones (el borde titila 1,5 s antes de achicarse, con un aviso sonoro) |
 | **Easing** | Moverse con aceleración, no a velocidad constante | Las tarjetas del resumen entran con rebote (`EASE_POP`) en vez de aparecer | Parcial (transiciones) |
-| **Squash & stretch** | Aplastar/estirar al chocar o saltar | Mascotas al saltar y aterrizar | ✅ Mascotas · ❌ estrellas, bloques, pelota de ping pong |
-| **Partículas** | Chispas, polvo, confeti | Estrella que explota en brillitos al tomarla; polvo al aterrizar; salpicadura al caer al agua en Empujones | Solo confeti en el podio |
-| **Screen shake** | Temblor de cámara en impactos | Golpe fuerte en Empujones | ✅ Empujones · ❌ bloque que aplasta en Esquivar |
-| **Hit-stop** | Congelar 60–100 ms en el momento clave | Reloj exacto: al frenar, el número se congela, hace *zoom* y suena | ❌ |
-| **Números flotantes** | "+1" que sube y se desvanece | "+5" en Empujones | ✅ Empujones · ❌ Arena, Pintar el piso |
+| **Squash & stretch** | Aplastar/estirar al chocar o saltar | Mascotas al saltar y aterrizar | ✅ Mascotas · ✅ pelota de Ping Pong, estrellas de Arena (aparecen con rebote), baldosas de Pintar el piso (saltan) |
+| **Partículas** | Chispas, polvo, confeti | Estrella que explota en brillitos al tomarla; polvo al aterrizar; salpicadura al caer al agua en Empujones | ✅ Todos los juegos (`FxParticles`, un draw call; ver [ADR 0011](adr/0011-efectos.md)) |
+| **Screen shake** | Temblor de cámara en impactos | Golpe fuerte en Empujones | ✅ Empujones · ✅ Esquivar (cámara; el marcador no tiembla) |
+| **Hit-stop** | Congelar 60–100 ms en el momento clave | Reloj exacto: al frenar, el número se congela, hace *zoom* y suena | ✅ Esquivar, Empujones, Ping Pong · ✅ Reloj exacto (número con golpe de escala + zoom, sin congelar el reloj de los demás) |
+| **Números flotantes** | "+1" que sube y se desvanece | "+5" en Empujones | ✅ Empujones, Arena, Ping Pong, Pintar el piso (power-ups), en una píldora del color del jugador |
 | **Micro-interacciones** | Respuesta a cada gesto de UI | El foco del D-pad "rebota" al moverse; el check de una tarjeta hace *pop*; la ficha del código se sacude si alguien pone uno incorrecto | Parcial (sonido `tick`) |
 | **Conteo animado** | Los números suben de a poco | Total del resumen que cuenta de 70 a 170 con `tick` | ❌ |
 
-Condiciones: el juice respeta el presupuesto de [PERFORMANCE.md](PERFORMANCE.md) (partículas propias en un `ShapeBatch`, no un nodo por partícula) y se puede bajar con **"Reducir movimiento"** (sin shake ni destellos), que además es una pauta de accesibilidad.
+Condiciones: el juice respeta el presupuesto de [PERFORMANCE.md](PERFORMANCE.md) (partículas propias en un `ShapeBatch`, no un nodo por partícula) y se puede bajar con **"Reducir movimiento"** (sin shake ni destellos), que además es una pauta de accesibilidad. *Hecho en los 7 juegos:* módulo `Juice` + `FxParticles`, momento final con "¡Tiempo!" y festejo, y "Movimiento: Reducido" en el menú de pausa ([ADR 0011](adr/0011-efectos.md)).
 
 ### 1.8 Daltonismo: la paleta de 10 colores
 
