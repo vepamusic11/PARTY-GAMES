@@ -65,7 +65,7 @@ Lo que dicen los números:
 | Juego | Cómo se juega | Control | Qué suma | Dificultad |
 |---|---|---|---|---|
 | **Karts de mascotas** ✅ *hecho* (`host/minigames/karts/`) | Circuito de 3 vueltas con curvas, turbos y charcos resbalosos. El kart acelera solo: el jugador solo dobla. | Joystick (usa el eje X; abajo frena, arriba turbo suave) | La primera carrera de verdad: adelantar, cerrar al rival, la tensión de la última vuelta | Media: pista suavizada (Catmull-Rom, polilínea), vueltas y puestos |
-| **Carrera de obstáculos** | Vista de costado, 4 carriles. Se salta con el botón para esquivar vallas y pozos, y tropezar frena un segundo. | Un botón | Timing puro; se aprende en 5 segundos | Baja |
+| **Carrera de obstáculos** ✅ *hecho* (`host/minigames/hurdles/`) | Vista de costado, 4 carriles. Se salta con el botón para esquivar vallas y pozos, y tropezar frena un segundo. | Un botón | Timing puro; se aprende en 5 segundos | Baja |
 | **Derrape** | Mini circuito ovalado. Mantener apretado derrapa: más derrape da más turbo, pero con riesgo de salirse. | Un botón | Riesgo contra recompensa con un solo botón | Media |
 
 **Cuidados en las carreras:**
@@ -117,7 +117,7 @@ Toda la lógica vive en la TV, que sigue siendo autoritativa: el celular solo ma
 2. ~~**Karts de mascotas**~~ (hecho): es la carrera que la gente espera en un party game y usa el joystick que ya existe.
 1. **Pool loco** *(hecho)*: no necesitó un layout nuevo y su física (`host/minigames/pool/pool_physics.gd`) se puede reutilizar en Mini golf y Bochas.
 2. **Karts de mascotas:** es la carrera que la gente espera en un party game y usa el joystick que ya existe.
-3. **Carrera de obstáculos:** barata y muy clara para jugadores nuevos.
+3. **Carrera de obstáculos** *(hecho, `host/minigames/hurdles/`)*: barata y muy clara para jugadores nuevos. Cada carril tiene su propio scroll lateral (la mascota queda fija y el recorrido pasa) y un riel con la meta; todos corren la misma secuencia de vallas, pozos, escalones y plataformas, generada con una semilla. Tocar salta, mantener salta un poco más alto (con límite); tropezar frena 1 s. Gana el primero en la meta o, a los 60 s, el que llegó más lejos. Física con pasos fijos de 1/60 s: la misma semilla y las mismas entradas dan la misma carrera (tests `test_hurdles_*`).
 4. **Hockey de mesa:** primer juego por equipos.
 5. Después, los que necesitan layouts nuevos (Equilibrio), sumados juntos en una sola versión del protocolo. Memoria de colores ya está hecha con el joystick (cada dirección es un botón), sin cambiar el protocolo.
 

@@ -1388,3 +1388,17 @@ const POOL_HINT_BG := Color(0.07, 0.08, 0.2, 0.75)  ## Cartel "cómo se tira".
 # Piezas nuevas de las mascotas (expresiones, bailes, robot rediseñado).
 const MASCOT_SOCKET := Color("#2E3458")      ## Zócalo de goma de la antena del robot.
 const MASCOT_BOLT := Color("#A3ABC2")        ## Tornillos de la frente del robot (metal más oscuro).
+
+
+# --- Obstáculos (agente) ---
+# Carrera de obstáculos (host/minigames/hurdles/): tarjeta del lobby, pozos y
+# plataformas. Las vallas y los escalones usan BRICKS.
+const ACCENT_HURDLES := Color("#5B6CFF")   ## Color de la tarjeta en el lobby.
+const HURDLES_PIT := Color("#2B3470")      ## Pozo: arriba (boca).
+const HURDLES_PIT_DEEP := Color("#141838") ## Pozo: abajo (fondo).
+const HURDLES_GROUND := Color("#3CC46B")   ## Ladrillos del piso de los carriles (pasto)…
+const HURDLES_GROUND_ALT := Color("#56D17F") ## …alternados con este tono.
+const HURDLES_BUSH := Color("#CDEBD6")     ## Arbustos lejanos del fondo (pálidos: no distraen)…
+const HURDLES_BUSH_LIGHT := Color("#E2F5E8") ## …y su brillo.
+const HURDLES_POST := Color("#F4F6FB")     ## Patas blancas de las vallas.
+const HURDLES_RAIL := Color(0.11, 0.13, 0.25, 0.28)  ## Riel de progreso de cada carril.

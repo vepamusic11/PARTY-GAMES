@@ -91,6 +91,7 @@ const SHOTS := {
 		"sec": 12.0, "crop": Rect2(300, 148, 1000, 562),
 		"orbit": {"c": Vector2(960, 578), "r": Vector2(30, 20), "spread": Vector2.ZERO},
 	},
+	"hurdles": {"sec": 7.0, "crop": Rect2(280, 330, 960, 540)},
 }
 
 var _out_dir := OUT_DIR

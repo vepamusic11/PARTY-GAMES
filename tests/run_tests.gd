@@ -3065,6 +3065,92 @@ func test_karts_rubber_band() -> void:
 	_karts_put(game, 1, 2.0 * L + puddle.x * L, puddle.y)
 	game.step_fixed()
 	check(game._karts[1].slip > 0.0, "el charco hace patinar")
+# --- Carrera de obstáculos -----------------------------------------------------------
+
+const HURDLES := preload("res://host/minigames/hurdles/hurdles.gd")
+
+
+## Juego de Carrera de obstáculos con `n` jugadores y el recorrido dado,
+## avanzado a mano (sin _physics_process) y ya pasada la cuenta regresiva.
+func _hurdles_game(n: int, course: Array) -> Variant:
+	var game: Variant = MiniGameRegistry.create("hurdles")  # Sin tipo: métodos propios del juego.
+	root.add_child(game)
+	game.set_physics_process(false)
+	game.setup(_fake_players(n))
+	game.use_course(course)
+	_hurdles_run(game, HURDLES.COUNTDOWN_SEC + 0.1)
+	return game
+
+
+func _hurdles_run(game: Variant, seconds: float, jumper: int = 0) -> void:
+	for i in roundi(seconds / HURDLES.DT):
+		if jumper > 0:
+			_hurdles_bot(game, jumper)
+		game.step(HURDLES.DT)
+
+
+## Jugador "que sabe": toca cuando el próximo obstáculo está por llegar.
+func _hurdles_bot(game: Variant, pid: int) -> void:
+	var r: Variant = game._runners[pid]
+	var down := false
+	for o: Dictionary in game._course:
+		var d: float = float(o.x) - r.x
+		if d < 90.0 and d > 40.0:
+			down = true
+	game.on_input(pid, {"seq": 0, "axis": Vector2.ZERO, "btn": Protocol.BTN_A if down else 0})
+
+
+func _hurdles_press(game: Variant, pid: int, down: bool) -> void:
+	game.on_input(pid, {"seq": 0, "axis": Vector2.ZERO, "btn": Protocol.BTN_A if down else 0})
+
+
+## Salto: anticipación (se agacha antes de despegar), squash & stretch,
+## tocar da el salto corto y mantener uno más alto pero con límite; en el aire
+## no se vuelve a saltar.
+func test_hurdles_jump() -> void:
+	var game: Variant = _hurdles_game(1, [])
+	var r: Variant = game._runners[1]
+	check(r.grounded and r.speed > 0.0 and r.x > 0.0, "después del ¡YA! corre solo")
+	_hurdles_press(game, 1, true)
+	_hurdles_press(game, 1, false)  # Toque corto: suelta antes del próximo paso.
+	game.step(HURDLES.DT)
+	check(r.grounded and r.squash > 0.2, "anticipación: agachada antes de saltar (squash %.2f)" % r.squash)
+	var peak := 0.0
+	var stretched := false
+	var air := 0
+	for i in 120:
+		game.step(HURDLES.DT)
+		peak = maxf(peak, r.y)
+		stretched = stretched or r.squash < -0.1
+		if not r.grounded:
+			air += 1
+		elif air > 0:
+			break
+	check(stretched, "al despegar se estira")
+	check(r.grounded and r.squash > 0.0, "al aterrizar se aplasta")
+	check(peak > 70.0 and peak < 95.0, "salto corto ≈ 80 px (%.1f)" % peak)
+	check(air * HURDLES.DT > 0.4 and air * HURDLES.DT < 0.65, "salto corto ≈ 0,5 s en el aire (%.2f)" % (air * HURDLES.DT))
+	# Mantener apretado todo el salto: más alto, pero nunca más que el límite.
+	_hurdles_press(game, 1, true)
+	var high := 0.0
+	for i in 60:
+		game.step(HURDLES.DT)
+		high = maxf(high, r.y)
+	check(high > peak + 30.0, "mantener salta más alto (%.1f contra %.1f)" % [high, peak])
+	check(high <= HURDLES.MAX_JUMP_HEIGHT, "el salto largo tiene límite (%.1f)" % high)
+	# Un toque en el aire (bajando) no vuelve a saltar.
+	_hurdles_press(game, 1, false)
+	_hurdles_press(game, 1, true)
+	_hurdles_press(game, 1, false)
+	for i in 30:
+		game.step(HURDLES.DT)
+		if not r.grounded and r.vy < -200.0 and r.y > 30.0:
+			break
+	check(not r.grounded and r.vy < 0.0, "está bajando")
+	_hurdles_press(game, 1, true)
+	_hurdles_press(game, 1, false)
+	game.step(HURDLES.DT)
+	check(r.vy < 0.0, "en el aire no se vuelve a saltar")
 	game.queue_free()
 	await process_frame
 
@@ -3150,3 +3236,191 @@ func test_karts_deterministic() -> void:
 	for snap: Array in runs[0]:
 		lat_ok = lat_ok and absf(float(snap[8])) <= KARTS.HALF_WIDTH - KARTS.KART_RADIUS + 1.0
 	check(lat_ok, "todos siguen dentro de la pista")
+## Tropiezos: la valla frena ~1 s con cara de susto (y se cae), el pozo
+## demora y devuelve del otro lado, contra el escalón se tropieza y se trepa.
+## Quien salta a tiempo no pierde nada.
+func test_hurdles_trip() -> void:
+	var hurdle := [{"kind": HURDLES.Kind.HURDLE, "x": 600.0, "w": 0.0, "h": HURDLES.HURDLE_H}]
+	var game: Variant = _hurdles_game(2, hurdle)
+	var a: Variant = game._runners[1]
+	var b: Variant = game._runners[2]
+	var tripped_at := -1.0
+	var lost := -1.0
+	for i in roundi(4.0 / HURDLES.DT):
+		_hurdles_bot(game, 2)
+		game.step(HURDLES.DT)
+		if tripped_at < 0.0 and a.stumble > 0.0:
+			tripped_at = game._elapsed
+			check(a.speed <= HURDLES.STUMBLE_SPEED, "tropezar frena en seco (%.0f)" % a.speed)
+			check(game._mood(1) == PlayerAvatar.Mood.SURPRISED, "cara de susto al tropezar")
+			check(a.knocked.has(0), "la valla se cae")
+		if tripped_at >= 0.0 and lost < 0.0 and a.stumble <= 0.0 and a.speed >= HURDLES.RUN_SPEED * 0.99:
+			lost = game._elapsed - tripped_at
+	check(lost > 0.9 and lost < 1.6, "tropezar frena ≈ 1 s (%.2f)" % lost)
+	check(a.trips == 1 and b.trips == 0, "tropieza el que no salta (%d, %d)" % [a.trips, b.trips])
+	check(b.x > a.x + 250.0, "el que saltó a tiempo va adelante (%.0f, %.0f)" % [b.x, a.x])
+	check(game._mood(1) == PlayerAvatar.Mood.NORMAL, "después del tropezón vuelve la cara normal")
+	game.queue_free()
+
+	var pit := [{"kind": HURDLES.Kind.PIT, "x": 600.0, "w": 120.0, "h": 0.0}]
+	game = _hurdles_game(2, pit)
+	a = game._runners[1]
+	b = game._runners[2]
+	var fell := false
+	for i in roundi(4.0 / HURDLES.DT):
+		_hurdles_bot(game, 2)
+		game.step(HURDLES.DT)
+		if a.fall > 0.0 and not fell:
+			fell = true
+			check(a.x > 600.0 and a.x < 720.0, "cae dentro del pozo (%.0f)" % a.x)
+			check(game._mood(1) == PlayerAvatar.Mood.SURPRISED, "cara de susto al caer")
+	check(fell and a.x > 720.0 and a.grounded and a.y == 0.0, "sale del otro lado del pozo (%.0f)" % a.x)
+	check(b.trips == 0 and b.x > a.x + 250.0, "el que saltó el pozo va adelante (%.0f, %.0f)" % [b.x, a.x])
+	game.queue_free()
+
+	var block := [{"kind": HURDLES.Kind.BLOCK, "x": 600.0, "w": 180.0, "h": HURDLES.BLOCK_H}]
+	game = _hurdles_game(2, block)
+	a = game._runners[1]
+	b = game._runners[2]
+	var on_top := false
+	var b_on_top := false
+	for i in roundi(4.0 / HURDLES.DT):
+		_hurdles_bot(game, 2)
+		game.step(HURDLES.DT)
+		on_top = on_top or (a.grounded and a.y == HURDLES.BLOCK_H)
+		b_on_top = b_on_top or (b.grounded and b.y == HURDLES.BLOCK_H)
+	check(a.trips == 1 and on_top, "contra el escalón tropieza y se trepa (%d)" % a.trips)
+	check(b.trips == 0 and b_on_top, "saltando cae arriba del escalón sin tropezar (%d)" % b.trips)
+	check(a.grounded and a.y == 0.0 and b.y == 0.0, "al terminar el escalón bajan al piso")
+	game.queue_free()
+
+	# Pozo ancho con plataforma: saltando dos veces se cruza.
+	var wide := [{"kind": HURDLES.Kind.PIT, "x": 600.0, "w": 360.0, "h": 0.0},
+		{"kind": HURDLES.Kind.PLATFORM, "x": 720.0, "w": 120.0, "h": HURDLES.PLATFORM_H}]
+	game = _hurdles_game(1, wide)
+	a = game._runners[1]
+	var on_platform := false
+	for i in roundi(4.0 / HURDLES.DT):
+		var down: bool = (a.x > 540.0 and a.x < 580.0) or (a.grounded and a.y == HURDLES.PLATFORM_H and a.x > 770.0)
+		_hurdles_press(game, 1, down)
+		game.step(HURDLES.DT)
+		on_platform = on_platform or (a.grounded and a.y == HURDLES.PLATFORM_H)
+	check(on_platform, "se puede aterrizar en la plataforma")
+	check(a.trips == 0 and a.x > 1000.0, "cruza el pozo ancho sin caer (%d, %.0f)" % [a.trips, a.x])
+	game.queue_free()
+	await process_frame
+
+
+## Meta: el primero que cruza gana (una sola vez, después del festejo); si
+## cruzan en el mismo instante, empatan.
+func test_hurdles_finish() -> void:
+	var game: Variant = _hurdles_game(3, [])
+	var results: Array = []
+	game.finished.connect(func(res: Dictionary) -> void: results.append(res))
+	game._runners[1].x = HURDLES.COURSE_LEN - 400.0
+	game._runners[2].x = HURDLES.COURSE_LEN - 10.0
+	game._runners[3].x = HURDLES.COURSE_LEN - 2000.0
+	_hurdles_run(game, 0.2)
+	check(results.is_empty() and game._ending, "al cruzar festeja antes de terminar")
+	check(game._mood(2) == PlayerAvatar.Mood.HAPPY and game._mood(1) == PlayerAvatar.Mood.NORMAL, "el ganador festeja")
+	_hurdles_run(game, HURDLES.END_SEC + 0.2)
+	check(results.size() == 1, "termina una vez (%d)" % results.size())
+	if results.size() == 1:
+		var res: Dictionary = results[0]
+		check(res.winners == [2], "gana Sofi, la primera en la meta (%s)" % [res.winners])
+		check(float(res.scores[2]) == HURDLES.COURSE_LEN / HURDLES.PX_PER_M, "la meta vale el recorrido entero (%s)" % [res.scores])
+		check(float(res.scores[1]) > float(res.scores[3]), "los demás, por distancia (%s)" % [res.scores])
+	game.finish({"winners": [1], "scores": {}})
+	_hurdles_run(game, 1.0)
+	check(results.size() == 1, "finished se emite una sola vez (%d)" % results.size())
+	check(HURDLES.get_info().score_label == "metros", "puntaje en metros")
+	game.queue_free()
+
+	# Llegan juntos: empate.
+	game = _hurdles_game(2, [])
+	results = []
+	game.finished.connect(func(res: Dictionary) -> void: results.append(res))
+	game._runners[1].x = HURDLES.COURSE_LEN - 5.0
+	game._runners[2].x = HURDLES.COURSE_LEN - 5.0
+	_hurdles_run(game, HURDLES.END_SEC + 0.5)
+	check(results.size() == 1 and results[0].winners == [1, 2], "cruzar a la vez es empate (%s)" % [results])
+	game.queue_free()
+	await process_frame
+
+
+## Tiempo: si nadie llega, gana el que llegó más lejos (y si están iguales,
+## empatan).
+func test_hurdles_time_up() -> void:
+	for tie in [false, true]:
+		var game: Variant = _hurdles_game(2, [])
+		var results: Array = []
+		game.finished.connect(func(res: Dictionary) -> void: results.append(res))
+		game._elapsed = HURDLES.DURATION_SEC - 0.5
+		game._runners[1].x = 5000.0
+		game._runners[2].x = 5000.0 if tie else 4000.0
+		_hurdles_run(game, 0.6)
+		check(game._ending and game._end_text == "¡Tiempo!", "se acaba el tiempo")
+		_hurdles_run(game, HURDLES.END_SEC + 0.2)
+		check(results.size() == 1, "termina una vez (%d)" % results.size())
+		if results.size() == 1:
+			var want := [1, 2] if tie else [1]
+			check(results[0].winners == want, "por distancia: %s (%s)" % [want, results[0]])
+		game.queue_free()
+	await process_frame
+
+
+## Determinismo: la misma semilla da el mismo recorrido y, con las mismas
+## entradas, la misma carrera; el recorrido es jugable (ordenado, dentro de la
+## pista, con aire entre obstáculos).
+func test_hurdles_determinism() -> void:
+	var c1: Array = HURDLES.build_course(1234)
+	check(c1 == HURDLES.build_course(1234), "misma semilla, mismo recorrido")
+	check(c1 != HURDLES.build_course(4321), "otra semilla, otro recorrido")
+	check(c1.size() >= 12, "recorrido con obstáculos (%d)" % c1.size())
+	var ok := true
+	for i in c1.size():
+		var o: Dictionary = c1[i]
+		ok = ok and float(o.x) >= HURDLES.FIRST_OBSTACLE_X and float(o.x) + float(o.w) < HURDLES.COURSE_LEN - 400.0
+		if i > 0 and int(o.kind) != HURDLES.Kind.PLATFORM:
+			var prev: Dictionary = c1[i - 1]
+			if int(prev.kind) == HURDLES.Kind.PLATFORM:
+				prev = c1[i - 2]
+			ok = ok and float(o.x) - (float(prev.x) + float(prev.w)) >= 240.0
+	check(ok, "obstáculos ordenados, separados y dentro de la pista")
+	var kinds := {}
+	for s in range(1, 6):
+		for o: Dictionary in HURDLES.build_course(s):
+			kinds[int(o.kind)] = true
+	check(kinds.size() == 4, "hay vallas, pozos, escalones y plataformas (%s)" % [kinds.keys()])
+	# Dos carreras con la misma semilla y las mismas entradas: idénticas.
+	var runs: Array = []
+	for n in 2:
+		var game: Variant = MiniGameRegistry.create("hurdles")
+		root.add_child(game)
+		game.set_physics_process(false)
+		game.setup(_fake_players(3))
+		game._rng.seed = 99
+		for i in roundi(25.0 / HURDLES.DT):
+			for pid in [1, 2, 3]:
+				var btn := Protocol.BTN_A if (i + pid * 7) % (9 + pid * 4) < 3 + pid else 0
+				game.on_input(pid, {"seq": i, "axis": Vector2.ZERO, "btn": btn})
+			game.step(HURDLES.DT)
+		var snap := []
+		for pid in [1, 2, 3]:
+			var r: Variant = game._runners[pid]
+			snap.append([r.x, r.y, r.trips, r.knocked.size()])
+		runs.append(snap)
+		game.queue_free()
+	check(runs[0] == runs[1], "misma semilla y entradas: misma carrera (%s)" % [runs])
+	check(float(runs[0][0][0]) > 3000.0, "en 25 s se avanza (%s)" % [runs[0]])
+	# Pasos fijos: avanzar con frames de distinto largo da lo mismo.
+	var g1: Variant = _hurdles_game(1, [])
+	var g2: Variant = _hurdles_game(1, [])
+	for i in 60:
+		g1.step(HURDLES.DT)
+	for i in 20:
+		g2.step(HURDLES.DT * 3.0)
+	check(is_equal_approx(g1._runners[1].x, g2._runners[1].x), "pasos fijos: igual con frames de 1/60 que de 1/20 (%.3f, %.3f)" % [g1._runners[1].x, g2._runners[1].x])
+	g1.queue_free()
+	g2.queue_free()
+	await process_frame
