@@ -1,6 +1,6 @@
 # ADR 0012 · Mascotas 3D renderizadas por Godot y horneadas a sprites
 
-- **Estado:** Propuesta (la decisión final es del dueño del producto)
+- **Estado:** Aceptada (27/09/2026, decisión del dueño: "las mascotas y el diseño en 3D como en las maquetas o mejor")
 - **Fecha:** 2026-09-27
 - **Relacionados:** [ADR 0004](0004-sistema-visual.md) (sistema visual dibujado por código), [ADR 0006](0006-rendimiento-capas-cacheadas.md) (rendimiento), [ADR 0007](0007-apariencia-del-jugador.md) (color y estilo), `docs/PLAN.md` ("¿Conviene usar heightfields?": recomienda 2.5D), análisis completo en [docs/ARTE.md](../ARTE.md).
 
@@ -9,7 +9,7 @@ La maqueta de mascotas (`docs/design/referencia_mascotas.webp`) tiene acabado de
 
 Hay que elegir cómo llegar a la calidad de la maqueta. Opciones evaluadas (detalle, costos y licencias en `docs/ARTE.md`): (1) seguir mejorando el 2D por código, (2) 3D en Godot con primitivas (este prototipo), (3) modelos generados por IA, (4) ilustrador/modelador contratado.
 
-## Propuesta
+## Decisión
 **Camino 2 con horneado**, manteniendo el 2D actual como respaldo mientras tanto:
 
 1. **Mascotas 3D armadas por código** en `core/mascot3d/` (`Mascot3D`): esferas, tubos y superficies de revolución; mismas proporciones, 7 accesorios, 10 colores, ánimos y parámetros de animación que `PlayerAvatar`.
@@ -33,3 +33,9 @@ Hay que elegir cómo llegar a la calidad de la maqueta. Opciones evaluadas (deta
 - **Seguir con 2D por código:** costo cero de integración, pero el techo de calidad está cerca (ver `docs/ARTE.md`).
 - **Render 3D en vivo para todo:** animación perfecta, pero multiplica draw calls y CPU del driver por jugador en cada cuadro; no entra con holgura en el presupuesto de una TV de gama baja.
 - **Modelos generados por IA / modelador contratado:** mejor acabado posible, pero con costo, licencias y consistencia de estilo a resolver; se pueden sumar después usando el mismo horneado (el pipeline del atlas no cambia si la malla viene de un `.glb`).
+
+## Plan de adopción (27/09/2026)
+1. **Calidad de la maqueta o mejor:** material, ojos, proporciones y brillos del `Mascot3D` comparados lado a lado con `docs/design/referencia_mascotas.webp`; horneado con supermuestreo para bordes limpios. Todos los ánimos y animaciones de `PlayerAvatar` (bailes, derrota, saludo, dormir) con su pose 3D.
+2. **Integración:** `PlayerAvatar.draw_mascot` dibuja el cuadro del atlas horneado cuando existe y cae en la 2D si no (tests en `--headless`, TV sin render). Horneado al sumarse o cambiar apariencia en el lobby y al empezar la partida, con presupuesto de memoria.
+3. **El resto del diseño en 3D:** piezas del escenario (estrellas, trofeo, premios, bloques) modeladas con el mismo material y horneadas a texturas, para que todo tenga el mismo acabado de juguete.
+4. Medir en una Google TV real antes de publicar; si el horneado falla en el aparato, queda la 2D.
