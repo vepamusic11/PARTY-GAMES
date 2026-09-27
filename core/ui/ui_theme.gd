@@ -1094,3 +1094,17 @@ static func chip_style(bg: Color, pad_h: int = 22, pad_v: int = 8,
 	s.shadow_size = 8
 	s.shadow_offset = Vector2(0, 4)
 	return s
+
+
+# --- Mascotas (agente) ---
+# Materiales de las mascotas (PlayerAvatar + MascotShading). El color del
+# cuerpo lo elige cada jugador; estos son los que no cambian.
+const MASCOT_FACE_SHADE := Color("#C8D1E6")  ## Borde sombreado de la cara blanca.
+const MASCOT_EYE := Color("#11132A")         ## Ojos.
+const MASCOT_EYE_GLOSS := Color("#4A5590")   ## Reflejo azulado abajo de los ojos.
+const MASCOT_SHADE_TINT := Color("#26307A")  ## Tinte frío de las sombras del plástico.
+const MASCOT_RIM := Color("#8C96C8")         ## Luz de contorno de los colores oscuros.
+const MASCOT_SHOE := Color("#262B4D")        ## Zapatos.
+const MASCOT_EAR_INNER := Color("#EE5A32")   ## Interior de las orejas de gato.
+const MASCOT_BUNNY_INNER := Color("#FFB3C7") ## Interior de las orejas de conejo.
+const MASCOT_METAL := Color("#C3CADB")       ## Piezas de metal del robot.

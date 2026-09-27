@@ -6,8 +6,13 @@ extends SceneTree
 ##   xvfb-run -a -s "-screen 0 1920x1080x24" godot --path . --rendering-driver opengl3 \
 ##     -s res://tools/character_sheet.gd -- --out=docs/img/mascotas.png
 ##
+## `--width=1920` guarda la imagen sin achicar (para mirar detalles).
+##
 ## Con `--styles` dibuja la otra hoja: todos los estilos (robot, conejo…) en
 ## una paleta amplia de colores, negro incluido, para revisar contraste.
+## Con `--closeup`, mascotas grandes (como en el lobby y el podio) arriba y
+## chicas (como en los juegos) abajo: sirve para revisar el sombreado de
+## cerca y que a ~60 px se sigan leyendo.
 
 const SIZE := Vector2i(1920, 1080)
 const OUT_WIDTH := 1280
@@ -39,6 +44,30 @@ class _Styles:
 					col = PALETTE[PALETTE.size() - 1 - (c / 2) % 2]  # Negro y grafito.
 				var feet := Vector2(60.0 + cell.x * (c + 0.5), 170.0 + cell.y * (r + 1) - 14.0)
 				PlayerAvatar.draw_mascot(self, feet, 1.75, col, c, moods[r], 0.0, 0.0, false, {"t": 1.0 + c * 0.4})
+
+
+class _Closeup:
+	extends Control
+
+	func _draw() -> void:
+		draw_rect(Rect2(Vector2.ZERO, size), UiTheme.SKY_BOTTOM)
+		UiTheme.draw_text(self, "Mascotas · de cerca y chicas", Vector2(size.x / 2.0, 60), 56, UiTheme.PAPER, 10)
+		# Grandes (~250 px de alto en la hoja final, como en el lobby).
+		var big := [[0, 0, PlayerAvatar.Mood.NORMAL], [1, 1, PlayerAvatar.Mood.HAPPY], [2, 2, PlayerAvatar.Mood.NORMAL],
+			[3, 3, PlayerAvatar.Mood.SURPRISED], [PlayerAvatar.STYLE_ROBOT, 4, PlayerAvatar.Mood.NORMAL]]
+		for i in big.size():
+			var feet := Vector2(size.x * (i + 0.5) / big.size(), 560)
+			PlayerAvatar.draw_mascot(self, feet, 3.6, PALETTE[big[i][1]], big[i][0], big[i][2], 0.0, 0.0, false,
+				{"t": 1.0, "wave": big[i][2] == PlayerAvatar.Mood.HAPPY})
+		# Chicas, al tamaño de los juegos (u = 0,6 y 0,8), sobre el piso claro.
+		draw_rect(Rect2(0, 640, size.x, size.y - 640), UiTheme.FLOOR)
+		var styles := PlayerAvatar.STYLE_NAMES.size()
+		for row in 2:
+			var u := 0.6 if row == 0 else 0.8
+			for i in PALETTE.size():
+				var feet := Vector2(size.x * (i + 0.5) / PALETTE.size(), 780.0 + row * 210.0)
+				PlayerAvatar.draw_mascot(self, feet, u, PALETTE[i], (i + row * 3) % styles, PlayerAvatar.Mood.NORMAL,
+					0.0, 0.0, false, {"t": 1.0, "walk": 0.25 if i % 2 == 0 else -1.0, "look": Vector2(1, 0)})
 
 
 class _Sheet:
@@ -82,21 +111,28 @@ func _initialize() -> void:
 
 func _run() -> void:
 	var out := "res://docs/img/mascotas.png"
-	var styles := false
+	var sheet: Control = null
+	var out_width := OUT_WIDTH
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--out="):
 			out = arg.trim_prefix("--out=")
 		elif arg == "--styles":
-			styles = true
+			sheet = _Styles.new()
+		elif arg == "--closeup":
+			sheet = _Closeup.new()
+		elif arg.begins_with("--width="):  # Ancho de la imagen (1920 = sin achicar).
+			out_width = clampi(arg.trim_prefix("--width=").to_int(), 320, SIZE.x)
+	if sheet == null:
+		sheet = _Sheet.new()
 	root.size = SIZE
-	var sheet: Control = _Styles.new() if styles else _Sheet.new()
 	sheet.size = Vector2(SIZE)
 	root.add_child(sheet)
 	for i in 3:
 		await process_frame
 	await RenderingServer.frame_post_draw
 	var img := root.get_texture().get_image()
-	img.resize(OUT_WIDTH, int(img.get_height() * float(OUT_WIDTH) / img.get_width()), Image.INTERPOLATE_LANCZOS)
+	if out_width < img.get_width():
+		img.resize(out_width, int(img.get_height() * float(out_width) / img.get_width()), Image.INTERPOLATE_LANCZOS)
 	img.save_png(out)
 	print("Hoja de personajes: ", out)
 	quit(0)
