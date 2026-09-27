@@ -48,6 +48,9 @@ En juegos (`draw_mascot` estática), claves opcionales del dict `anim`: `dance` 
 
 **Costo** (`draw_mascot`, µs por llamada, versión anterior y nueva intercaladas en la misma corrida, mediana de 20 repeticiones de 400 llamadas con estilos, colores y ánimos variados, máquina cargada con otras corridas): u = 0,6 → +2 a +6 %, u = 0,8 (tamaño de juego) → +4 %, u = 1,2 → +0 a +3 %, u = 3,6 (lobby) → −3 a −1 %. Lo que cuesta de más: piernas también en chico y la pose por capas; lo compensa el brazo con mano en una sola pieza (una figura menos por brazo) y saltear brillos invisibles en chico. Las expresiones nuevas agregan figuras solo cuando se usan.
 
+## Actualización (27/09/2026): piezas de juguete en 3D
+Estrellas, bloques del marco y de los fondos, medallas, corona, trofeo, ficha de premio y pelota pasan a ser piezas 3D con el plástico de las mascotas, horneadas una vez a un atlas (`core/art3d/`, [ADR 0016](0016-piezas-3d-horneadas.md)). Siguen siendo código (el atlas se genera en el aparato) y cada función conserva su dibujo 2D como respaldo.
+
 ## Motivos
 - Nítido en 720p, 1080p y 4K sin exportar imágenes en varios tamaños; el APK queda liviano (~100 KB de fuentes, nada de sprites).
 - Un único lugar para cambiar la identidad cuando llegue el arte definitivo.

@@ -37,7 +37,7 @@ Hay que elegir cómo llegar a la calidad de la maqueta. Opciones evaluadas (deta
 ## Plan de adopción (27/09/2026)
 1. **Calidad de la maqueta o mejor:** material, ojos, proporciones y brillos del `Mascot3D` comparados lado a lado con `docs/design/referencia_mascotas.webp`; horneado con supermuestreo para bordes limpios. Todos los ánimos y animaciones de `PlayerAvatar` (bailes, derrota, saludo, dormir) con su pose 3D.
 2. **Integración:** `PlayerAvatar.draw_mascot` dibuja el cuadro del atlas horneado cuando existe y cae en la 2D si no (tests en `--headless`, TV sin render). Horneado al sumarse o cambiar apariencia en el lobby y al empezar la partida, con presupuesto de memoria.
-3. **El resto del diseño en 3D:** piezas del escenario (estrellas, trofeo, premios, bloques) modeladas con el mismo material y horneadas a texturas, para que todo tenga el mismo acabado de juguete.
+3. **El resto del diseño en 3D:** piezas del escenario (estrellas, trofeo, premios, bloques) modeladas con el mismo material y horneadas a texturas, para que todo tenga el mismo acabado de juguete. Hecho en [ADR 0016](0016-piezas-3d-horneadas.md) (`core/art3d/`).
 4. Medir en una Google TV real antes de publicar; si el horneado falla en el aparato, queda la 2D.
 
 ## Integración (27/09/2026)

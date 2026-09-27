@@ -178,9 +178,18 @@ func _draw() -> void:
 	_draw_trail()
 	# Recién golpeada, la pelota se aplasta en la dirección del golpe y vuelve.
 	var squash := 0.0 if UiTheme.reduce_motion else maxf(0.0, 1.0 - _since_hit / SQUASH_SEC) * 0.3
-	draw_set_transform(_ball, _vel.angle(), Vector2(1.0 + squash, 1.0 - squash))
-	draw_circle(Vector2.ZERO, BALL_RADIUS + 3.0, UiTheme.INK)
-	draw_circle(Vector2.ZERO, BALL_RADIUS, Color.WHITE)
+	if Props3D.is_ready():
+		# Pelota 3D horneada (Props3D): se aplasta en la dirección del golpe sin
+		# girar la imagen (el brillo queda siempre arriba a la izquierda).
+		var turn := Transform2D(_vel.angle(), Vector2.ZERO)
+		var squash_xf := turn * Transform2D(0.0, Vector2(1.0 + squash, 1.0 - squash), 0.0, Vector2.ZERO) * turn.affine_inverse()
+		draw_set_transform_matrix(Transform2D(0.0, _ball) * squash_xf)
+		var br := BALL_RADIUS + 1.5
+		Props3D.draw(self, "ball", Rect2(-br, -br, br * 2.0, br * 2.0))
+	else:
+		draw_set_transform(_ball, _vel.angle(), Vector2(1.0 + squash, 1.0 - squash))
+		draw_circle(Vector2.ZERO, BALL_RADIUS + 3.0, UiTheme.INK)
+		draw_circle(Vector2.ZERO, BALL_RADIUS, Color.WHITE)
 	draw_set_transform(Vector2.ZERO)
 	draw_hud(_score, "Gana: %d" % POINTS_TO_WIN, "star")
 

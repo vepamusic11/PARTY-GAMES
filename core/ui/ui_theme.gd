@@ -323,8 +323,25 @@ static func star_points(center: Vector2, r: float, inner: float = 0.48, rotation
 	return pts
 
 
-## Las tres capas van en un solo lote (ShapeBatch): un draw call, no tres.
+## Estrella dorada (o blanca) de juguete 3D horneada (Props3D, ADR 0016); si
+## no hay atlas (tests, sin render) u otro color, la 2D de siempre. Con
+## `rotation` la 3D usa draw_set_transform y después lo deja en identidad.
 static func draw_star(ci: CanvasItem, center: Vector2, r: float, color: Color = GOLD, rotation: float = 0.0) -> void:
+	var piece := "star" if color == GOLD else ("star_white" if color == PAPER else "")
+	if piece != "" and Props3D.is_ready():
+		var body := Rect2(Vector2(-r, -r), Vector2(r, r) * 2.0)
+		if is_zero_approx(rotation):
+			Props3D.draw(ci, piece, Rect2(center + body.position, body.size))
+		else:
+			ci.draw_set_transform(center, rotation)
+			Props3D.draw(ci, piece, body)
+			ci.draw_set_transform(Vector2.ZERO)
+		return
+	draw_star_2d(ci, center, r, color, rotation)
+
+
+## Estrella 2D: las tres capas van en un solo lote (ShapeBatch): un draw call, no tres.
+static func draw_star_2d(ci: CanvasItem, center: Vector2, r: float, color: Color = GOLD, rotation: float = 0.0) -> void:
 	var batch := ShapeBatch.new()
 	batch.star(star_points(center, r + 5.0, 0.5, rotation), center, INK)
 	batch.star(star_points(center, r, 0.48, rotation), center, color)
@@ -333,8 +350,17 @@ static func draw_star(ci: CanvasItem, center: Vector2, r: float, color: Color = 
 	batch.flush(ci)
 
 
-## Medalla redonda con el puesto ("1°" en oro, "2°" plata, "3°" bronce).
+## Medalla redonda con el puesto ("1°" en oro, "2°" plata, "3°" bronce): de
+## metal 3D horneada (Props3D) con el número encima, o la 2D si no hay atlas.
 static func draw_medal(ci: CanvasItem, center: Vector2, r: float, place: int) -> void:
+	var body := r + maxf(3.0, r * 0.08)  # El disco 3D incluye el aro: un poco más grande que la cara 2D.
+	if place >= 1 and place <= 3 and Props3D.draw(ci, "medal_%d" % place, Rect2(center - Vector2(body, body), Vector2(body, body) * 2.0)):
+		draw_text(ci, place_text(place), center + Vector2(2, 1) * (r / 30.0), int(r), INK)
+		return
+	draw_medal_2d(ci, center, r, place)
+
+
+static func draw_medal_2d(ci: CanvasItem, center: Vector2, r: float, place: int) -> void:
 	ci.draw_circle(center, r + maxf(4.0, r * 0.1), INK)
 	ci.draw_circle(center, r, place_color(place))
 	ci.draw_circle(center + Vector2(-r, -r) * 0.27, r / 3.0, Color(1, 1, 1, 0.4))
@@ -399,7 +425,7 @@ static func draw_control_icon(ci: CanvasItem, c: Vector2, s: float, layout: Stri
 				ci.draw_circle(kc, key[2], key[3])
 				draw_text(ci, key[0], kc, int(key[2] * 1.1), ink)
 		_:
-			draw_star(ci, c, s, white)
+			draw_star_2d(ci, c, s, white)  # Ícono plano: sin 3D.
 
 
 ## Íconos simples de interfaz, dibujados (la tipografía no los trae).
@@ -1585,3 +1611,24 @@ static func draw_screen_glyph(ci: CanvasItem, glyph: String, c: Vector2, s: floa
 			ci.draw_colored_polygon(star_points(c, s * 0.48, 0.5), color)
 		_:
 			draw_phone_glyph(ci, glyph, c, s, color)
+
+
+# --- Piezas 3D (agente) ---
+# Estrellas, bloques del marco, medallas, corona, trofeo, monedas y gemas
+# modeladas en 3D con el plástico de las mascotas y horneadas a un atlas
+# (core/art3d, ADR 0016). Medidas en px lógicos (1920×1080).
+const PROP_RES := 2.0              ## Px del atlas por px lógico (nítido a 4K).
+const PROP_RES_STAR := 3.0         ## Estrellas (también se ven grandes: emblema de la transición).
+const PROP_RES_BG := 1.0           ## Bloques del fondo (se ven chicos y desenfocados).
+const PROP_SUPERSAMPLE := 4        ## Se renderiza 4× más grande y se promedia (bordes limpios).
+const PROP_INK := 3.0              ## Contorno de tinta de las piezas.
+const PROP_INK_THIN := 1.0         ## Contorno fino (bloques del marco: la junta entre bloques).
+const PROP_BRICK_LIGHT := 0.12      ## Cuánto se aclara la tapa de los bloques del marco (color vivo, como la maqueta).
+const PROP_TILT_DEG := 34.0        ## Bloques del tablero: cuánto se ve el canto de adelante.
+const PROP_TOWER_TURN_DEG := 24.0  ## Bloques del fondo: cuánto se ve el costado.
+const PROP_TOWER_TILT_DEG := 24.0  ## …y la tapa con botones.
+const PROP_STAR_SHADE := Color("#F0892A")    ## Sombra naranja de las estrellas doradas.
+const PROP_GEM := Color("#35C9E8")           ## Gema de premio.
+const PROP_TROPHY_BASE := Color("#2E3570")   ## Pie del trofeo.
+const PROP_JEWEL := Color("#F0524F")         ## Piedras de la corona.
+const PROP_BALL := Color("#FFFFFF")          ## Pelota de Ping Pong.

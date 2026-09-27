@@ -925,7 +925,14 @@ static func _chevron_tris() -> PackedVector2Array:
 func _paint_scene(ci: CanvasItem) -> void:
 	GameArt.paint_stage(ci, GameArt.board_cover(FIELD))
 	var b := GameArt.TriBatch.new()
-	_add_board(b, FIELD)
+	# Con piezas 3D (Props3D) los bloques del marco y las esquinas van como
+	# sprites del atlas: el lote se corta después del marco y al final.
+	var bricks: Array = []
+	var corners: Array = []
+	_add_board(b, FIELD, bricks)
+	if not bricks.is_empty():
+		b.flush(ci)
+		GameArt.draw_pieces(ci, bricks)
 	_add_grass(b, FIELD)
 	_add_decor(b)
 	_add_track(b)
@@ -938,13 +945,14 @@ func _paint_scene(ci: CanvasItem) -> void:
 		r.position + Vector2(0, 22.0), shade, shade, clear, clear)
 	b.quad_colors(r.position, r.position + Vector2(16.0, 0), Vector2(r.position.x + 16.0, r.end.y),
 		Vector2(r.position.x, r.end.y), shade, clear, clear, shade)
-	_add_frame_corners(b, FIELD)
+	_add_frame_corners(b, FIELD, corners)
 	b.flush(ci)
+	GameArt.draw_pieces(ci, corners)
 
 
 ## Marco de bloques con sombra, igual al tablero de los demás juegos
 ## (GameArt.paint_board) pero con pasto en vez de baldosas.
-func _add_board(b: GameArt.TriBatch, rect: Rect2) -> void:
+func _add_board(b: GameArt.TriBatch, rect: Rect2, pieces: Array) -> void:
 	var f := UiTheme.BOARD_FRAME
 	var depth := UiTheme.BOARD_DEPTH
 	var outer := rect.grow(f)
@@ -974,10 +982,13 @@ func _add_board(b: GameArt.TriBatch, rect: Rect2) -> void:
 				_: r = Rect2(rect.end.x, rect.position.y + k * step, f, step)
 			if side == 1:
 				b.chamfer_rect(Rect2(r.position.x + 1.0, r.end.y - 4.0, r.size.x - 2.0, depth + 2.0), 3.0, col.darkened(0.45))
-			GameArt._add_brick(b, r, col)
+			if Props3D.is_ready():
+				pieces.append([r, Props3D.brick_name((i - 1) * 3 + side, side >= 2)])
+			else:
+				GameArt._add_brick(b, r, col)
 
 
-func _add_frame_corners(b: GameArt.TriBatch, rect: Rect2) -> void:
+func _add_frame_corners(b: GameArt.TriBatch, rect: Rect2, pieces: Array) -> void:
 	var f := UiTheme.BOARD_FRAME
 	var depth := UiTheme.BOARD_DEPTH
 	var outer := rect.grow(f)
@@ -998,6 +1009,9 @@ func _add_frame_corners(b: GameArt.TriBatch, rect: Rect2) -> void:
 		b.round_rect(corner_edge, 14.0, ink)
 		if k >= 2:
 			b.chamfer_rect(Rect2(r.position.x, r.end.y - 8.0, cs, depth + 8.0), 8.0, col.darkened(0.45))
+		if Props3D.is_ready():
+			pieces.append([r, GameArt.corner_piece(k)])
+			continue
 		GameArt._add_brick(b, r, col, 10.0)
 		b.star(center + Vector2(0, -3), cs * 0.36, UiTheme.GOLD, 0.0, 4.0)
 

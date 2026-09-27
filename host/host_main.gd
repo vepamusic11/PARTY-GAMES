@@ -81,6 +81,9 @@ func _ready() -> void:
 	server.input_received.connect(_on_input)
 	server.player_updated.connect(_on_player_updated)
 
+	# Piezas 3D (estrellas, bloques, medallas…) horneadas a un atlas: de la
+	# caché en disco al instante, o en unos cuadros la primera vez (ADR 0016).
+	Props3DBaker.ensure(self)
 	_build_ui()
 	# Si el puerto está ocupado (otra app, u otra conexión que el sistema puso
 	# justo ahí), prueba los siguientes: el lobby y el anuncio muestran el real.

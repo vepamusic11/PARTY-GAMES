@@ -82,6 +82,7 @@ var _bake := Bake.IDLE
 
 
 func _ready() -> void:
+	add_to_group(Props3D.GROUP)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_build_layout()
@@ -238,6 +239,12 @@ func _on_resized() -> void:
 	_refresh_layers()
 
 
+## Las piezas 3D quedaron horneadas (Props3DBaker): se vuelve a preparar el
+## escenario con los bloques y estrellas 3D.
+func _on_props3d_ready() -> void:
+	_refresh_layers()
+
+
 ## Capas o tamaño distintos: pide rearmar el escenario y la capa nítida.
 func _refresh_layers() -> void:
 	if _front == null:
@@ -314,10 +321,16 @@ func _paint_scene() -> void:
 		ci.draw_texture_rect(cloud_texture(), Rect2(p - sz / 2.0, sz), false, Color(1, 1, 1, 0.75))
 	# Estrellas y polvo brillante en el cielo.
 	var batch := UiTheme.ShapeBatch.new()
+	var stars_3d := Props3D.is_ready()
 	for st in _stars:
 		var p := Vector2(st.x * w, st.y * h)
+		if stars_3d:  # Estrella de juguete 3D (Props3D), un poco transparente como la 2D.
+			ci.draw_set_transform(p, st.x * 3.0)
+			Props3D.draw(ci, "star", Rect2(-st.z, -st.z, st.z * 2.0, st.z * 2.0), Color(1, 1, 1, 0.85))
+			continue
 		var col := UiTheme.GOLD.lerp(UiTheme.PAPER, 0.35)
 		batch.star(UiTheme.star_points(p, st.z, 0.5, st.x * 3.0), p, Color(col, 0.85))
+	ci.draw_set_transform(Vector2.ZERO)
 	batch.flush(ci)
 	# Torres de atrás (más chicas y más mezcladas con la bruma).
 	for t in _back_towers:
@@ -358,7 +371,15 @@ func _tower(ci: CanvasItem, t: Vector3, block: float, base_y: float, haze: float
 	var batch := UiTheme.ShapeBatch.new()
 	var n := int(t.y)
 	for j in n:
-		var c: Color = UiTheme.BRICKS[(int(t.z) + j * 3) % UiTheme.BRICKS.size()]
+		var idx := (int(t.z) + j * 3) % UiTheme.BRICKS.size()
+		if Props3D.is_ready():
+			# Bloque de juguete 3D con botones (Props3D): ocupa el frente, la tapa
+			# (arriba) y el costado que mira al centro; los de la derecha, espejados.
+			var d := (block - 2.0) * 0.26
+			var r3 := Rect2(x - (d if dir < 0.0 else 0.0), base_y - (j + 1) * block - d, block - 2.0 + d, block - 2.0 + d)
+			Props3D.draw(ci, ("block_far_%d" if haze > 0.3 else "block_near_%d") % idx, r3, Color.WHITE, dir < 0.0)
+			continue
+		var c: Color = UiTheme.BRICKS[idx]
 		c = c.lerp(UiTheme.BG_HAZE, haze * (1.0 - 0.08 * j))  # Lo más alto, un poco más vivo.
 		var r := Rect2(x, base_y - (j + 1) * block, block - 2.0, block - 2.0)
 		_block(batch, r, c, dir, j == n - 1)

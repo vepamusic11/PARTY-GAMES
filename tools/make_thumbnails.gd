@@ -116,6 +116,8 @@ func _run() -> void:
 		elif arg.begins_with("--seed="):
 			_seed_override = int(arg.trim_prefix("--seed="))
 	DirAccess.make_dir_recursive_absolute(_out_dir)
+	# Piezas 3D horneadas (ADR 0016) listas antes de la primera foto, como en la TV.
+	await Props3DBaker.ensure(root)
 	_viewport = SubViewport.new()
 	_viewport.size = TV
 	_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS

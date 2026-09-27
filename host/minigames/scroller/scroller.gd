@@ -886,7 +886,7 @@ func _draw_static_art(ci: CanvasItem) -> void:
 	var f := UiTheme.BOARD_FRAME
 	GameArt.paint_stage(ci, VIEW.grow(f - 6.0))
 	var b := GameArt.TriBatch.new()
-	_add_frame(b)
+	_add_frame(b, ci)
 	_add_tribune_panel(b)
 	b.flush(ci)
 	UiTheme.draw_text(ci, "Tribuna", Vector2(TRIB.position.x + TRIB_TITLE_W / 2.0, TRIB.get_center().y), 32, UiTheme.INK)
@@ -903,7 +903,10 @@ func _draw_static_art(ci: CanvasItem) -> void:
 			UiTheme.MUTED, seat.size.x - 140.0, false)
 
 
-func _add_frame(b: GameArt.TriBatch) -> void:
+## Con piezas 3D (Props3D) los bloques y las esquinas van como sprites del
+## atlas: el lote se dibuja en `ci` antes de cada tanda de sprites.
+func _add_frame(b: GameArt.TriBatch, ci: CanvasItem) -> void:
+	var pieces: Array = []
 	var f := UiTheme.BOARD_FRAME
 	var depth := UiTheme.BOARD_DEPTH
 	var v := VIEW
@@ -934,7 +937,14 @@ func _add_frame(b: GameArt.TriBatch) -> void:
 				_: r = Rect2(v.end.x, v.position.y + k * step_len, f, step_len)
 			if side == 1:  # Canto de abajo.
 				b.chamfer_rect(Rect2(r.position.x + 1.0, r.end.y - 4.0, r.size.x - 2.0, depth + 2.0), 3.0, col.darkened(0.45))
-			_add_bevel_brick(b, r, col)
+			if Props3D.is_ready():
+				pieces.append([r, Props3D.brick_name((i - 1) * 3 + side, side >= 2)])
+			else:
+				_add_bevel_brick(b, r, col)
+	if not pieces.is_empty():
+		b.flush(ci)
+		GameArt.draw_pieces(ci, pieces)
+		pieces.clear()
 	# Borde izquierdo: franja de peligro a rayas (el borde que te deja atrás).
 	var left := Rect2(outer.position.x, v.position.y, f, v.size.y).grow_individual(-2.0, 0.0, -2.0, 0.0)
 	b.rect(left, UiTheme.DANGER.darkened(0.2))
@@ -966,8 +976,14 @@ func _add_frame(b: GameArt.TriBatch) -> void:
 		b.round_rect(corner_edge, 14.0, UiTheme.INK)
 		if k >= 2:
 			b.chamfer_rect(Rect2(r.position.x, r.end.y - 8.0, cs, depth + 8.0), 8.0, col.darkened(0.45))
+		if Props3D.is_ready():
+			pieces.append([r, GameArt.corner_piece(k)])
+			continue
 		_add_bevel_brick(b, r, col, 10.0)
 		b.star(c + Vector2(0, -3), cs * 0.36, UiTheme.GOLD, 0.0, 4.0)
+	if not pieces.is_empty():
+		b.flush(ci)
+		GameArt.draw_pieces(ci, pieces)
 
 
 ## Bloque del marco con bisel (como el tablero de los demás juegos).

@@ -104,6 +104,14 @@ func _collect_fx(pid: int, at: Vector2) -> void:
 	juice().float_text("+1", (_pos[pid] as Vector2) + Vector2(0, -130), player_by_id(pid).get("color", UiTheme.GOLD))
 
 
+func _star_bob(i: int) -> Vector2:
+	return Vector2(0, sin(anim_time * 3.0 + i) * 3.0)
+
+
+func _star_grow(i: int) -> float:
+	return UiTheme.appear_scale(anim_time - _star_born[i]) if _star_born[i] >= 0.0 else 1.0
+
+
 func _random_star() -> Vector2:
 	var margin := 60.0
 	return Vector2(
@@ -118,12 +126,22 @@ func _draw() -> void:
 	var batch := GameArt.TriBatch.new()
 	for i in _stars.size():
 		GameArt.add_glow(batch, _stars[i], STAR_RADIUS + 26.0, UiTheme.GLOW, anim_time + i * 0.7, 8)
-	for i in _stars.size():
-		var bob := Vector2(0, sin(anim_time * 3.0 + i) * 3.0)
-		var grow := UiTheme.appear_scale(anim_time - _star_born[i]) if _star_born[i] >= 0.0 else 1.0
-		if grow > 0.01:
-			batch.star(_stars[i] + bob, (STAR_RADIUS + 6.0) * grow, UiTheme.GOLD, sin(anim_time * 2.0 + i) * 0.25)
+	var use_3d := Props3D.is_ready()
+	if not use_3d:
+		for i in _stars.size():
+			var grow := _star_grow(i)
+			if grow > 0.01:
+				batch.star(_stars[i] + _star_bob(i), (STAR_RADIUS + 6.0) * grow, UiTheme.GOLD, sin(anim_time * 2.0 + i) * 0.25)
 	batch.flush(self)
+	if use_3d:
+		# Estrellas 3D horneadas (Props3D): mismo atlas -> un draw call entre las 5.
+		var r := STAR_RADIUS + 8.0
+		for i in _stars.size():
+			var grow := _star_grow(i)
+			if grow > 0.01:
+				draw_set_transform(_stars[i] + _star_bob(i), sin(anim_time * 2.0 + i) * 0.25, Vector2(grow, grow))
+				Props3D.draw(self, "star", Rect2(-r, -r, r * 2.0, r * 2.0))
+		draw_set_transform(Vector2.ZERO)
 	# Se dibuja de arriba hacia abajo: el que está más abajo queda "adelante".
 	var order := players.duplicate()
 	order.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return (_pos[a.id] as Vector2).y < (_pos[b.id] as Vector2).y)

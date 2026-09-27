@@ -189,3 +189,12 @@ Evidencia:
 Para la Google TV de gama baja: **hornear** al empezar la partida (21 poses a ~116 px para los juegos, ~7 MB para 4 jugadores) y, para lobby y podio, pocas poses a ~360 px o render en vivo de 1–2 mascotas grandes si el profiler lo permite. Renderer: el material propio (sin luces reales) da lo mismo en Mobile y en Compatibility; el horneado hace que la elección del renderer no afecte a las mascotas.
 
 Próximos pasos: medir en la TV real (la integración en `PlayerAvatar.draw_mascot` y el horneado en el lobby y la intro ya están, ver "Integración"); y, si se quiere más identidad, encargar a un ilustrador la cara y los reflejos (camino 4) reutilizando el mismo horneado.
+
+## El resto del diseño: piezas 3D horneadas ([ADR 0016](adr/0016-piezas-3d-horneadas.md))
+
+Estrellas, bloques del marco del tablero y de los fondos, medallas, corona, trofeo, ficha de premio, moneda, gema y pelota se arman en 3D con **el mismo shader de plástico y el mismo contorno de tinta** que las mascotas (`core/art3d/`) y se hornean **una vez** a un atlas de 2048×644 (caché en `user://props3d/`). Hoja: `docs/img/piezas_3d.png` (arriba cada pieza; abajo, 2D de respaldo al lado de la 3D), con `tools/props3d_sheet.gd`.
+
+- *Almohadón* (`Props3DMeshes.pillow`): un contorno plano inflado como un almohadón (el centro alto, el borde redondeado). *Ejemplo:* la estrella dorada de las esquinas es el contorno de una estrella con las puntas redondeadas, inflado 10 px de cada lado; la luz de arriba a la izquierda deja la punta de arriba clara y la de abajo a la derecha naranja.
+- *Supermuestreo con alfa* (`props3d_downsample.gdshader`): se renderiza 4× más grande y cada píxel final promedia 16, pesando el color por su opacidad. *Ejemplo:* en el borde de una medalla, 8 píxeles de tinta y 8 vacíos dan tinta al 50 % (y no un gris oscuro al 50 % que se vería como un halo).
+- Sin render (tests, un aparato donde falle el horneado) cada función dibuja su versión 2D de siempre.
+

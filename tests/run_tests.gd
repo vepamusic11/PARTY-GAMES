@@ -4293,4 +4293,128 @@ func test_mascot_atlas_cache() -> void:
 	check(MascotAtlas.pose_count() == 0 and MascotAtlas.memory_bytes() == 0 and MascotAtlas.is_idle(), "clear() deja todo vacío")
 	MascotAtlas.fake_render = false
 	MascotAtlas.release_after_msec = MascotAtlas.RELEASE_AFTER_MSEC
+# --- Piezas 3D horneadas (core/art3d, ADR 0016) ------------------------------------
+
+## Sin pantalla (--headless) no hay atlas: todo cae en el dibujo 2D de
+## siempre (estrellas, medallas, tablero, podio) sin errores.
+func test_props3d_fallback_2d_headless() -> void:
+	if DisplayServer.get_name() != "headless":
+		return
+	check(not Props3D.is_ready(), "sin pantalla no hay atlas")
+	check(not (await Props3DBaker.ensure(root)), "ensure() no hornea sin pantalla")
+	check(not Props3D.is_ready() and Props3D.image("star") == null, "ni atlas ni imágenes chicas")
+	var drew := [false]
+	var probe := Control.new()
+	probe.size = Vector2(1920, 1080)
+	probe.draw.connect(func() -> void:
+		drew[0] = Props3D.draw(probe, "star", Rect2(0, 0, 40, 40))
+		UiTheme.draw_star(probe, Vector2(100, 100), 30.0)
+		UiTheme.draw_star(probe, Vector2(100, 100), 30.0, UiTheme.PAPER, 0.4)
+		for place in [1, 2, 3, 4]:
+			UiTheme.draw_medal(probe, Vector2(200, 100), 30.0, place)
+		GameArt.paint_board(probe, Rect2(200, 200, 800, 480), 80.0))
+	root.add_child(probe)
+	await _frames(2)
+	check(not drew[0], "Props3D.draw devuelve false: el que llama usa su 2D")
+	probe.queue_free()
+	check(GameArt.stage_texture() != null, "el escenario de los juegos se arma sin piezas 3D")
+	# Podio y resumen con medallas y corona: sin atlas, el dibujo de siempre.
+	var final := FinalScreen.new()
+	root.add_child(final)
+	var titles: Array[String] = ["Arena"]
+	var standings: Array[Dictionary] = [{"slot": 0, "name": "Ana", "color": Color.RED, "place": 1, "total": 30},
+		{"slot": 1, "name": "Beto", "color": Color.BLUE, "place": 2, "total": 20}]
+	final.show_final(standings, titles)
+	var ped := ScorePedestal.new()
+	ped.place = 1
+	root.add_child(ped)
+	await _frames(2)
+	check(final.visible, "el podio se muestra sin piezas 3D")
+	final.queue_free()
+	ped.queue_free()
+	await process_frame
+
+
+## Recetas y armado del atlas (no necesita pantalla): cada pieza tiene nombre
+## único, su celda no se pisa con otra y el cuerpo nominal cae adentro.
+func test_props3d_catalog_and_layout() -> void:
+	var defs := Props3D.catalog()
+	var names := {}
+	for d in defs:
+		names[d.name] = true
+	check(names.size() == defs.size(), "nombres únicos (%d piezas)" % defs.size())
+	for n in ["star", "medal_1", "medal_3", "corner_0", "corner_5", "token", "ball", "crown", "trophy", "coin", "gem",
+			Props3D.brick_name(9, false), Props3D.brick_name(2, true), "block_far_7"]:
+		check(names.has(n), "el catálogo tiene %s" % n)
+	var layout := Props3DBaker.plan(defs)
+	var size: Vector2i = layout.size
+	check(size.x == Props3DBaker.ATLAS_W and size.y > 0 and size.y <= 2048, "atlas de %s px" % size)
+	var cells: Array[Rect2] = []
+	var bad: Array[String] = []
+	for it: Dictionary in layout.items:
+		var cell: Rect2 = it.cell
+		var body: Rect2 = it.body
+		if not Rect2(Vector2.ZERO, Vector2(size)).encloses(cell):
+			bad.append("%s: fuera del atlas" % it.def.name)
+		if not (Rect2(Vector2.ZERO, cell.size).encloses(body) and body.has_area()):
+			bad.append("%s: cuerpo fuera de su celda" % it.def.name)
+		for other in cells:
+			if other.intersects(cell):
+				bad.append("%s: se pisa con otra celda" % it.def.name)
+		cells.append(cell)
+	check(bad.is_empty(), "celdas dentro del atlas, sin pisarse y con el cuerpo adentro %s" % [bad])
+	check(Props3D.signature() == Props3D.signature() and Props3D.signature().length() == 8, "firma de la caché estable")
+	# Mallas cerradas con normales hacia afuera (el contorno de tinta lo necesita).
+	var box := Props3DMeshes.rounded_box(Vector3(100, 40, 20), 6.0)
+	var arr := box.surface_get_arrays(0)
+	var pos: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+	var nrm: PackedVector3Array = arr[Mesh.ARRAY_NORMAL]
+	var outward := 0
+	for i in pos.size():
+		outward += 1 if nrm[i].dot(pos[i]) > 0.0 else 0
+	check(outward == pos.size(), "ladrillo: normales hacia afuera (%d de %d)" % [outward, pos.size()])
+	var star := Props3DMeshes.star_outline(40.0)
+	var far := 0.0
+	for p in star:
+		far = maxf(far, p.length())
+	check(is_equal_approx(far, 40.0), "la estrella redondeada conserva el radio de las puntas")
+	var pillow := Props3DMeshes.pillow("test_pillow", star, 10.0)
+	check(pillow.get_aabb().size.z > 19.0 and pillow.get_aabb().size.x > 70.0, "el almohadón tiene volumen de los dos lados")
+	Props3D.release_build_caches()
+
+
+## Con un atlas instalado (de mentira: acá no hay render), las funciones de
+## dibujo usan el sprite; al sacarlo vuelven al 2D. Y el cálculo de ubicación.
+func test_props3d_install_and_draw() -> void:
+	# Ejemplo del comentario de dest_rect: cuerpo 180×100 -> 90×50 = escala 0,5.
+	var dest := Props3D.dest_rect(Rect2(0, 0, 200, 120), Rect2(10, 10, 180, 100), Rect2(0, 0, 90, 50))
+	check(dest.is_equal_approx(Rect2(-5, -5, 100, 60)), "dest_rect ubica el sprite entero (%s)" % dest)
+	var img := Image.create_empty(64, 64, false, Image.FORMAT_RGBA8)
+	img.fill(Color.GOLD)
+	var gen := Props3D.generation
+	Props3D.install(img, {"star": [Rect2(0, 0, 32, 32), Rect2(4, 4, 24, 24)], "medal_1": [Rect2(32, 0, 32, 32), Rect2(2, 2, 28, 28)],
+		"block_3": [Rect2(0, 32, 32, 32), Rect2(0, 0, 32, 32)]}, ["star", "block_3", "no-existe"])
+	check(Props3D.is_ready() and Props3D.generation > gen, "instalado: listo y con generación nueva")
+	check(Props3D.image("star") != null and Props3D.image("star").get_size() == Vector2i(32, 32), "guarda la imagen chica de las piezas marcadas")
+	check(Props3D.image("medal_1") == null, "las otras no ocupan memoria aparte")
+	check(Props3D.body_size("star") == Vector2(24, 24) and Props3D.body_size("zzz") == Vector2.ZERO, "tamaño del cuerpo")
+	var got := [false, true]
+	var probe := Control.new()
+	probe.size = Vector2(400, 300)
+	probe.draw.connect(func() -> void:
+		got[0] = Props3D.draw(probe, "star", Rect2(10, 10, 40, 40), Color(1, 1, 1, 0.5), true)
+		got[1] = Props3D.draw(probe, "no-existe", Rect2(10, 10, 40, 40))
+		UiTheme.draw_star(probe, Vector2(100, 100), 30.0, UiTheme.GOLD, 0.3)
+		UiTheme.draw_medal(probe, Vector2(200, 100), 30.0, 1)
+		UiTheme.draw_medal(probe, Vector2(200, 100), 30.0, 2))  # Sin pieza: la 2D.
+	root.add_child(probe)
+	await _frames(2)
+	check(got[0] and not got[1], "dibuja las piezas que tiene y avisa las que no")
+	check(GameArt.stage_texture() != null, "el escenario se rearma con las piezas nuevas")
+	Props3D.enabled = false
+	check(not Props3D.is_ready(), "apagado a mano (benchmark A/B): vuelve el 2D")
+	Props3D.enabled = true
+	Props3D.clear()
+	check(not Props3D.is_ready() and Props3D.image("star") == null, "clear() vuelve al dibujo 2D")
+	probe.queue_free()
 	await process_frame

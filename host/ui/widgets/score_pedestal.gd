@@ -42,7 +42,10 @@ func _draw() -> void:
 	# Medalla con el puesto
 	if place > 0:
 		var m := Vector2(r.position.x + 6, r.position.y + 4)
-		draw_circle(m, 34, UiTheme.INK)
-		draw_circle(m, 30, UiTheme.place_color(place))
-		draw_circle(m + Vector2(-8, -8), 10, Color(1, 1, 1, 0.4))
-		UiTheme.draw_text(self, UiTheme.place_text(place), m + Vector2(2, 1), 30, UiTheme.INK)
+		if place <= 3 and Props3D.is_ready():
+			UiTheme.draw_medal(self, m, 30.0, place)  # Medalla de metal 3D (ADR 0016).
+		else:
+			draw_circle(m, 34, UiTheme.INK)
+			draw_circle(m, 30, UiTheme.place_color(place))
+			draw_circle(m + Vector2(-8, -8), 10, Color(1, 1, 1, 0.4))
+			UiTheme.draw_text(self, UiTheme.place_text(place), m + Vector2(2, 1), 30, UiTheme.INK)

@@ -252,6 +252,32 @@ xvfb-run -a -s "-screen 0 1920x1080x24" godot --path . --rendering-driver opengl
 xvfb-run -a -s "-screen 0 1920x1080x24" godot --path . --rendering-driver opengl3 --audio-driver Dummy \
   -s res://tools/mascot_atlas_check.gd -- --out=/tmp/atlas.png --log   # tiempos por trabajo y hoja 2D vs 3D
 ```
+### Piezas 3D horneadas (ADR 0016)
+
+Estrellas, bloques del marco y de los fondos, medallas, corona, trofeo, ficha de Pintar y pelota de Ping Pong como sprites de un atlas horneado en 3D (`core/art3d/`, [ADR 0016](adr/0016-piezas-3d-horneadas.md)). Medido con el mismo código y el interruptor nuevo del benchmark (`--no-props3d` = dibujo 2D de antes), dos corridas de cada uno intercaladas en la misma sesión (promedio de las dos):
+
+```bash
+… -s res://tools/benchmark.gd -- --only=lobby,round_summary,final,arena,pingpong,paint,sumo --no-props3d --json=/tmp/off.json
+… -s res://tools/benchmark.gd -- --only=lobby,round_summary,final,arena,pingpong,paint,sumo --json=/tmp/on.json
+```
+
+| Escena | Scripts prom. (ms) 2D → 3D | Scripts p95 (ms) | Draw calls | Render (ms) |
+|---|---:|---:|---:|---:|
+| lobby | 3,41 → 3,20 | 4,62 → 4,30 | 467 → 467 | 103,4 → 102,1 |
+| round_summary | 3,21 → 2,88 | 4,27 → 3,88 | 187 → 181 | 70,5 → 67,5 |
+| final | 2,93 → 2,95 | 4,07 → 3,94 | 115 → 109 | 53,4 → 53,4 |
+| arena | 8,66 → 8,13 | 12,65 → 11,63 | 31 → 35 | 54,5 → 50,8 |
+| pingpong | 4,65 → 4,68 | 6,75 → 6,45 | 37 → 37 | 55,3 → 53,8 |
+| paint | 11,69 → 10,98 | 18,10 → 16,84 | 49 → 52 | 66,2 → 63,2 |
+| sumo | 12,77 → 12,46 | 18,19 → 19,01 | 90 → 90 | 75,6 → 74,3 |
+| sumo_tarde | 14,79 → 13,90 | 22,03 → 20,80 | 93 → 93 | 68,5 → 66,3 |
+
+- **La máquina estaba muy cargada** (otras corridas de Godot en paralelo): los juegos iban a ~12–15 fps con 4–5 pasos de física por frame, así que los tiempos absolutos salen 2–4× los de las tablas de arriba (paint p95 ≈ 17 ms contra 4,7 ms en la tabla del ADR 0009) **con y sin** piezas 3D. Lo que vale es la comparación: Scripts igual o menor en todas las escenas (±5 %, del orden del ruido: el 2D armaba ~5 figuras con bisel por bloque en las capas cacheadas; el 3D, un rectángulo de textura) y render igual o un poco menor.
+- **Draw calls**: el tablero pasa de 1 a 4 comandos (lote, bloques, lote, esquinas; todos los bloques del mismo atlas van juntos en uno); Arena suma las estrellas como sprites (+4 en total). Resumen y podio bajan (la medalla 3D es un sprite en vez de 3 círculos). Todo muy por debajo de 150 en juegos y 500 en menús.
+- **Objetos**: +11 con el atlas instalado (textura, regiones e imágenes chicas); las mallas y materiales del armado se sueltan después de hornear (`Props3D.release_build_caches`). Estable entre escenas.
+- **Horneado** (primer arranque, sin caché; xvfb + llvmpipe): 0,9–1,1 s en total = armado de las 53 piezas ~0,13 s + 8 azulejos de 512 px renderizados a 2048×2048 (2 cuadros cada uno) ~0,8 s + lectura de píxeles ~6 ms. Se hace al abrir la TV, tapado por la presentación.
+- **Con caché** (`user://props3d/atlas_<firma>.png`): leer el PNG, mipmaps y textura ≈ 36 ms, en `_ready` de la TV antes de armar el lobby.
+- **Memoria**: atlas 2048×644 RGBA8 con mipmaps = 7,0 MB en la GPU (5,3 MB sin mipmaps) + 0,6 MB de imágenes chicas en RAM (estrella y bloques, para componer el escenario de los juegos). Transitorio al hornear: render de 2048×2048 color + profundidad (~32 MB) y otro de 512×512, que se liberan al terminar.
 
 ## Qué se cambió y por qué
 

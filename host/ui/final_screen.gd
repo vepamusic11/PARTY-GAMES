@@ -114,6 +114,7 @@ func _build() -> void:
 	_title = UiTheme.headline("", 72, UiTheme.ACCENT)
 	_title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	col.add_child(_title)
+	_title.add_child(_Trophies.new())
 	_podium = HBoxContainer.new()
 	_podium.alignment = BoxContainer.ALIGNMENT_CENTER
 	_podium.add_theme_constant_override("separation", 10)
@@ -167,9 +168,12 @@ class _Block:
 		UiTheme.draw_round_rect(self, Rect2(r.position + Vector2(0, 0), Vector2(r.size.x, 18)), color.lightened(0.25), 18)
 		var cy := r.position.y + (r.size.y - 14.0) / 2.0 + 4.0
 		var c := Vector2(r.position.x + 62.0, cy)
-		draw_circle(c, 40, UiTheme.INK)
-		draw_circle(c, 36, UiTheme.place_color(place))
-		UiTheme.draw_text(self, UiTheme.place_text(place), c + Vector2(2, 1), 36, UiTheme.INK)
+		if place <= 3 and Props3D.is_ready():
+			UiTheme.draw_medal(self, c, 36.0, place)  # Medalla de metal 3D (ADR 0016).
+		else:
+			draw_circle(c, 40, UiTheme.INK)
+			draw_circle(c, 36, UiTheme.place_color(place))
+			UiTheme.draw_text(self, UiTheme.place_text(place), c + Vector2(2, 1), 36, UiTheme.INK)
 		if points.is_empty():
 			return
 		var h := UiTheme.PODIUM_WELL_H
@@ -188,6 +192,13 @@ class _Crown:
 	func _draw() -> void:
 		var c := Vector2(size.x / 2.0, size.y - 8)
 		var w := 110.0
+		# Corona de juguete 3D horneada (Props3D, ADR 0016); si no, la 2D.
+		var body := Props3D.body_size("crown")
+		if body != Vector2.ZERO:
+			var cw := w * 1.15
+			var ch := cw * body.y / body.x
+			Props3D.draw(self, "crown", Rect2(c.x - cw / 2.0, c.y + 4.0 - ch, cw, ch))
+			return
 		var pts := PackedVector2Array([
 			c + Vector2(-w / 2, 0), c + Vector2(-w / 2, -44), c + Vector2(-w / 4, -20), c + Vector2(0, -58),
 			c + Vector2(w / 4, -20), c + Vector2(w / 2, -44), c + Vector2(w / 2, 0)])
@@ -198,3 +209,32 @@ class _Crown:
 		draw_colored_polygon(pts, UiTheme.GOLD)
 		for x in [-w / 2, 0.0, w / 2]:
 			draw_circle(c + Vector2(x, -48 if x != 0.0 else -62), 8, UiTheme.DANGER)
+
+
+## Dos trofeos de juguete 3D a los lados del título (solo con el atlas de
+## Props3D; sin render no se dibujan). Se redibuja cuando cambia el texto.
+class _Trophies:
+	extends Control
+
+	const TITLE_SIZE := 72
+
+	func _ready() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		(get_parent() as Label).draw.connect(queue_redraw)
+
+	func _draw() -> void:
+		var body := Props3D.body_size("trophy")
+		var title := get_parent() as Label
+		if body == Vector2.ZERO or title == null or title.text.is_empty():
+			return
+		var tw := UiTheme.FONT_BOLD.get_string_size(title.text, HORIZONTAL_ALIGNMENT_LEFT, -1, TITLE_SIZE).x
+		var h := size.y * 1.05
+		var w := h * body.x / body.y
+		var gap := 28.0
+		if tw + 2.0 * (w + gap) > size.x:
+			return  # Título largo: no entran.
+		var cx := size.x / 2.0
+		for side in [-1.0, 1.0]:
+			var x: float = cx + side * (tw / 2.0 + gap + w / 2.0)
+			Props3D.draw(self, "trophy", Rect2(x - w / 2.0, (size.y - h) / 2.0, w, h))

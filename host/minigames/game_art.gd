@@ -32,6 +32,7 @@ const PORTRAIT_SUPERSAMPLE := 2
 const PORTRAIT_SCALE := 0.8       ## Escala de la mascota dentro de la píldora.
 
 static var _stage: Texture2D
+static var _stage_gen := -1
 static var _shapes: Dictionary = {}   # clave -> PackedVector2Array (triángulos locales)
 static var _patterns: Dictionary = {} # [colores, veces] -> PackedColorArray repetido
 static var _label_widths: Dictionary = {}  # texto -> ancho (globito y nombre)
@@ -313,8 +314,9 @@ static func _remember(key: Vector3, tris: PackedVector2Array) -> PackedVector2Ar
 ## costados, desenfocado (como la foto de fondo de la maqueta). Se arma una
 ## sola vez por proceso: una imagen chica que se estira a toda la pantalla.
 static func stage_texture() -> Texture2D:
-	if _stage != null:
+	if _stage != null and _stage_gen == Props3D.generation:
 		return _stage
+	_stage_gen = Props3D.generation  # Si se hornean las piezas 3D, se rearma con ellas.
 	var s := 1.0 / STAGE_DOWNSCALE
 	var w := int(SCREEN.x * s)
 	var h := int(SCREEN.y * s)
@@ -361,6 +363,8 @@ static func stage_texture() -> Texture2D:
 	_img_disc(img, Vector2(71, 246), 12.0, UiTheme.GOLD)
 	# Estrellas de juguete.
 	for st: Vector3 in [Vector3(1830, 400, 64), Vector3(120, 610, 42), Vector3(1560, 640, 40), Vector3(330, 640, 34), Vector3(1880, 900, 36)]:
+		if _img_piece(img, "star", Rect2(st.x - st.z, st.y - st.z, st.z * 2.0, st.z * 2.0)):
+			continue
 		_img_poly(img, UiTheme.star_points(Vector2(st.x, st.y), st.z + 8.0, 0.5), UiTheme.GOLD.darkened(0.25))
 		_img_poly(img, UiTheme.star_points(Vector2(st.x, st.y - 4.0), st.z, 0.5), UiTheme.GOLD)
 	# Desenfoque barato: achicar a la mitad y volver a agrandar (una vez).
@@ -412,6 +416,9 @@ static func _img_cloud(img: Image, c: Vector2, r: float) -> void:
 ## Bloque de juguete visto de frente y un poco de arriba: tapa clara con
 ## botones, frente del color y costado oscuro.
 static func _img_block(img: Image, r: Rect2, col: Color) -> void:
+	var idx := UiTheme.BRICKS.find(col)
+	if idx >= 0 and _img_piece(img, "block_%d" % idx, r):
+		return
 	var top := r.size.y * 0.3
 	var side := r.size.x * 0.16
 	_img_rect(img, Rect2(r.position.x, r.position.y + top, r.size.x, r.size.y - top), col)
@@ -421,6 +428,25 @@ static func _img_block(img: Image, r: Rect2, col: Color) -> void:
 	for k in 2:
 		var stud := Vector2(r.position.x + r.size.x * (0.3 + 0.36 * k), r.position.y + top * 0.5)
 		_img_disc(img, stud, minf(r.size.x * 0.11, top * 0.45), col.lightened(0.5))
+
+
+## Pieza 3D horneada (Props3D.image) pegada en la imagen del escenario con
+## su cuerpo en `r` (px de pantalla). false si no hay atlas.
+static func _img_piece(img: Image, name: String, r: Rect2) -> bool:
+	var src := Props3D.image(name)
+	if src == null:
+		return false
+	var reg: Array = Props3D.regions()[name]
+	var dest := Props3D.dest_rect(Rect2(Vector2.ZERO, (reg[0] as Rect2).size), reg[1], r)
+	var s := 1.0 / STAGE_DOWNSCALE
+	var p := Vector2i((dest.position * s).round())
+	var sz := Vector2i((dest.size * s).round())
+	if sz.x < 2 or sz.y < 2:
+		return false
+	var piece := src.duplicate() as Image
+	piece.resize(sz.x, sz.y, Image.INTERPOLATE_BILINEAR)
+	img.blend_rect(piece, Rect2i(Vector2i.ZERO, sz), p)
+	return true
 
 
 # --- Tablero con volumen ------------------------------------------------------------
@@ -456,7 +482,11 @@ static func paint_board(ci: CanvasItem, rect: Rect2, cell: float) -> void:
 	b.rect(Rect2(outer.position.x, rect.position.y, f, rect.size.y), UiTheme.INK)
 	b.rect(Rect2(rect.end.x, rect.position.y, f, rect.size.y), UiTheme.INK)
 	# Marco: bloques arriba, abajo y a los costados (las esquinas las tapan
-	# los bloques con estrella).
+	# los bloques con estrella). Con piezas 3D (Props3D) el lote se corta
+	# acá: los bloques van como sprites del atlas (un draw call entre todos,
+	# misma textura) y el piso sigue en otro lote.
+	var use_3d := Props3D.is_ready()
+	var bricks: Array = []  # [rect, nombre de la pieza]
 	var i := 0
 	for side in 4:
 		var horizontal := side < 2
@@ -474,7 +504,13 @@ static func paint_board(ci: CanvasItem, rect: Rect2, cell: float) -> void:
 				_: r = Rect2(rect.end.x, rect.position.y + k * step, f, step)
 			if side == 1:  # Canto de abajo: la cara de adelante del bloque.
 				b.chamfer_rect(Rect2(r.position.x + 1.0, r.end.y - 4.0, r.size.x - 2.0, depth + 2.0), 3.0, col.darkened(0.45))
-			_add_brick(b, r, col)
+			if use_3d:
+				bricks.append([r, Props3D.brick_name((i - 1) * 3 + side, side >= 2)])
+			else:
+				_add_brick(b, r, col)
+	if use_3d:
+		b.flush(ci)
+		draw_pieces(ci, bricks)
 	# Piso: baldosas con relieve (luz arriba, labio oscuro abajo) y la junta
 	# solo en las rendijas: cada píxel del piso se pinta una sola vez.
 	var g := UiTheme.TILE_GAP
@@ -525,9 +561,27 @@ static func paint_board(ci: CanvasItem, rect: Rect2, cell: float) -> void:
 		b.round_rect(corner_edge, 14.0, UiTheme.INK)
 		if k >= 2:
 			b.chamfer_rect(Rect2(r.position.x, r.end.y - 8.0, cs, depth + 8.0), 8.0, col.darkened(0.45))
+		if use_3d:
+			continue
 		_add_brick(b, r, col, 10.0)
 		b.star(center + Vector2(0, -3), cs * 0.36, UiTheme.GOLD, 0.0, 4.0)
 	b.flush(ci)
+	if use_3d:
+		for k in 4:
+			var center: Vector2 = corners[k] + Vector2(f, f) / 2.0
+			Props3D.draw(ci, corner_piece(k), Rect2(center - Vector2(cs, cs) / 2.0, Vector2(cs, cs)))
+
+
+## Piezas 3D anotadas como [rect, nombre] (bloques del marco, esquinas):
+## todas del mismo atlas, así el motor las junta en un draw call.
+static func draw_pieces(ci: CanvasItem, pieces: Array) -> void:
+	for pc: Array in pieces:
+		Props3D.draw(ci, pc[1], pc[0])
+
+
+## Nombre de la pieza 3D del bloque con estrella de la esquina `k` (0–3).
+static func corner_piece(k: int) -> String:
+	return "corner_%d" % (0 if k != 3 else 5)
 
 
 ## Bloque del marco con bisel: borde oscuro, labio de abajo, cara del color
@@ -678,9 +732,13 @@ static func paint_hud(ci: CanvasItem, entries: Array, center: String, icon: Stri
 	for i in entries.size():
 		_add_pill(b, pills[i], entries[i].color)
 	_add_clock(b, clock)
-	if icon != "":
-		_add_icon(b, icon, Vector2(clock.position.x + 50.0, clock.get_center().y))
+	var icon_at := Vector2(clock.position.x + 50.0, clock.get_center().y)
+	var star_3d := icon == "star" and Props3D.is_ready()
+	if icon != "" and not star_3d:
+		_add_icon(b, icon, icon_at)
 	b.flush(ci)
+	if star_3d:
+		Props3D.draw_centered(ci, "star", icon_at, Vector2(44, 44))
 	var portrait := UiTheme.HUD_PORTRAIT
 	for i in entries.size():
 		var tex: Texture2D = entries[i].get("portrait")

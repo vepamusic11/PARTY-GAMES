@@ -19,6 +19,7 @@ extends SceneTree
 ##                                    horneadas, alternando cuál va primero;
 ##                                    también 2d o 3d. Default: 3d, como el
 ##                                    juego. ADR 0012)
+##   … -- --no-props3d               (sin piezas 3D horneadas: el dibujo 2D, para comparar)
 ##
 ## Igual que tools/capture_screens.gd necesita una pantalla (real o xvfb):
 ## con --headless no se dibuja nada y los números no sirven.
@@ -106,11 +107,18 @@ func _run() -> void:
 		elif arg.begins_with("--mascots="):
 			var m := arg.trim_prefix("--mascots=")
 			_mascot_modes.assign(["2d", "3d"] if m == "both" else [m])
+		elif arg == "--no-props3d":
+			Props3D.enabled = false
 	_driver.auto_step = false
 	if DisplayServer.get_name() == "headless":
 		printerr("El benchmark necesita una pantalla: correlo con xvfb-run (ver el comentario del script).")
 		quit(1)
 		return
+	# Piezas 3D horneadas (ADR 0016): listas antes de medir, como en la TV
+	# (de la caché en disco o horneadas acá). Con --no-props3d, el dibujo 2D.
+	if Props3D.enabled:
+		await Props3DBaker.ensure(root)
+		print("Piezas 3D: ", Props3DBaker.last_report)
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
 	Engine.max_fps = TARGET_FPS
 	physics_frame.connect(_on_physics_frame)

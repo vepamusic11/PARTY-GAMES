@@ -74,6 +74,9 @@ func _run() -> void:
 	if _style != "" and StyleLayer.attach(root, _style, _style_params) == null:
 		quit(1)
 		return
+	# Piezas 3D horneadas (ADR 0016) listas antes de la primera captura: la TV
+	# las lee de la caché en disco al arrancar; acá, si no hay caché, se hornean.
+	await Props3DBaker.ensure(root)
 	# Presentación de la marca (sola, antes de la TV).
 	var splash := SplashScreen.new()
 	root.add_child(splash)

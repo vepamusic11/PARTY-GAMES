@@ -418,6 +418,23 @@ func _draw_power_badge(kind: int, c: Vector2, u: float, glow: bool = false) -> v
 	var batch := GameArt.TriBatch.new()
 	if glow:
 		GameArt.add_glow(batch, c, r + 44.0, UiTheme.GLOW, _anim)
+	if Props3D.is_ready():  # Ficha 3D horneada (aro dorado y cara blanca), ADR 0016.
+		batch.flush(self)
+		var body := r + 8.0 * u
+		Props3D.draw(self, "token", Rect2(c - Vector2(body, body), Vector2(body, body) * 2.0))
+	else:
+		_add_power_badge_2d(batch, c, r, u)
+	batch.flush(self)
+	draw_set_transform(c, -0.6 if kind == PowerUp.BRUSH else 0.0, Vector2(u, u))
+	if kind == PowerUp.BRUSH:
+		_draw_brush_icon()
+	else:
+		_draw_bolt_icon()
+	draw_set_transform(Vector2.ZERO)
+
+
+## Ficha 2D (sin atlas 3D): aro dorado, cara blanca y brillo.
+func _add_power_badge_2d(batch: GameArt.TriBatch, c: Vector2, r: float, u: float) -> void:
 	batch.feather_circle(c + Vector2(0, 4.0 * u), r + 9.0 * u, UiTheme.INK)
 	batch.feather_circle(c, r + 9.0 * u, UiTheme.INK)
 	batch.circle(c + Vector2(0, 4.0 * u), r + 9.0 * u, UiTheme.INK, 32)
@@ -427,13 +444,6 @@ func _draw_power_badge(kind: int, c: Vector2, u: float, glow: bool = false) -> v
 	batch.circle(c, r - 1.0 * u, UiTheme.PAPER_DIM, 32)
 	batch.circle(c + Vector2(0, -2.0 * u), r - 3.0 * u, UiTheme.PAPER, 32)
 	batch.ellipse(c + Vector2(-r * 0.45, -r * 0.62), r * 0.3, r * 0.14, Color(1, 1, 1, 0.8), -0.6)
-	batch.flush(self)
-	draw_set_transform(c, -0.6 if kind == PowerUp.BRUSH else 0.0, Vector2(u, u))
-	if kind == PowerUp.BRUSH:
-		_draw_brush_icon()
-	else:
-		_draw_bolt_icon()
-	draw_set_transform(Vector2.ZERO)
 
 
 ## Brocha en coordenadas locales (unos 56 px de alto, centrada en 0,0).
