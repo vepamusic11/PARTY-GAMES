@@ -69,6 +69,7 @@ godot --headless --path . -s res://tests/run_tests.gd    # 0 = todo OK
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Cómo está armado y por qué (con conceptos explicados) |
 | [docs/PROTOCOL.md](docs/PROTOCOL.md) | Contrato de mensajes TV ↔ celular |
 | [docs/ADDING_A_MINIGAME.md](docs/ADDING_A_MINIGAME.md) | Guía paso a paso para sumar un juego |
+| [docs/JUEGOS.md](docs/JUEGOS.md) | Catálogo de juegos actuales y propuestos (carreras, pool, equipos) |
 | [docs/SECURITY.md](docs/SECURITY.md) | Modelo de amenazas y controles |
 | [docs/BUILD.md](docs/BUILD.md) | Exportar a Android, Google TV e iOS |
 | [docs/PERFORMANCE.md](docs/PERFORMANCE.md) | Benchmark, presupuestos de rendimiento y optimizaciones |

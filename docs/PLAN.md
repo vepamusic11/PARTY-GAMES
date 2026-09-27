@@ -60,7 +60,7 @@ Requiere tu TV y tus celulares en la misma Wi-Fi: se hace con **Claude Code en l
 - **Listo cuando:** una partida de 4 jugadores de 20 minutos sin cortes y con los presupuestos cumplidos.
 
 ### Fase C · Contenido: 10–12 juegos con variedad
-Principio: cada juego nuevo tiene que sumar **algo distinto** (control, dinámica o emoción), no repetir.
+Principio: cada juego nuevo tiene que sumar **algo distinto** (control, dinámica o emoción), no repetir. Catálogo completo, con carreras y juegos estilo pool: [JUEGOS.md](JUEGOS.md).
 
 | Juego propuesto | Dinámica | Control | Por qué suma |
 |---|---|---|---|
