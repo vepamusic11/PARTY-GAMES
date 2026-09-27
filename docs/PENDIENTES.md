@@ -23,11 +23,10 @@ Estado al **27/09/2026** (rama `claude/laughing-ramanujan-tfi3ps`, [PR #1](https
 
 ## 2. Trabajo en curso (agentes de Claude)
 
-Cuatro agentes quedaron trabajando el 27/09 en copias aisladas (`.claude/worktrees/`). Si al retomar ya no están (el contenedor se recicla tras un rato sin uso), **se vuelven a lanzar con el mismo pedido**; lo ya integrado está a salvo en la rama.
+Tres agentes quedaron trabajando el 27/09 en copias aisladas (`.claude/worktrees/`). Si al retomar ya no están (el contenedor se recicla tras un rato sin uso), **se vuelven a lanzar con el mismo pedido**; lo ya integrado está a salvo en la rama.
 
 | Agente | Qué hace | Al terminar |
 |---|---|---|
-| **Calidad 3D de las mascotas** | Plástico, ojos, cachetes, proporciones y contorno como la maqueta o mejor; los 9 ánimos y bailes en 3D (`core/mascot3d/`). Debe respetar `in_place`/`fx` del horneado y `visible_features()` | Integrar, regenerar capturas y miniaturas, comparar con `docs/design/referencia_mascotas.webp` |
 | **Piezas del escenario en 3D** | Estrellas, trofeo, medallas, premios y bloques del tablero horneados con el mismo plástico (`core/art3d/`) | Integrar, revisar capturas y rendimiento |
 | **APK de prueba por CI** | `export_presets.cfg` (Android) + job de GitHub Actions que arma el APK debug con keystore efímero (nunca en el repo) + guía en BUILD.md | Integrar y verificar que el job quede verde y el APK se instale |
 | **Estilos de música** | Estilo "Original" con los temas del dueño (por defecto) + Fiesta / Retro / Relajado (/ Latino) + "Sin música", elegibles en la pausa; muestras para escuchar en `scratchpad/musica_estilos/` | Mandar muestras al dueño, integrar el estilo elegido y los temas de Suno que falten |
@@ -36,10 +35,10 @@ Cuatro agentes quedaron trabajando el 27/09 en copias aisladas (`.claude/worktre
 
 - [x] Mascotas 3D horneadas en todo el juego (lobby, intro, 13 juegos, resumen, podio, celular) con respaldo 2D ([ADR 0012](adr/0012-mascotas-3d.md)).
 - [x] Podio centrado (la línea "Se jugó…" lo corría a la derecha y cortaba el 3.°).
-- [ ] Calidad de las mascotas 3D igual o mejor que la maqueta (agente en curso).
+- [x] Calidad de las mascotas 3D al nivel de la maqueta: plástico, cara, contorno y los 9 ánimos ([comparación](img/mascotas_3d_comparacion.png)). Pendiente de decisión: el amarillo y el verde de la paleta tiran a naranja y turquesa respecto de la maqueta (`Protocol.MASCOT_COLORS`).
 - [ ] Piezas del escenario en 3D (agente en curso).
+- [ ] Capturas de Empujones y ¡Que no te deje la cámara!: muestran el resumen en vez del juego (el juego termina antes de la foto); ajustar `SHOT_DELAY` en `tools/capture_screens.gd`.
 - [ ] Revisar con la maqueta de Pintar el piso (`docs/design/referencia_juego_pintar.webp`) juego por juego una vez integrado todo.
-- [ ] Ánimos que la cara 3D todavía no tiene (ANGRY, DIZZY, SLEEPY, WINNER, LAUGHING) caen en 2D hasta que el agente de calidad los sume.
 - [ ] Algunas poses se hornean la primera vez que se dibujan (Empujones, Karts): si se nota un tirón en la TV real, sumarlas al precalentado.
 
 ## 4. Juegos nuevos (ver [JUEGOS.md](JUEGOS.md))
