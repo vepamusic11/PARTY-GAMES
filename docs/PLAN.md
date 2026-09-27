@@ -59,7 +59,8 @@ Un cambio está terminado cuando cumple **todo** esto (lo revisa quien integra):
 Requiere tu TV y tus celulares en la misma Wi-Fi: se hace con **Claude Code en la terminal de tu PC**, no desde la nube.
 - **Actualizar Godot 4.4 → 4.7.x** (ADR): lo exige Google Play (páginas de 16 KB) y habilita Sentry 2.x. Ver [PRODUCCION.md](PRODUCCION.md).
 - Comparar los renderizadores `mobile` y `Compatibility` en una TV real.
-- Presets de exportación Android y Google TV (banner, íconos, permisos `Vibrate` y de red).
+- [x] Preset de exportación **Android** (íconos, permisos `Vibrate` y de red) y **APK de prueba en la CI** para probar con el celular sin Android Studio ([BUILD.md](BUILD.md#probar-con-tu-celular-android-apk-de-prueba)).
+- [ ] Preset de **Google TV**: `Show In Android TV` (leanback) y banner de 320×180 exigen *Gradle build* en Godot 4.4.
 - Medir latencia y batería en 3 redes distintas y ajustar la frecuencia de envío.
 - QR en la TV que abra la app con la IP y el código precargados. El codificador ya está en `addons/pmc_qr/` (MIT, probado con `tools/make_join_qr.gd` y `test_join_qr`; por qué este y no Kenyoni: [RECURSOS.md](RECURSOS.md#qr-por-qué-pmcqr-y-no-kenyoni)). Falta ponerlo en el lobby y que el celular lea el enlace. En iPhone evita depender del permiso de multicast de Apple.
 - **Listo cuando:** una partida de 4 jugadores de 20 minutos sin cortes y con los presupuestos cumplidos.

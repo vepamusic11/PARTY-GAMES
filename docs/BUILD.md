@@ -5,15 +5,90 @@
 - Godot **4.4.x** estándar.
 - Plantillas de exportación: en Godot, **Editor → Administrar plantillas de exportación → Descargar**.
 
+## Probar con tu celular Android (APK de prueba)
+
+No hace falta Android Studio: GitHub arma el APK solo. La **TV es tu PC con Windows** y el **control es tu celular**, los dos en la **misma Wi-Fi**.
+
+### 1. Bajar el APK
+
+1. En GitHub, pestaña **Actions** → workflow **CI** → la corrida más reciente con ✅ de tu rama o PR. (Corre sola en cada push a `main` y en cada PR; para otra rama: **CI → Run workflow** y elegís la rama.)
+2. Abajo de todo, en **Artifacts**, bajá **`party-game-debug-apk`**. Es un `.zip` con `party-game-debug.apk` adentro (~60 MB). Los artefactos se borran a los 14 días.
+3. Pasalo al celular: descomprimilo en la PC y mandalo por cable USB, Google Drive o Telegram "Mensajes guardados". O abrí GitHub directamente desde el navegador del celular (con la sesión iniciada) y bajalo ahí.
+
+### 2. Instalarlo
+
+1. En el celular, tocá `party-game-debug.apk` (desde **Archivos → Descargas** o desde la app donde lo recibiste).
+2. Android avisa que la app no puede instalar apps desconocidas: **Configuración → Permitir de esta fuente** (el nombre cambia según la marca: "Instalar apps desconocidas" / "Orígenes desconocidos") y volvé con ◀.
+3. **Instalar**. Si aparece *Play Protect* ("app no verificada"): **Más detalles → Instalar de todas formas**. Es normal: es un APK de prueba sin publicar.
+4. Si dice **"App no instalada"** o **"el paquete entra en conflicto"**: desinstalá la versión anterior de PARTY-GAME y repetí. Pasa porque cada build de la CI se firma con una clave de prueba nueva (ver *Firma estable* más abajo para evitarlo).
+
+### 3. Abrir la TV en la PC
+
+```powershell
+& "D:\Godot\Godot_v4.4.1-stable_win64_console.exe" --path . -- --host
+```
+
+La **primera vez**, Windows muestra *"Firewall de Windows Defender bloqueó algunas características de esta aplicación"*: marcá **Redes privadas** y **Permitir acceso**. Además, la Wi-Fi de la PC tiene que estar como red **privada**: **Configuración → Red e Internet → Wi-Fi → (tu red) → Tipo de perfil de red → Privada**. En una red "pública" Windows bloquea a los celulares aunque hayas permitido Godot.
+
+Qué usa el juego (por si configurás el firewall a mano):
+
+| Qué | Protocolo y puerto | Sentido en la PC |
+|---|---|---|
+| Conexión del celular a la TV | TCP **47777** (si está ocupado, 47778–47781; el lobby muestra el real) | Entrante: hay que permitirlo |
+| Anuncio "acá hay una TV" | UDP **47778**, broadcast | Saliente: Windows lo deja salir por defecto |
+
+### 4. Conectar el celular
+
+1. Abrí **PARTY-GAME** en el celular → tocá **Control (celular)** (ya viene resaltada). La app se usa con el celular **acostado** (apaisado).
+2. En **1 · Elegí tu TV** aparece la tarjeta de tu PC en 1–2 segundos. Tocala.
+3. **2 · Tu apodo** y **3 · Código de la TV**: las 4 letras grandes del lobby (ej. `KX7P`) → **Unirme**.
+4. El botón o el gesto **Atrás** del celular no cierra la app (así un roce del borde no te saca del juego): para irte, mantené apretado **Salir**. En una Google TV, el Atrás del control remoto abre la pausa, igual que Escape en la PC.
+
+### Si la TV no aparece en el celular
+
+1. En el lobby de la TV, abajo de "**¿No aparece la TV? Escribí esta dirección:**", está la IP de la PC, por ejemplo `192.168.1.34, 172.27.16.1 · puerto 47777`.
+2. En el celular, en "**¿No aparece? Escribí la dirección que muestra la TV:**", escribí la que empieza igual que la IP del celular (en el celular: **Configuración → Wi-Fi → tu red → Dirección IP**). Casi siempre es la `192.168.x.x`; las `172.x` suelen ser de WSL, Hyper-V o VirtualBox y no sirven. La IP escrita a mano usa siempre el puerto 47777: si el lobby muestra otro, cerrá la otra ventana de Godot o el programa que lo ocupa y abrí la TV de nuevo.
+3. Si con la IP escrita tampoco conecta, es el firewall: **Panel de control → Firewall de Windows Defender → Permitir una aplicación a través del firewall → Cambiar configuración** → buscá todas las líneas **Godot** y marcá **Privada**. (Si alguna vez tocaste *Cancelar* en el aviso, Windows guardó una regla de **bloqueo** para Godot, y el bloqueo gana sobre cualquier regla que permita el puerto.) Alternativa en PowerShell como administrador:
+   ```powershell
+   New-NetFirewallRule -DisplayName "PARTY-GAME TV" -Direction Inbound -Protocol TCP -LocalPort 47777-47781 -Action Allow -Profile Private
+   ```
+4. Si la IP escrita conecta pero la lista sigue vacía: la red filtra el broadcast (Wi-Fi de invitados, "aislamiento de clientes/AP isolation" del router, algunas redes de oficina). Jugá con la IP escrita (hay que volver a escribirla cada vez que abrís la app).
+5. PC por cable y celular por Wi-Fi funciona si los dos salen del **mismo router**. Una VPN activa en la PC o en el celular suele cortar la red local: desactivala para jugar.
+
+### Firma estable (opcional, para actualizar sin desinstalar)
+
+Sin configurar nada, cada APK se firma con una clave de prueba **nueva** (se crea y se descarta en la CI), así que para instalar una build nueva hay que desinstalar la anterior (se pierde el apodo guardado). Para que todas usen la misma firma, creá una vez un keystore **de prueba** (no es el de publicación) y guardalo como secreto del repo:
+
+```bash
+keytool -genkeypair -keystore debug.keystore -storepass android -keypass android \
+  -alias androiddebugkey -dname "CN=Android Debug,O=Android,C=US" -keyalg RSA -keysize 2048 -validity 3650
+base64 -w0 debug.keystore   # en Windows: [Convert]::ToBase64String([IO.File]::ReadAllBytes("debug.keystore"))
+```
+
+Pegá el texto en **Settings → Secrets and variables → Actions → New repository secret** con el nombre `ANDROID_DEBUG_KEYSTORE_BASE64` y borrá el archivo local. **Nunca** lo agregues al repo (`.gitignore` ya ignora `*.keystore`). Desde ahí, cada APK nuevo se instala encima del anterior (la CI usa el número de corrida como `versionCode`, siempre creciente).
+
+### Cómo lo arma la CI (para quien mantenga el proyecto)
+
+Job `apk` de [`.github/workflows/ci.yml`](../.github/workflows/ci.yml), en paralelo a los tests:
+
+1. Baja Godot y las plantillas de exportación de `godotengine/godot-builds` y verifica sus **SHA-512** fijados en el workflow (al subir de versión de Godot hay que actualizarlos desde `SHA512-SUMS.txt` del release). De las plantillas (~1,2 GB) guarda solo `android_debug.apk` en caché.
+2. Usa el Android SDK que trae el runner (`$ANDROID_HOME`: `adb` y `apksigner`) y JDK 17 (`actions/setup-java`).
+3. Crea el keystore debug en `$RUNNER_TEMP` (o lo toma del secreto) y se lo pasa a Godot con `GODOT_ANDROID_KEYSTORE_DEBUG_PATH/USER/PASSWORD`; las rutas del SDK y Java van a `editor_settings-4.4.tres`.
+4. `godot --headless --export-debug "Android"`, verifica la firma con `apksigner verify` y sube el artefacto.
+
+Preset `Android` ([`export_presets.cfg`](../export_presets.cfg)): paquete `com.iogames.partygame`, `arm64-v8a` + `armeabi-v7a` (celulares baratos de 32 bits también sirven de control), permisos `INTERNET`, `ACCESS_NETWORK_STATE`, `ACCESS_WIFI_STATE`, `CHANGE_WIFI_MULTICAST_STATE` (con él Godot toma el *multicast lock*: sin eso muchos celulares descartan el anuncio broadcast de la TV) y `VIBRATE`; orientación apaisada con sensor (de `project.godot`); íconos de `assets/brand/android/` (clásico, adaptable y temático de Android 13), generados desde el logo con `tools/make_android_icons.gd`. Tamaño: ~60 MB, de los que ~26 MB son la versión de 32 bits (`armeabi-v7a`); si molesta, se saca esa arquitectura y queda en ~35 MB. Sin *Gradle build*: por eso todavía no aparece en el launcher de Google TV (ver abajo).
+
+Para exportar en tu PC: instalá las plantillas 4.4.1, configurá SDK y JDK en el editor (pasos de la sección siguiente) y usá **Proyecto → Exportar → Android**. El keystore debug lo crea el editor solo.
+
 ## Android (celular y Google TV / Android TV)
 
 La misma APK/AAB sirve para ambos: en un dispositivo **sin pantalla táctil** (TV) arranca como host automáticamente; en un celular muestra el selector.
 
 1. Instalar Android Studio (o solo el SDK + JDK 17) y configurar las rutas en **Editor → Configuración del editor → Exportar → Android**.
-2. **Proyecto → Exportar → Agregar → Android**.
-3. Opciones a revisar en el preset:
+2. **Proyecto → Exportar → Android**: el preset ya está en el repo (`export_presets.cfg`, ver [arriba](#cómo-lo-arma-la-ci-para-quien-mantenga-el-proyecto)).
+3. Opciones del preset (ya configuradas; revisarlas si se agrega otro):
    - **Permisos:** `Internet`, `Access Network State`, `Access Wifi State`, `Change Wifi Multicast State` (este último ayuda a recibir el anuncio UDP en algunos celulares) y `Vibrate` (vibración del control; sin él, `Haptics.buzz` no hace nada).
-   - **Package → Show In Android TV** (si tu versión de Godot la tiene): activado, para aparecer en el launcher de Google TV. Si no está, se resuelve con el manifiesto personalizado del punto siguiente.
+   - **Package → Show In Android TV**: en Godot 4.4 **exige *Use Gradle Build*** (proyecto Android dentro del repo en `android/`, Gradle y SDK completos). Por eso el preset actual **no** lo activa: el APK se instala en una Google TV por `adb` y funciona como host, pero no aparece en su launcher. Queda para el preset de Google TV (Fase B), junto con el banner.
    - **Screen → Support Small/Normal/Large/Xlarge:** activados.
 4. Para instalar rápido en un dispositivo conectado por USB/Wi-Fi: botón de **Despliegue remoto** (ícono de Android arriba a la derecha).
 5. Para Google TV por Wi-Fi: activar opciones de desarrollador en la TV → Depuración por red → `adb connect IP_DE_LA_TV`.

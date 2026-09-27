@@ -322,6 +322,20 @@ func set_bot_difficulty(player_id: int, difficulty: int) -> bool:
 
 # --- Pausa ------------------------------------------------------------------------
 
+## Google TV / Android TV: el "Atrás" del control remoto no llega como tecla
+## sino como pedido de "volver" de la ventana. Con `quit_on_go_back=false`
+## (project.godot) no cierra la app: se convierte en `ui_cancel`, así hace
+## exactamente lo mismo que Escape en la PC (pausa, cerrar la pregunta de
+## salir, cerrar el menú de bots…).
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_GO_BACK_REQUEST and is_inside_tree():
+		for pressed in [true, false]:
+			var back := InputEventAction.new()
+			back.action = "ui_cancel"
+			back.pressed = pressed
+			Input.parse_input_event(back)
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if not event.is_action_pressed("ui_cancel"):
 		return

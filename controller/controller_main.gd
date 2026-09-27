@@ -44,6 +44,7 @@ const DEV_TAP_WINDOW_MS := 1500   ## …con menos de esto entre uno y otro.
 const HINT_MAX_LENGTH := 48       ## Instrucción que manda la TV (opcional): se recorta.
 ## Qué hacer, según el control, si la TV no manda una instrucción propia
 ## (`hint` en los datos del layout).
+const LEAVE_HINT := "Mantené apretado «Salir» para irte"
 const LAYOUT_HINTS := {
 	Protocol.LAYOUT_JOYSTICK: "Mové tu mascota con el joystick",
 	Protocol.LAYOUT_SLIDER_H: "Deslizá el dedo para mover tu paleta",
@@ -141,6 +142,15 @@ func _ready() -> void:
 	_on_hosts_changed(discovery.get_hosts())
 	_show_join("")
 	_apply_settings()
+
+
+## Android: el botón o el gesto "Atrás" NO cierra la app
+## (`application/config/quit_on_go_back=false` en project.godot): un roce del
+## borde de la pantalla en medio de un juego te sacaría de la partida. Irse es
+## a propósito, manteniendo "Salir"; acá solo se recuerda cómo.
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_GO_BACK_REQUEST and _play_screen != null and _play_screen.visible:
+		show_toast(LEAVE_HINT)
 
 
 func _exit_tree() -> void:
@@ -795,7 +805,7 @@ func _build_play_screen() -> void:
 	_leave = HoldButton.new("Salir", "exit", UiTheme.PAPER, 32)
 	_leave.custom_minimum_size = Vector2(220, 0)
 	_leave.held.connect(_on_leave_pressed)
-	_leave.released_early.connect(func() -> void: show_toast("Mantené apretado «Salir» para irte"))
+	_leave.released_early.connect(func() -> void: show_toast(LEAVE_HINT))
 	top.add_child(_leave)
 	_layout_host = Control.new()
 	_layout_host.size_flags_vertical = Control.SIZE_EXPAND_FILL

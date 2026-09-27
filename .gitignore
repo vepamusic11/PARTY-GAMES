@@ -14,6 +14,10 @@ builds/
 *.jks
 *.p12
 *.mobileprovision
+*.pem
+*.idsig
+# Copia en base64 del keystore debug para el secreto de la CI (docs/BUILD.md)
+*.keystore.b64
 
 # Sistema / editor
 .DS_Store

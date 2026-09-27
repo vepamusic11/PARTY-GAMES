@@ -13,6 +13,7 @@ config/features=PackedStringArray("4.4", "Mobile")
 config/icon="res://icon.svg"
 config/use_custom_user_dir=true
 config/custom_user_dir_name="party-game"
+config/quit_on_go_back=false
 
 [display]
 

@@ -119,4 +119,9 @@ func _build_selector() -> void:
 	var hints := KeyHint.new()
 	hints.add_hint(["left", "right"], "Elegir").add_hint(["OK"], "Confirmar")
 	hints_row.add_child(hints)
-	_tv_card.grab_focus()
+	# En un celular (pantalla táctil) lo más probable es "Control": arranca
+	# resaltada. En la PC (sin pantalla táctil), "Pantalla".
+	if DisplayServer.is_touchscreen_available():
+		_phone_card.grab_focus()
+	else:
+		_tv_card.grab_focus()

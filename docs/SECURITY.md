@@ -27,6 +27,7 @@ Un party game en la red de una casa. Lo que queremos evitar:
 ## Secretos
 
 - Keystores de Android, certificados y perfiles de Apple **nunca** van al repo (ver `.gitignore`). En CI se cargan desde *GitHub Secrets*.
+- El APK de prueba de la CI se firma con un keystore **debug** creado en el job y descartado al terminar, o con el secreto opcional `ANDROID_DEBUG_KEYSTORE_BASE64` (un keystore de prueba, nunca el de publicación). Ver [BUILD.md](BUILD.md#firma-estable-opcional-para-actualizar-sin-desinstalar).
 
 ## Reportar un problema
 

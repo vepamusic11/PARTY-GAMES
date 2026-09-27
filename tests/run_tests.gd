@@ -78,6 +78,23 @@ func test_token() -> void:
 	check(not Protocol.is_valid_token(null), "null")
 
 
+## El anuncio de la TV también sale por el broadcast de cada red privada /24
+## (PC con Windows y varios adaptadores: VirtualBox, WSL, VPN…).
+func test_discovery_broadcast_targets() -> void:
+	var t := DiscoveryBeacon.broadcast_targets([
+		"127.0.0.1", "192.168.1.34", "::1", "fe80::1", "169.254.3.4",
+		"172.27.16.1", "10.0.0.8", "8.8.8.8", "192.168.1.99", "172.32.0.1", "1.2.3", "a.b.c.d", 42,
+	])
+	check(t[0] == DiscoveryBeacon.LIMITED_BROADCAST, "el broadcast general va siempre primero")
+	check("192.168.1.255" in t and "172.27.16.255" in t and "10.0.0.255" in t, "redes privadas /24: %s" % [t])
+	check(t.count("192.168.1.255") == 1, "sin repetir la misma red")
+	check(not "127.0.0.255" in t and not "169.254.3.255" in t and not "8.8.8.255" in t and not "172.32.0.255" in t,
+		"ni loopback, ni enlace local, ni IP públicas: %s" % [t])
+	check(t.size() == 4, "4 destinos esperados: %s" % [t])
+	var none := DiscoveryBeacon.broadcast_targets([])
+	check(none.size() == 1 and none[0] == DiscoveryBeacon.LIMITED_BROADCAST, "sin red: solo el general")
+
+
 func test_sanitize_name() -> void:
 	check(Protocol.sanitize_name("  Pablo  ") == "Pablo", "recorta espacios")
 	check(Protocol.sanitize_name("Pa\nb\tlo\u0007") == "Pablo", "quita caracteres de control")
@@ -1497,6 +1514,16 @@ func test_host_tournament_flow() -> void:
 	check(host._pause.visible and host._summary.paused, "Atrás en el resumen abre el menú y frena la cuenta")
 	host._unhandled_input(cancel)
 	check(not host._pause.visible and not host._summary.paused, "Atrás de nuevo lo cierra")
+	# Google TV: el "Atrás" del remoto llega como pedido de "volver" de la
+	# ventana (no como tecla) y tiene que hacer lo mismo que Escape.
+	check(not ProjectSettings.get_setting("application/config/quit_on_go_back", true),
+		"en Android, Atrás no cierra la app")
+	host.notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
+	await process_frame
+	check(host._pause.visible and host._summary.paused, "Atrás del control remoto abre el menú")
+	host.notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
+	await process_frame
+	check(not host._pause.visible and not host._summary.paused, "Atrás del control remoto lo cierra")
 
 	host._summary._on_continue()
 	check(host.phase == Protocol.PHASE_PLAYING and host.tournament.current_game_id == "pingpong", "sigue Ping Pong")
@@ -1806,6 +1833,15 @@ func test_controller_power_mode() -> void:
 	check(ctrl._background.anim_fps == 0.0 and not OS.low_processor_usage_mode, "jugando: sin bajo consumo (latencia)")
 	ctrl._on_layout_changed(Protocol.LAYOUT_WAIT, {})
 	check(OS.low_processor_usage_mode, "vuelve a bajo consumo al esperar")
+	# Android: "Atrás" (botón o gesto del borde) no cierra la app en medio de
+	# un juego; solo recuerda cómo salir.
+	ctrl._show_join("")
+	ctrl.notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
+	check(not ctrl._toast.visible, "en la pantalla de unirse, Atrás no muestra el aviso")
+	ctrl._join_screen.visible = false
+	ctrl._play_screen.visible = true
+	ctrl.notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
+	check(ctrl._toast.visible and ctrl._toast_label.text == ControllerMain.LEAVE_HINT, "unido, Atrás recuerda mantener «Salir»")
 	ctrl.queue_free()
 	await process_frame
 	check(not OS.low_processor_usage_mode, "al salir deja el modo como estaba")
@@ -4070,7 +4106,8 @@ func test_player_toasts() -> void:
 	await _free_clients()
 
 
-## Selector TV/celular: dos tarjetas, foco inicial en la TV y ◀ ▶ entre
+## Selector TV/celular: dos tarjetas, foco inicial en la TV (en el celular,
+## con pantalla táctil, en "Control") y ◀ ▶ entre
 ## ellas. La presentación IO-GAMES dura como mucho 2,5 s.
 func test_boot_selector() -> void:
 	check(UiTheme.SPLASH_TOTAL <= 2.5, "la presentación dura ≤ 2,5 s")
@@ -4082,7 +4119,10 @@ func test_boot_selector() -> void:
 	if not check_that(tv != null and phone != null, "el selector muestra las dos tarjetas"):
 		boot.queue_free()
 		return
-	check(tv.has_focus(), "foco inicial en la TV")
+	if DisplayServer.is_touchscreen_available():
+		check(phone.has_focus(), "con pantalla táctil, foco inicial en el control")
+	else:
+		check(tv.has_focus(), "foco inicial en la TV")
 	check(tv.get_node(tv.focus_neighbor_right) == phone and phone.get_node(phone.focus_neighbor_left) == tv,
 		"◀ ▶ pasan de una tarjeta a la otra")
 	boot.queue_free()
