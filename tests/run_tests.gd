@@ -568,6 +568,54 @@ func test_lobby_screen() -> void:
 	await process_frame
 
 
+## Cada juego del registry tiene su miniatura para la tarjeta del lobby y la
+## intro. Un juego nuevo sin miniatura falla acá con el comando para generarla.
+func test_games_have_thumbnails() -> void:
+	for info in MiniGameRegistry.all_info():
+		var path := GameCard.thumbnail_path(info.id)
+		var how := ("generala con: xvfb-run -a -s \"-screen 0 1920x1080x24\" godot --path . --rendering-driver opengl3 "
+			+ "--audio-driver Dummy -s res://tools/make_thumbnails.gd -- --only=%s ; después: godot --headless --path . --import") % info.id
+		check(FileAccess.file_exists(path), "%s: falta la miniatura %s; %s" % [info.id, path, how])
+		if FileAccess.file_exists(path):
+			var tex := GameCard.thumbnail(info.id)
+			check(tex != null, "%s: la miniatura existe pero Godot no la importó (godot --headless --path . --import)" % info.id)
+			if tex != null:
+				check(tex.get_width() >= 320 and absf(tex.get_width() / float(tex.get_height()) - 16.0 / 9.0) < 0.05,
+					"%s: miniatura 16:9 de al menos 320 px (%dx%d)" % [info.id, tex.get_width(), tex.get_height()])
+				check(GameCard.thumbnail(info.id) == tex, "%s: la miniatura se carga una sola vez (cache)" % info.id)
+
+
+## Una tarjeta sin miniatura (juego recién agregado) usa el dibujo de respaldo
+## y sigue funcionando: marcar, deshabilitar y dibujar.
+func test_game_card_without_thumbnail() -> void:
+	var info := {"id": "juego_sin_foto", "title": "Juego nuevo", "min_players": 1, "max_players": 4,
+		"layout": Protocol.LAYOUT_ONE_BUTTON, "accent": UiTheme.ACCENT}
+	check(GameCard.thumbnail("juego_sin_foto") == null and GameCard.thumbnail("") == null, "sin archivo: null")
+	var card := GameCard.new(info)
+	root.add_child(card)
+	card.size = Vector2(300, 206)
+	check(card._thumb == null, "la tarjeta queda sin foto")
+	card.button_pressed = true
+	check(card.is_selected(), "se puede marcar")
+	await process_frame
+	card.set_unavailable("Solo 2 jugadores")
+	check(card.disabled and not card.is_selected(), "se puede deshabilitar")
+	await process_frame
+	check(is_instance_valid(card), "se dibuja sin miniatura")
+	card.queue_free()
+	# Con miniatura: mismo comportamiento.
+	var first: Dictionary = MiniGameRegistry.all_info()[0]
+	var with_photo := GameCard.new(first)
+	root.add_child(with_photo)
+	with_photo.size = Vector2(300, 206)
+	check(with_photo._thumb == GameCard.thumbnail(first.id), "la tarjeta usa la miniatura del juego")
+	with_photo.set_unavailable("Solo 2 jugadores")
+	await process_frame
+	check(is_instance_valid(with_photo), "se dibuja con miniatura deshabilitada")
+	with_photo.queue_free()
+	await process_frame
+
+
 func test_seat_card_uses_player_look() -> void:
 	var seat := SeatCard.new(1)
 	root.add_child(seat)

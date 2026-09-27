@@ -72,6 +72,20 @@ const GAMES: Array[Script] = [
 
 Listo: aparece como tarjeta en el lobby, se puede elegir para la competencia y se habilita cuando la cantidad de jugadores elegida está en su rango.
 
+## 3. Generar su miniatura
+
+La tarjeta del lobby y la intro "¿Cómo se juega?" muestran una foto real del juego: `assets/thumbs/<id>.webp` (640×360). La genera una herramienta que corre el juego con jugadores de prueba y guarda un recorte sin el marcador:
+
+```bash
+xvfb-run -a -s "-screen 0 1920x1080x24" godot --path . --rendering-driver opengl3 \
+  --audio-driver Dummy -s res://tools/make_thumbnails.gd -- --only=dodge
+godot --headless --path . --import      # para que Godot tome el archivo nuevo
+```
+
+Sin `--only` regenera todas (hacelo si cambiás el dibujo de un juego). Mirá el resultado: la tarjeta muestra solo la franja del medio (≈ 2,8:1) y chica, así que conviene un primer plano con los jugadores en acción. Para elegir el encuadre, `-- --only=<id> --full --out=/tmp/thumbs` guarda también la TV entera; después agregá una entrada en `SHOTS` de `tools/make_thumbnails.gd` (segundos de juego, recorte y cómo juegan los jugadores de prueba). Sin entrada usa un recorte del centro del campo estándar.
+
+Mientras no tenga miniatura, la tarjeta usa un dibujo genérico con el ícono del control, pero `test_games_have_thumbnails` falla y dice el comando para generarla.
+
 ## Sonido y vibración
 
 Una línea por evento, sin archivos de audio (ver `core/audio/sfx.gd`):
@@ -91,12 +105,12 @@ El juego **solo reporta su puntaje propio** en `finish(...)`. El modo competenci
 
 *Ejemplo:* `finish(result_from_scores({1: 12, 2: 9, 3: 9}))` → Pablo 1° (+100), Sofi y Tomi 2° (+70). Si el juego es "gana el primero en llegar", pasar `winners` explícitos: ese jugador queda 1° aunque otro tenga más puntaje.
 
-## 3. Correr los tests
+## 4. Correr los tests
 
 ```bash
 godot --headless --path . -s res://tests/run_tests.gd
 ```
-`test_registry_games_are_valid` y `test_games_run_headless` verifican automáticamente que el juego nuevo tenga metadatos válidos y que corra 30 frames con inputs aleatorios sin romperse.
+`test_registry_games_are_valid` y `test_games_run_headless` verifican automáticamente que el juego nuevo tenga metadatos válidos y que corra 30 frames con inputs aleatorios sin romperse; `test_games_have_thumbnails`, que tenga su miniatura.
 
 ## Reglas
 

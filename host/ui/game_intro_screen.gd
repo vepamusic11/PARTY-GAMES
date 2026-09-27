@@ -6,12 +6,15 @@ extends Control
 ##                 CARRERA DE TOQUES
 ##                   ¿Cómo se juega?
 ##   ┌──────────────────────┐  ┌──────────────────────────────┐
-##   │ [Un botón]           │  │ Tocá el botón lo más rápido  │
-##   │     ┌──────────┐     │  │ que puedas…                  │
-##   │     │   (A)    │     │  │ 4 jugadores                  │
-##   │     └──────────┘     │  │ (mascota) (mascota) …        │
+##   │ [Un botón]  (foto del│  │ Tocá el botón lo más rápido  │
+##   │   juego)  ┌────────┐ │  │ que puedas…                  │
+##   │           │  (A)   │ │  │ 4 jugadores                  │
+##   │           └────────┘ │  │ (mascota) (mascota) …        │
 ##   └──────────────────────┘  └──────────────────────────────┘
 ##   [OK] Empezar ya  [Atrás] Menú           (5)  [¡A jugar!]
+##
+## La foto es la miniatura del juego (assets/thumbs, ver GameCard.thumbnail);
+## si el juego no tiene, el celular con el control ocupa todo el panel.
 ##
 ## Mientras se ve, los celulares ya muestran el control del juego (así cada
 ## uno se ubica), pero su input se ignora hasta que el juego empieza: eso lo
@@ -53,6 +56,7 @@ func show_intro(info: Dictionary, round_no: int, total_rounds: int, players: Arr
 	_description.text = str(info.get("description", ""))
 	_art.layout = str(info.get("layout", ""))
 	_art.accent = info.get("accent", UiTheme.ACCENT)
+	_art.thumb = GameCard.thumbnail(str(info.get("id", "")))
 	_art.queue_redraw()
 	var n := players.size()
 	_players_label.text = "%d jugador%s" % [n, "" if n == 1 else "es"]
@@ -218,31 +222,50 @@ func _build() -> void:
 	footer.add_child(_continue)
 
 
-## Ilustración grande: un celular apaisado con el control del juego en la
-## pantalla y flechas que indican cómo se mueve.
+## Ilustración grande: la foto del juego con un celular apaisado encima que
+## muestra el control del juego, con flechas que indican cómo se mueve. Sin
+## foto, el celular va grande en el centro del panel.
 class _ControlArt:
 	extends Control
 	var layout := ""
 	var accent := UiTheme.ACCENT
+	var thumb: Texture2D
+
+	func _init() -> void:
+		texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 
 	func _draw() -> void:
 		var r := Rect2(Vector2(10, 10), size - Vector2(20, 20))
 		UiTheme.draw_round_rect(self, r, UiTheme.PAPER, UiTheme.RADIUS + 8, 0, UiTheme.INK, true)
-		var name: String = GameCard.CONTROL_NAMES.get(layout, "Control")
-		var fs := 30
-		var cw := UiTheme.FONT_BOLD.get_string_size(name, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x + 36.0
-		var chip := Rect2(r.position + Vector2(28, 24), Vector2(cw, 50))
-		UiTheme.draw_round_rect(self, chip, accent, 25, 3, UiTheme.INK)
-		UiTheme.draw_text(self, name, chip.get_center(), fs, UiTheme.PAPER, 5, UiTheme.INK)
 		var hint_y := r.end.y - 36.0
 		UiTheme.draw_text(self, "Tu celular ya muestra este control", Vector2(r.get_center().x, hint_y), 28,
 			UiTheme.INK_SOFT, 0, UiTheme.INK, false)
+		var chip_pos := r.position + Vector2(28, 24)
+		var phone: Rect2
+		if thumb != null:
+			# Foto arriba (hasta el texto) y el celular abajo a la derecha, encima.
+			var photo := Rect2(r.position + Vector2(16, 16), Vector2(r.size.x - 32, hint_y - 30 - r.position.y - 16))
+			GameCard.draw_thumbnail(self, thumb, photo, UiTheme.RADIUS, Color.WHITE, UiTheme.PAPER)
+			var h := photo.size.y * 0.34
+			phone = Rect2(photo.end - Vector2(h * 2.1, h) - Vector2(20, 20), Vector2(h * 2.1, h))
+			chip_pos = photo.position + Vector2(18, 18)
+		else:
+			# Celular apaisado (19,5:9) centrado entre el chip y el texto de abajo.
+			var top := chip_pos.y + 50 + 24
+			var avail := Rect2(r.position.x + 40, top, r.size.x - 80, hint_y - 34 - top)
+			var h := minf(avail.size.y, avail.size.x / 2.1)
+			phone = Rect2(avail.get_center() - Vector2(h * 2.1, h) / 2.0, Vector2(h * 2.1, h))
+		_draw_phone(phone)
+		var name: String = GameCard.CONTROL_NAMES.get(layout, "Control")
+		var fs := 30
+		var cw := UiTheme.FONT_BOLD.get_string_size(name, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x + 36.0
+		var chip := Rect2(chip_pos, Vector2(cw, 50))
+		UiTheme.draw_round_rect(self, chip, accent, 25, 3, UiTheme.INK)
+		UiTheme.draw_text(self, name, chip.get_center(), fs, UiTheme.PAPER, 5, UiTheme.INK)
 
-		# Celular apaisado (19,5:9) centrado entre el chip y el texto de abajo.
-		var avail := Rect2(r.position.x + 40, chip.end.y + 24, r.size.x - 80, hint_y - 34 - chip.end.y - 24)
-		var h := minf(avail.size.y, avail.size.x / 2.1)
-		var w := h * 2.1
-		var phone := Rect2(avail.get_center() - Vector2(w, h) / 2.0, Vector2(w, h))
+	## Celular apaisado con el control del juego en la pantalla.
+	func _draw_phone(phone: Rect2) -> void:
+		var h := phone.size.y
 		UiTheme.draw_round_rect(self, phone.grow(6), UiTheme.SHADOW, h * 0.2)
 		UiTheme.draw_round_rect(self, phone, UiTheme.INK, h * 0.18)
 		var screen := phone.grow(-h * 0.07)
@@ -250,14 +273,15 @@ class _ControlArt:
 		screen.size.x -= h * 0.12
 		UiTheme.draw_round_rect(self, screen, accent, h * 0.1)
 		var dot := Color(UiTheme.PAPER, 0.16)
-		var y := screen.position.y + 26.0
+		var step := clampf(h * 0.16, 30.0, 52.0)
+		var y := screen.position.y + step * 0.5
 		var row := 0
 		while y < screen.end.y - 14.0:
-			var x := screen.position.x + (26.0 if row % 2 == 0 else 52.0)
+			var x := screen.position.x + (step * 0.5 if row % 2 == 0 else step)
 			while x < screen.end.x - 16.0:
-				draw_circle(Vector2(x, y), 7.0, dot)
-				x += 52.0
-			y += 30.0
+				draw_circle(Vector2(x, y), step * 0.14, dot)
+				x += step
+			y += step * 0.58
 			row += 1
 		draw_circle(Vector2(phone.position.x + h * 0.035, phone.get_center().y), h * 0.018, UiTheme.INK_SOFT)
 

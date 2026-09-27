@@ -4,6 +4,10 @@ extends Button
 ## desmarca para la competencia. Si no se puede jugar con la cantidad de
 ## jugadores elegida queda deshabilitada, pero sigue siendo navegable para
 ## que se pueda leer el motivo ("Solo 2 jugadores").
+##
+## Ilustración: la miniatura del juego (assets/thumbs/<id>.webp, generada con
+## tools/make_thumbnails.gd) con esquinas redondeadas. Si el juego todavía no
+## tiene miniatura, se dibuja un "escenario" genérico con el ícono del control.
 
 const CONTROL_NAMES := {
 	Protocol.LAYOUT_JOYSTICK: "Joystick",
@@ -11,12 +15,24 @@ const CONTROL_NAMES := {
 	Protocol.LAYOUT_ONE_BUTTON: "Un botón",
 }
 
+## Miniaturas: assets/thumbs/<id>.webp (ver tools/make_thumbnails.gd).
+const THUMB_DIR := "res://assets/thumbs/"
+const THUMB_EXT := ".webp"
+
 var info: Dictionary
 var unavailable_reason := ""
+var _thumb: Texture2D  ## null: el juego no tiene miniatura (dibujo de respaldo).
+
+## id -> Texture2D (o null si no hay): cada miniatura se carga una sola vez
+## y la comparten la tarjeta y la intro.
+static var _thumb_cache := {}
 
 
 func _init(p_info: Dictionary) -> void:
 	info = p_info
+	_thumb = thumbnail(str(info.get("id", "")))
+	# La miniatura se achica mucho: con mipmaps no aparece serrucho.
+	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	toggle_mode = true
 	focus_mode = Control.FOCUS_ALL
 	custom_minimum_size = Vector2(270, 206)
@@ -46,6 +62,57 @@ static func players_text(p_info: Dictionary) -> String:
 	return "%d–%d jugadores" % [lo, hi]
 
 
+static func thumbnail_path(game_id: String) -> String:
+	return THUMB_DIR + game_id + THUMB_EXT
+
+
+## Miniatura del juego, o null si no tiene (juego nuevo sin generar).
+static func thumbnail(game_id: String) -> Texture2D:
+	if game_id.is_empty():
+		return null
+	if not _thumb_cache.has(game_id):
+		var path := thumbnail_path(game_id)
+		_thumb_cache[game_id] = load(path) as Texture2D if ResourceLoader.exists(path) else null
+	return _thumb_cache[game_id]
+
+
+## Dibuja `tex` llenando `rect` (recorta lo que sobra, centrado) con esquinas
+## redondeadas: un solo polígono con coordenadas de textura, sin shaders.
+## El borde se suaviza con una línea del color de fondo (`edge`).
+static func draw_thumbnail(ci: CanvasItem, tex: Texture2D, rect: Rect2, radius: float,
+		modulate: Color = Color.WHITE, edge: Color = Color.TRANSPARENT) -> void:
+	var tex_size := tex.get_size()
+	var src := Rect2(Vector2.ZERO, tex_size)
+	if rect.size.x / rect.size.y > tex_size.x / tex_size.y:
+		src.size.y = tex_size.x * rect.size.y / rect.size.x
+	else:
+		src.size.x = tex_size.y * rect.size.x / rect.size.y
+	src.position = (tex_size - src.size) / 2.0
+	var points := _round_rect_points(rect, radius)
+	var uvs := PackedVector2Array()
+	for p in points:
+		uvs.append((src.position + (p - rect.position) / rect.size * src.size) / tex_size)
+	ci.draw_colored_polygon(points, modulate, uvs, tex)
+	if edge.a > 0.0:
+		points.append(points[0])
+		ci.draw_polyline(points, edge, 2.0, true)
+
+
+static func _round_rect_points(rect: Rect2, radius: float, steps: int = 8) -> PackedVector2Array:
+	var r := minf(radius, minf(rect.size.x, rect.size.y) / 2.0)
+	var pts := PackedVector2Array()
+	var corners := [
+		[Vector2(rect.end.x - r, rect.position.y + r), -PI / 2.0],
+		[Vector2(rect.end.x - r, rect.end.y - r), 0.0],
+		[Vector2(rect.position.x + r, rect.end.y - r), PI / 2.0],
+		[Vector2(rect.position.x + r, rect.position.y + r), PI],
+	]
+	for c in corners:
+		for k in steps + 1:
+			pts.append((c[0] as Vector2) + Vector2.from_angle(float(c[1]) + PI / 2.0 * k / steps) * r)
+	return pts
+
+
 func _on_focus(focused: bool) -> void:
 	create_tween().tween_property(self, "scale", Vector2.ONE * (1.05 if focused else 1.0), 0.12)
 	queue_redraw()
@@ -62,15 +129,19 @@ func _draw() -> void:
 		UiTheme.draw_round_rect(self, r.grow(9), UiTheme.ACCENT, 38)
 	UiTheme.draw_round_rect(self, r, Color(UiTheme.PAPER, a), 30, 6.0 if is_selected() else 0.0, UiTheme.SUCCESS, true)
 
-	# Ilustración: "escenario" en miniatura con cielo en degradé del color del
-	# juego, piso a cuadros en perspectiva y el ícono del control encima.
+	# Ilustración: la miniatura del juego; si no tiene, un "escenario" con
+	# cielo en degradé del color del juego, piso a cuadros y el ícono del control.
 	var art := Rect2(r.position + Vector2(10, 10), Vector2(r.size.x - 20, r.size.y * 0.5))
-	_draw_art(art, accent, a)
-	# Tipo de control como etiqueta sobre la ilustración (deja la línea de abajo
-	# para la cantidad de jugadores o el motivo por el que no se puede jugar).
+	if _thumb != null:
+		_draw_thumb_art(art, accent)
+	else:
+		_draw_art(art, accent, a)
+	# Tipo de control como etiqueta sobre la ilustración, abajo a la izquierda
+	# (el centro queda libre para la foto y la línea de abajo, para la
+	# cantidad de jugadores o el motivo por el que no se puede jugar).
 	var control_name: String = CONTROL_NAMES.get(info.get("layout"), "Control")
 	var cw := UiTheme.FONT_BOLD.get_string_size(control_name, HORIZONTAL_ALIGNMENT_LEFT, -1, 20).x + 24.0
-	var chip := Rect2(art.position + Vector2(10, 10), Vector2(cw, 32))
+	var chip := Rect2(Vector2(art.position.x + 10, art.end.y - 10 - 32), Vector2(cw, 32))
 	UiTheme.draw_round_rect(self, chip, Color(UiTheme.PAPER, 0.92 * a), 16)
 	UiTheme.draw_text(self, control_name, chip.get_center(), 20, Color(UiTheme.INK, a))
 
@@ -97,6 +168,19 @@ func _draw() -> void:
 		meta_x += 36
 	UiTheme.draw_text_left(self, meta, Vector2(meta_x, art.end.y + 66), 24,
 		UiTheme.DANGER if disabled else UiTheme.INK_SOFT, r.size.x - 40 - (meta_x - text_x), false)
+
+
+func _draw_thumb_art(art: Rect2, accent: Color) -> void:
+	var frame := Color(accent.darkened(0.25), 0.55 if disabled else 1.0)
+	UiTheme.draw_round_rect(self, art, frame, 22)
+	var photo := art.grow(-4)
+	if disabled:
+		# No se puede jugar: la foto apagada (gris y transparente sobre el papel).
+		draw_thumbnail(self, _thumb, photo, 18, Color(1, 1, 1, 0.5), frame)
+		var veil := _round_rect_points(photo, 18)
+		draw_colored_polygon(veil, Color(UiTheme.MUTED, 0.45))
+	else:
+		draw_thumbnail(self, _thumb, photo, 18, Color.WHITE, frame)
 
 
 func _draw_art(art: Rect2, accent: Color, a: float) -> void:
