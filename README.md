@@ -42,7 +42,15 @@ Juegos cortos para **1 a 4 jugadores en el sillón**: la **TV es la pantalla** y
 ## Probarlo en 2 minutos (en tu PC)
 
 1. Instalá [Godot 4.4.1](https://godotengine.org/download/archive/4.4.1-stable/) (versión estándar, no .NET). La primera vez que abrís el proyecto, Godot importa los recursos (tarda unos segundos).
-2. Cloná el repo y abrí `project.godot` con Godot.
+2. Cloná el repo e **importalo una vez** (arma el índice de clases; sin esto sale `Could not find type "HostMain"`): abrí `project.godot` con el editor de Godot, o por consola:
+   ```bash
+   godot --headless --path . --import
+   ```
+   Repetilo después de un `git pull` que traiga archivos nuevos. En Windows (PowerShell), con Godot en `D:\Godot`:
+   ```powershell
+   & "D:\Godot\Godot_v4.4.1-stable_win64_console.exe" --headless --path . --import
+   & "D:\Godot\Godot_v4.4.1-stable_win64_console.exe" --path . -- --host
+   ```
 3. Abrí dos ventanas del juego:
    - **Depurar → Personalizar instancias de ejecución** → 2 instancias. Argumentos: `-- --host` en una y `-- --controller` en la otra.
    - O por consola:
