@@ -53,7 +53,7 @@ Juegos cortos para **1 a 4 jugadores en el sillón**: la **TV es la pantalla** y
    ```
 3. Abrí dos ventanas del juego:
    - **Depurar → Personalizar instancias de ejecución** → 2 instancias. Argumentos: `-- --host` en una y `-- --controller` en la otra.
-   - O por consola:
+   - O por consola (en la PC cada ventana se acomoda sola: la TV a la izquierda y el control a la derecha; `-- --host --fullscreen` pone la TV en pantalla completa):
      ```bash
      godot --path . -- --host          # ventana "TV"
      godot --path . -- --controller    # ventana "celular"
