@@ -1018,6 +1018,44 @@ func test_mascot_walk_anim() -> void:
 	game.free()
 
 
+## Prototipo de mascotas 3D (core/mascot3d, docs/ARTE.md). Sin pantalla
+## (--headless) no se renderiza: se verifica que arma la escena sin errores
+## y que el horneado devuelve vacío; con pantalla, además las texturas.
+func test_mascot3d_prototype() -> void:
+	var M := PlayerAvatar.Mood
+	for s in PlayerAvatar.STYLE_NAMES.size():
+		var m := Mascot3D.new().setup(Protocol.MASCOT_COLORS[(s * 3) % Protocol.MASCOT_COLORS.size()], s)
+		root.add_child(m)
+		check(m.mesh_count() >= 30, "estilo %d: la mascota tiene sus piezas (%d)" % [s, m.mesh_count()])
+		var expected := {M.NORMAL: ["eyes_open"], M.HAPPY: ["eyes_happy", "mouth_happy"],
+			M.SAD: ["eyes_sad", "mouth_sad"], M.SURPRISED: ["eyes_surprised", "mouth_surprised"]}
+		for mood: int in expected:
+			m.apply(mood, {"t": 1.0, "walk": 0.25, "wave": true, "squash": 0.3, "look": Vector2(1, -0.4)})
+			var want: Array = expected[mood].duplicate()
+			if mood == M.NORMAL and s == PlayerAvatar.STYLE_ROBOT:
+				want.append("mouth_robot")
+			want.sort()
+			check(m.visible_features() == want, "estilo %d, ánimo %d: cara %s" % [s, mood, m.visible_features()])
+		m.apply(M.NORMAL, {"blink": true})
+		check("eyes_blink" in m.visible_features(), "estilo %d: parpadea" % s)
+		m.apply(M.NORMAL, {"squash": 9.0})
+		check(m.get_child(0).scale.y > 0.5, "el aplastado se recorta (no da vuelta la mascota)")
+		m.free()
+	var poses: Array = ["normal", "happy", "no-existe", {"name": "propia", "mood": M.SAD, "anim": {"t": 0.2}}, 42]
+	var tex := await Mascot3DBaker.bake(root, {"color": 7, "style": 4}, poses, 64)
+	if DisplayServer.get_name() == "headless":
+		check(tex.is_empty() and Mascot3DBaker.last_report.get("headless", false), "sin pantalla arma la escena y no hornea")
+	else:
+		check(tex.size() == 3 and tex.has("propia"), "hornea las poses válidas (%s)" % [tex.keys()])
+		check(tex.values().all(func(t: Texture2D) -> bool: return t.get_size() == Vector2(64, 64)), "celdas de 64 px")
+	# Datos raros (color inválido, estilo fuera de rango, sin poses): nunca rompe.
+	check((await Mascot3DBaker.bake(root, {"color": "zzz", "style": 99}, [], 64)).is_empty(), "sin poses no hay nada")
+	check((await Mascot3DBaker.bake(null, {}, ["normal"], 64)).is_empty(), "sin nodo donde colgarse no hornea")
+	var feet := Mascot3DBaker.feet_offset(144.0)
+	check(feet.x == 72.0 and feet.y > 130.0 and feet.y < 144.0, "los pies quedan abajo y al centro de la celda")
+	await process_frame
+
+
 func test_tick_countdown() -> void:
 	var game := MiniGame.new()
 	game.setup(_fake_players(3))
