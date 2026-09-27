@@ -28,6 +28,7 @@ const CONTROL_SHOTS := {
 
 var host: HostMain
 var _out_dir := OUT_DIR
+var _lobby_only := false  ## `--lobby-only`: corta tras el lobby (iterar diseño rápido).
 var _clients: Array[ControllerClient] = []
 
 
@@ -40,6 +41,14 @@ func _run() -> void:
 		if arg.begins_with("--out="):
 			_out_dir = arg.trim_prefix("--out=").trim_suffix("/") + "/"
 			DirAccess.make_dir_recursive_absolute(_out_dir)
+		elif arg == "--lobby-only":
+			_lobby_only = true
+	# Presentación de la marca (sola, antes de la TV).
+	var splash := SplashScreen.new()
+	root.add_child(splash)
+	await _seconds(0.8)
+	await _shot(root, "splash")
+	splash.queue_free()
 	host = HostMain.new()
 	host.server_port = PORT
 	host.announce = false
@@ -76,6 +85,9 @@ func _run() -> void:
 	await _seconds(0.8)
 	await _shot(phone, "ctrl_wait")
 	await _shot(root, "lobby_full")
+	if _lobby_only:
+		quit(0)
+		return
 
 	# Competencia con todos los juegos que admiten 4: se recorre sin importar
 	# cuántos haya (un juego nuevo en el registry aparece solo en las capturas).

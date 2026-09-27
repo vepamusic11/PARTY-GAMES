@@ -25,6 +25,8 @@ func _ready() -> void:
 func _launch(screen: Control) -> void:
 	for c in get_children():
 		c.queue_free()
+	if screen is HostMain:
+		(screen as HostMain).show_splash = true  # Al abrir la app de verdad, no en tests.
 	add_child(screen)
 
 
@@ -36,7 +38,9 @@ func _build_selector() -> void:
 	box.alignment = BoxContainer.ALIGNMENT_CENTER
 	box.add_theme_constant_override("separation", 40)
 	add_child(box)
-	box.add_child(UiTheme.headline("Party Games", 110, UiTheme.ACCENT))
+	var logo := UiTheme.logo_rect()
+	logo.custom_minimum_size = Vector2(0, 260)
+	box.add_child(logo)
 	box.add_child(UiTheme.headline("¿Qué es este dispositivo?", 56))
 	var tv := _big_button("Pantalla (TV)", func() -> void: _launch(HostMain.new()))
 	box.add_child(tv)

@@ -556,6 +556,44 @@ func test_lobby_screen() -> void:
 	await process_frame
 
 
+func test_seat_card_uses_player_look() -> void:
+	var seat := SeatCard.new(1)
+	root.add_child(seat)
+	seat.show_player({}, false)
+	check(seat._avatar.color == Protocol.player_color(1) and seat._avatar.slot == 1,
+		"lugar libre: color y estilo del lugar")
+	var black := Color("#16171D")
+	seat.show_player({"id": 7, "slot": 1, "name": "Juli", "connected": true, "color": black,
+		"style": PlayerAvatar.STYLE_ROBOT}, false)
+	check(seat._avatar.color == black and seat._avatar.slot == PlayerAvatar.STYLE_ROBOT,
+		"usa el color y el estilo elegidos por el jugador")
+	check(seat.state == SeatCard.State.READY and seat._name.text == "Juli", "muestra al jugador listo")
+	seat.show_player({}, true)
+	check(seat.state == SeatCard.State.LOCKED, "fuera de la cantidad: no juega")
+	seat.queue_free()
+	await process_frame
+
+
+func test_splash_screen() -> void:
+	var splash := SplashScreen.new()
+	root.add_child(splash)
+	var done := [false]
+	splash.finished.connect(func() -> void: done[0] = true)
+	var key := InputEventKey.new()
+	key.keycode = KEY_ENTER
+	key.pressed = true
+	splash._input(key)
+	var t0 := Time.get_ticks_msec()
+	while not done[0] and Time.get_ticks_msec() - t0 < 2000:
+		await process_frame
+	check(done[0], "cualquier tecla saltea la presentación")
+	await process_frame
+	check(not is_instance_valid(splash), "la presentación se libera al terminar")
+	var host := HostMain.new()
+	check(not host.show_splash, "la TV de los tests arranca sin presentación")
+	host.free()
+
+
 # --- Integración host <-> control por WebSocket real --------------------------
 
 func test_join_play_reconnect() -> void:

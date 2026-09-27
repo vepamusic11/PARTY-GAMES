@@ -22,6 +22,9 @@ var server_port := Protocol.WS_PORT
 var announce := true
 ## Duración del barrido entre pantallas; 0 = cambio inmediato (tests).
 var transition_seconds := Transition.DURATION
+## Presentación "IO-GAMES presenta" al abrir. La pide app/boot.gd; los
+## tests y las herramientas arrancan directo en el lobby.
+var show_splash := false
 
 const SETTINGS_PATH := "user://tv_settings.cfg"
 ## Mínimo entre dos avisos "feedback" al mismo celular: un juego no puede
@@ -74,6 +77,8 @@ func _ready() -> void:
 	server.max_players = _lobby.player_count
 	_refresh_lobby()
 	_lobby.focus_default()
+	if show_splash:
+		add_child(SplashScreen.new())
 
 
 func _exit_tree() -> void:
@@ -417,4 +422,4 @@ static func _local_ipv4() -> Array[String]:
 
 static func _device_name() -> String:
 	var model := OS.get_model_name()
-	return "TV %s" % model if model != "GenericDevice" else "Party Games TV"
+	return "TV %s" % model if model != "GenericDevice" else "PARTY-GAME TV"

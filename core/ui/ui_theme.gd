@@ -17,6 +17,7 @@ const FONT_SEMI := preload("res://assets/fonts/Fredoka-SemiBold.ttf")
 # --- Paleta -------------------------------------------------------------------
 const SKY_TOP := Color("#4FB3F6")
 const SKY_BOTTOM := Color("#CDEBFF")
+const STUDIO_BG := Color("#001026")     ## Fondo de la presentación IO-GAMES (el de su logo).
 const INK := Color("#1D2140")          ## Texto principal y contornos.
 const INK_SOFT := Color("#565C85")     ## Texto secundario.
 const MUTED := Color("#9AA0BE")        ## Deshabilitado / pistas.
@@ -363,6 +364,73 @@ static func draw_control_icon(ci: CanvasItem, c: Vector2, s: float, layout: Stri
 			draw_text(ci, "A", c, int(s), ink)
 		_:
 			draw_star(ci, c, s, white)
+
+
+## Íconos simples de interfaz, dibujados (la tipografía no los trae).
+## `s` es el tamaño aproximado del ícono (alto). Ejemplo: el lobby usa
+## "phone" junto a "¡Sumate desde tu celular!" y "lock" en los juegos que no
+## se pueden jugar con la cantidad elegida.
+##   phone · wifi · gamepad · lock · play · plus · people · order
+static func draw_glyph(ci: CanvasItem, glyph: String, c: Vector2, s: float, color: Color = INK) -> void:
+	var w := maxf(3.0, s * 0.12)
+	match glyph:
+		"phone":
+			var body := Rect2(c - Vector2(s * 0.3, s * 0.5), Vector2(s * 0.6, s))
+			draw_round_rect(ci, body, color, s * 0.12)
+			var detail := color.lerp(INK, 0.7)
+			draw_round_rect(ci, Rect2(body.position + Vector2(s * 0.08, s * 0.1), body.size - Vector2(s * 0.16, s * 0.3)), detail, s * 0.05)
+			ci.draw_circle(Vector2(c.x, body.end.y - s * 0.1), s * 0.05, detail)
+		"wifi":
+			var base := c + Vector2(0, s * 0.38)
+			ci.draw_circle(base, s * 0.1, color)
+			for i in 3:
+				var r := s * (0.3 + 0.24 * i)
+				ci.draw_arc(base, r, -PI * 0.78, -PI * 0.22, 16, color, w, true)
+		"gamepad":
+			var pad := Rect2(c - Vector2(s * 0.62, s * 0.3), Vector2(s * 1.24, s * 0.62))
+			draw_round_rect(ci, pad, color, s * 0.3)
+			var detail := color.lerp(INK, 0.7)
+			var cross := c + Vector2(-s * 0.3, 0)
+			ci.draw_rect(Rect2(cross - Vector2(s * 0.14, s * 0.04), Vector2(s * 0.28, s * 0.08)), detail)
+			ci.draw_rect(Rect2(cross - Vector2(s * 0.04, s * 0.14), Vector2(s * 0.08, s * 0.28)), detail)
+			ci.draw_circle(c + Vector2(s * 0.26, -s * 0.06), s * 0.07, detail)
+			ci.draw_circle(c + Vector2(s * 0.38, s * 0.08), s * 0.07, detail)
+		"lock":
+			ci.draw_arc(c - Vector2(0, s * 0.08), s * 0.24, PI, TAU, 16, color, w * 1.2, true)
+			ci.draw_line(c + Vector2(-s * 0.24, -s * 0.08), c + Vector2(-s * 0.24, s * 0.05), color, w * 1.2)
+			ci.draw_line(c + Vector2(s * 0.24, -s * 0.08), c + Vector2(s * 0.24, s * 0.05), color, w * 1.2)
+			draw_round_rect(ci, Rect2(c + Vector2(-s * 0.36, 0), Vector2(s * 0.72, s * 0.5)), color, s * 0.1)
+		"play":
+			draw_arrow(ci, c + Vector2(s * 0.1, 0), s, Vector2.RIGHT, color)
+		"plus":
+			ci.draw_rect(Rect2(c - Vector2(s * 0.4, s * 0.09), Vector2(s * 0.8, s * 0.18)), color)
+			ci.draw_rect(Rect2(c - Vector2(s * 0.09, s * 0.4), Vector2(s * 0.18, s * 0.8)), color)
+		"people":
+			for k in [-1, 1]:
+				var hc := c + Vector2(k * s * 0.22, -s * 0.18)
+				ci.draw_circle(hc, s * 0.17, color)
+				draw_round_rect(ci, Rect2(hc + Vector2(-s * 0.26, s * 0.22), Vector2(s * 0.52, s * 0.34)), color, s * 0.16)
+		"order":
+			draw_arrow(ci, c - Vector2(s * 0.18, s * 0.22), s * 0.5, Vector2.UP, color)
+			ci.draw_line(c + Vector2(-s * 0.18, -s * 0.2), c + Vector2(-s * 0.18, s * 0.4), color, w)
+			draw_arrow(ci, c + Vector2(s * 0.18, s * 0.22), s * 0.5, Vector2.DOWN, color)
+			ci.draw_line(c + Vector2(s * 0.18, -s * 0.4), c + Vector2(s * 0.18, s * 0.2), color, w)
+
+
+## Logo de la marca (PARTY-GAME). Se carga recién cuando se usa: los juegos
+## no pagan la memoria de la imagen si no lo muestran.
+const LOGO_PATH := "res://assets/brand/party_game_logo.png"
+const STUDIO_LOGO_PATH := "res://assets/brand/io_games_logo.png"
+
+
+static func logo_rect(texture_path: String = LOGO_PATH) -> TextureRect:
+	var t := TextureRect.new()
+	t.texture = load(texture_path)
+	t.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	t.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	t.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	t.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return t
 
 
 static func hex_points(r: Rect2) -> PackedVector2Array:

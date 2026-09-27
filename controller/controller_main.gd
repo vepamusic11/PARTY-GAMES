@@ -334,7 +334,9 @@ func _build_ui() -> void:
 	col.add_theme_constant_override("separation", 20)
 	scroll.add_child(col)
 
-	col.add_child(UiTheme.headline("Party Games", 64, UiTheme.ACCENT))
+	var logo := UiTheme.logo_rect()
+	logo.custom_minimum_size = Vector2(0, 150)
+	col.add_child(logo)
 	col.add_child(_section("1. Elegí la TV"))
 	_hosts_box = VBoxContainer.new()
 	_hosts_box.add_theme_constant_override("separation", 12)

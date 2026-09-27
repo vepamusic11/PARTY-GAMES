@@ -7,7 +7,7 @@ extends Node
 ## el código que se ve en pantalla. Así, estar en la misma Wi-Fi no alcanza:
 ## hay que estar físicamente frente a la TV.
 
-@export var host_name := "Party Games TV"
+@export var host_name := "PARTY-GAME TV"
 @export var ws_port := Protocol.WS_PORT
 @export var interval_sec := 1.0
 

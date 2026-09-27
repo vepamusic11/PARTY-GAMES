@@ -3,13 +3,18 @@ extends Control
 ## Lobby de la TV: cómo unirse, quiénes están, cuántos juegan y qué
 ## minijuegos entran en la competencia.
 ##
-##   ┌──────────────┬──────────────────────────────────────────┐
-##   │ PARTY GAMES  │ ¿Cuántos juegan?          [◀ 3 jugadores ▶] │
-##   │ ¡Sumate!     │ [1P Pablo] [2P Sofi] [3P Esperando] [4P —] │
-##   │ 1. Abrí…     │ ¿A qué jugamos?               2 de 3 elegidos│
-##   │ [K][7][Q][X] │ [Arena ✓] [Ping Pong] [Carrera ✓]           │
-##   │ IP…          │ [Orden: de la lista]          [¡A jugar!]   │
-##   └──────────────┴──────────────────────────────────────────┘
+##   ┌──────────────┬──────────────────────────────────────────────┐
+##   │ [LOGO]       │ [1P Pablo] [2P Sofi] [3P  +  ] [4P —] [◀ 3 ▶] │
+##   │ ¡Sumate!     │ 🎮 ¿A qué jugamos?              (6 de 7 elegidos)│
+##   │ ① Abrí…      │ [Arena ✓] [Ping Pong 🔒] [Carrera ✓] [Reloj ✓] │
+##   │ ② Elegí…     │ [Esquivar ✓] [Pintar ✓] [Empujones ✓]          │
+##   │ ③ Escribí…   │                                                │
+##   │ [K][7][Q][X] │ [⇅ Orden: como en la lista]     [▶ ¡A jugar!]  │
+##   │ Wi-Fi: IP    │ ◀▶ Moverse   OK Elegir   ◀▶ Cambiar cantidad    │
+##   │  (mascota)   │                                                │
+##   └──────────────┴──────────────────────────────────────────────┘
+##
+## Maqueta de referencia: docs/design/lobby.md.
 ##
 ## Navegación con D-pad: ▲▼ entre filas, ◀▶ entre tarjetas o para cambiar
 ## la cantidad de jugadores, OK para marcar/desmarcar o empezar.
@@ -138,6 +143,17 @@ func _on_start_pressed() -> void:
 # --- UI -------------------------------------------------------------------------
 
 func _build() -> void:
+	# Mascota que se asoma abajo a la izquierda y saluda: la "anfitriona".
+	# Va primero para quedar detrás de los paneles.
+	var host_mascot := PlayerAvatar.new()
+	host_mascot.color = Protocol.player_color(0)
+	host_mascot.mood = PlayerAvatar.Mood.HAPPY
+	host_mascot.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
+	host_mascot.offset_left = UiTheme.SAFE_MARGIN - 10
+	host_mascot.offset_right = host_mascot.offset_left + 150
+	host_mascot.offset_top = -218
+	host_mascot.offset_bottom = -16
+	add_child(host_mascot)
 	var margin := MarginContainer.new()
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	for side in ["left", "right", "bottom"]:
@@ -151,47 +167,76 @@ func _build() -> void:
 	columns.add_child(_build_setup_column())
 
 
-## Columna izquierda: QUIÉNES juegan (cómo unirse, cuántos y los lugares).
+## Columna izquierda: cómo unirse, en tres pasos numerados.
 func _build_join_column() -> Control:
 	var col := VBoxContainer.new()
-	col.custom_minimum_size = Vector2(470, 0)
-	col.add_theme_constant_override("separation", 14)
-	col.add_child(_logo())
+	col.custom_minimum_size = Vector2(480, 0)
+	col.add_theme_constant_override("separation", 10)
+	var logo := UiTheme.logo_rect()
+	logo.custom_minimum_size = Vector2(0, 178)
+	col.add_child(logo)
 
 	var panel := PanelContainer.new()
-	panel.add_theme_stylebox_override("panel", UiTheme.panel_style(UiTheme.PAPER, UiTheme.RADIUS + 8, 26))
+	panel.add_theme_stylebox_override("panel", UiTheme.panel_style(UiTheme.PAPER, UiTheme.RADIUS + 8, 22))
 	col.add_child(panel)
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 10)
 	panel.add_child(box)
-	box.add_child(UiTheme.label("¡Sumate desde tu celular!", 34, UiTheme.INK, true, HORIZONTAL_ALIGNMENT_LEFT))
-	var how := UiTheme.label("Abrí Party Games, elegí esta TV y escribí este código:", 24, UiTheme.INK_SOFT, false, HORIZONTAL_ALIGNMENT_LEFT)
-	how.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	box.add_child(how)
+	var title := HBoxContainer.new()
+	title.add_theme_constant_override("separation", 12)
+	title.add_child(GlyphBadge.new("phone", UiTheme.BRICKS[5], UiTheme.PAPER, 60))
+	title.add_child(UiTheme.label("¡Sumate desde tu celular!", 32, UiTheme.INK, true, HORIZONTAL_ALIGNMENT_LEFT))
+	box.add_child(title)
+	var steps := [
+		[UiTheme.BRICKS[2], "Abrí PARTY-GAME en el celular"],
+		[UiTheme.BRICKS[5], "Elegí esta TV de la lista"],
+		[UiTheme.BRICKS[7], "Escribí tu apodo y este código:"],
+	]
+	for i in steps.size():
+		box.add_child(_step_row(i + 1, steps[i][0], steps[i][1]))
 	_code_box = HBoxContainer.new()
 	_code_box.alignment = BoxContainer.ALIGNMENT_CENTER
 	_code_box.add_theme_constant_override("separation", 12)
-	_code_box.custom_minimum_size = Vector2(0, 128)
+	_code_box.custom_minimum_size = Vector2(0, 124)
 	box.add_child(_code_box)
-	_address = UiTheme.label("", 24, UiTheme.INK_SOFT, true, HORIZONTAL_ALIGNMENT_LEFT)
+	var help := HBoxContainer.new()
+	help.add_theme_constant_override("separation", 12)
+	help.add_child(GlyphBadge.new("wifi", Color.TRANSPARENT, UiTheme.BRICKS[5], 44))
+	var help_text := VBoxContainer.new()
+	help_text.add_theme_constant_override("separation", -4)
+	help_text.add_child(UiTheme.label("¿No aparece la TV?", 24, UiTheme.INK, true, HORIZONTAL_ALIGNMENT_LEFT))
+	help_text.add_child(UiTheme.label("Escribí esta dirección:", 24, UiTheme.INK_SOFT, false, HORIZONTAL_ALIGNMENT_LEFT))
+	help.add_child(help_text)
+	box.add_child(help)
+	var address_box := PanelContainer.new()
+	address_box.add_theme_stylebox_override("panel", UiTheme.panel_style(UiTheme.PAPER_DIM, 18, 10))
+	box.add_child(address_box)
+	_address = UiTheme.label("", 26, UiTheme.INK, true)
 	_address.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	box.add_child(_address)
+	address_box.add_child(_address)
 	_status = UiTheme.label("", 24, UiTheme.DANGER, true, HORIZONTAL_ALIGNMENT_LEFT)
 	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_status.visible = false
 	box.add_child(_status)
-
-	col.add_child(_section_title("¿Cuántos juegan?", 38))
-	_stepper = Stepper.new()
-	_stepper.value = player_count
-	_stepper.custom_minimum_size = Vector2(0, 84)
-	_stepper.value_changed.connect(_on_count_changed)
-	col.add_child(_stepper)
-	for i in Protocol.MAX_PLAYERS:
-		var seat := SeatCard.new(i, true)
-		col.add_child(seat)
-		_seats.append(seat)
 	return col
+
+
+## Paso numerado: (①) texto, sobre una píldora clara.
+func _step_row(n: int, color: Color, text: String) -> Control:
+	var pill := PanelContainer.new()
+	var style := UiTheme.panel_style(UiTheme.PAPER_DIM, 26, 6)
+	style.content_margin_right = 14
+	pill.add_theme_stylebox_override("panel", style)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	pill.add_child(row)
+	row.add_child(GlyphBadge.new("", color, UiTheme.PAPER, 44, str(n)))
+	var l := UiTheme.label(text, 24, UiTheme.INK, true, HORIZONTAL_ALIGNMENT_LEFT)
+	l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	l.clip_text = true
+	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(l)
+	return pill
 
 
 ## Columna derecha: A QUÉ se juega. Entran 3 filas de 4 tarjetas (12 juegos)
@@ -199,17 +244,41 @@ func _build_join_column() -> Control:
 func _build_setup_column() -> Control:
 	var col := VBoxContainer.new()
 	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	col.add_theme_constant_override("separation", 12)
+	col.add_theme_constant_override("separation", 10)
+
+	# Quiénes juegan: 4 lugares y, al final, cuántos.
+	var seats := HBoxContainer.new()
+	seats.add_theme_constant_override("separation", 16)
+	col.add_child(seats)
+	for i in Protocol.MAX_PLAYERS:
+		var seat := SeatCard.new(i)
+		seat.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		seats.add_child(seat)
+		_seats.append(seat)
+	_stepper = Stepper.new()
+	_stepper.caption = "¿Cuántos juegan?"
+	_stepper.value = player_count
+	_stepper.custom_minimum_size = Vector2(0, 250)
+	_stepper.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_stepper.value_changed.connect(_on_count_changed)
+	seats.add_child(_stepper)
 
 	var games_header := HBoxContainer.new()
+	games_header.add_theme_constant_override("separation", 12)
 	col.add_child(games_header)
+	games_header.add_child(GlyphBadge.new("gamepad", UiTheme.BRICKS[5], UiTheme.PAPER, 58))
 	var games_title := _section_title("¿A qué jugamos?")
 	games_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	games_header.add_child(games_title)
-	_selection = UiTheme.label("", 28, UiTheme.INK, true, HORIZONTAL_ALIGNMENT_RIGHT)
-	_selection.add_theme_constant_override("outline_size", 8)
-	_selection.add_theme_color_override("font_outline_color", UiTheme.PAPER)
-	games_header.add_child(_selection)
+	var pill := PanelContainer.new()
+	var pill_style := UiTheme.panel_style(UiTheme.CHIP_DARK, 24, 8)
+	pill_style.content_margin_left = 22
+	pill_style.content_margin_right = 22
+	pill.add_theme_stylebox_override("panel", pill_style)
+	pill.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	games_header.add_child(pill)
+	_selection = UiTheme.label("", 28, UiTheme.PAPER, true)
+	pill.add_child(_selection)
 
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -245,6 +314,7 @@ func _build_setup_column() -> Control:
 		shuffle = on
 		_shuffle_btn.text = "Orden: al azar" if on else "Orden: como en la lista")
 	_shuffle_btn.text = "Orden: como en la lista"
+	_with_icon(_shuffle_btn, GlyphBadge.new("order", Color.TRANSPARENT, UiTheme.INK, 40))
 	actions.add_child(_shuffle_btn)
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -256,32 +326,37 @@ func _build_setup_column() -> Control:
 	_start.add_theme_stylebox_override("hover", UiTheme.button_style(UiTheme.ACCENT.lightened(0.1)))
 	_start.add_theme_stylebox_override("pressed", UiTheme.button_style(UiTheme.ACCENT, true))
 	_start.pressed.connect(_on_start_pressed)
+	_with_icon(_start, GlyphBadge.new("play", Color.TRANSPARENT, UiTheme.INK, 44))
 	actions.add_child(_start)
 
 	var hints := KeyHint.new()
 	hints.add_hint(["up", "down", "left", "right"], "Moverse") \
 		.add_hint(["OK"], "Elegir / quitar juego") \
-		.add_hint(["left", "right"], "Cambiar cantidad (en jugadores)")
+		.add_hint(["left", "right"], "Cambiar cantidad")
 	col.add_child(hints)
 	return col
 
 
-func _logo() -> Control:
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 0)
-	row.custom_minimum_size = Vector2(0, 84)
-	var i := 0
-	for ch in "PARTY GAMES":
-		if ch == " ":
-			var gap := Control.new()
-			gap.custom_minimum_size = Vector2(20, 0)
-			row.add_child(gap)
-			continue
-		var l := UiTheme.headline(ch, 60, UiTheme.BRICKS[i % UiTheme.BRICKS.size()], UiTheme.PAPER)
-		l.add_theme_color_override("font_shadow_color", UiTheme.INK)
-		row.add_child(l)
-		i += 1
-	return row
+## Ícono a la izquierda del texto del botón (dibujado, sin textura). El
+## texto se corre a la derecha para no pisarlo.
+func _with_icon(button: Button, icon: GlyphBadge) -> void:
+	icon.set_anchors_and_offsets_preset(Control.PRESET_CENTER_LEFT)
+	icon.offset_left = 26
+	icon.offset_right = 26 + icon.custom_minimum_size.x
+	icon.offset_top = -icon.custom_minimum_size.y / 2.0
+	icon.offset_bottom = icon.custom_minimum_size.y / 2.0
+	button.add_child(icon)
+	# El estilo del tema recién se conoce dentro del árbol: se ajusta en ready.
+	button.ready.connect(_make_room_for_icon.bind(button, icon), CONNECT_ONE_SHOT)
+
+
+func _make_room_for_icon(button: Button, icon: GlyphBadge) -> void:
+	for state in ["normal", "hover", "pressed", "disabled", "focus", "hover_pressed"]:
+		var sb := button.get_theme_stylebox(state)
+		if sb != null:
+			sb = sb.duplicate()
+			sb.content_margin_left += icon.custom_minimum_size.x + 12
+			button.add_theme_stylebox_override(state, sb)
 
 
 func _section_title(text: String, size: int = 44) -> Label:

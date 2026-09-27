@@ -5,12 +5,14 @@ config_version=5
 
 [application]
 
-config/name="Party Games"
+config/name="PARTY-GAME"
 config/description="Juegos para 1 a 4 jugadores: la TV es la pantalla y los celulares son los controles."
 config/version="0.2.0"
 run/main_scene="res://app/boot.tscn"
 config/features=PackedStringArray("4.4", "Mobile")
 config/icon="res://icon.svg"
+config/use_custom_user_dir=true
+config/custom_user_dir_name="party-game"
 
 [display]
 

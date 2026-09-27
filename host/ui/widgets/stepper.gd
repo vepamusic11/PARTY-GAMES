@@ -3,6 +3,10 @@ extends Control
 ## Selector numérico pensado para el control remoto: con el foco encima,
 ## ◀ y ▶ cambian el valor; ▲ y ▼ siguen navegando como siempre.
 ## Con mouse (desarrollo) se puede hacer clic en las flechas.
+##
+## Dos formas según su tamaño: píldora ancha [◀ 3 jugadores ▶] o tarjeta
+## alta (si es más alta que ancha × 0,7), con `caption` arriba, el número
+## grande en el medio y la unidad abajo — la usa el lobby junto a los lugares.
 
 signal value_changed(value: int)
 
@@ -11,6 +15,7 @@ var min_value := 1
 var max_value := 4
 var unit_one := "jugador"
 var unit_many := "jugadores"
+var caption := ""
 
 
 func _init() -> void:
@@ -61,6 +66,9 @@ func _draw() -> void:
 	if has_focus():
 		UiTheme.draw_round_rect(self, r.grow(12), Color(UiTheme.INK, 0.5), radius + 12)
 		UiTheme.draw_round_rect(self, r.grow(9), UiTheme.ACCENT, radius + 9)
+	if r.size.y > r.size.x * 0.7:
+		_draw_tall(r)
+		return
 	UiTheme.draw_round_rect(self, r, UiTheme.PAPER, radius, 0, UiTheme.INK, true)
 	var h := r.size.y
 	for side in [-1, 1]:
@@ -71,3 +79,23 @@ func _draw() -> void:
 		UiTheme.draw_arrow(self, c, h * 0.34, Vector2(side, 0), UiTheme.INK if enabled else UiTheme.MUTED)
 	var txt := "%d %s" % [value, unit_one if value == 1 else unit_many]
 	UiTheme.draw_text(self, txt, r.get_center(), int(h * 0.46), UiTheme.INK)
+
+
+func _draw_tall(r: Rect2) -> void:
+	var radius := 30.0
+	if has_focus():
+		UiTheme.draw_round_rect(self, r.grow(12), Color(UiTheme.INK, 0.5), radius + 12)
+		UiTheme.draw_round_rect(self, r.grow(9), UiTheme.ACCENT, radius + 9)
+	UiTheme.draw_round_rect(self, r, UiTheme.PAPER, radius, 0, UiTheme.INK, true)
+	var cx := r.get_center().x
+	if not caption.is_empty():
+		UiTheme.draw_text(self, caption, Vector2(cx, r.position.y + 34), 24, UiTheme.INK_SOFT)
+	var mid := Vector2(cx, r.position.y + r.size.y * 0.5)
+	UiTheme.draw_text(self, str(value), mid, int(r.size.y * 0.4), UiTheme.INK, 8, UiTheme.ACCENT)
+	var arm := minf(r.size.x * 0.34, 90.0)
+	for side in [-1, 1]:
+		var enabled: bool = value > min_value if side < 0 else value < max_value
+		var c := mid + Vector2(side * arm, 0)
+		draw_circle(c, 26, UiTheme.ACCENT if enabled else UiTheme.PAPER_DIM)
+		UiTheme.draw_arrow(self, c, 24, Vector2(side, 0), UiTheme.INK if enabled else UiTheme.MUTED)
+	UiTheme.draw_text(self, unit_one if value == 1 else unit_many, Vector2(cx, r.end.y - 34), 26, UiTheme.INK)

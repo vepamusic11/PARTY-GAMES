@@ -62,22 +62,10 @@ func _draw() -> void:
 		UiTheme.draw_round_rect(self, r.grow(9), UiTheme.ACCENT, 38)
 	UiTheme.draw_round_rect(self, r, Color(UiTheme.PAPER, a), 30, 6.0 if is_selected() else 0.0, UiTheme.SUCCESS, true)
 
-	# Ilustración: fondo de color con lunares y el ícono del tipo de control.
+	# Ilustración: "escenario" en miniatura con cielo en degradé del color del
+	# juego, piso a cuadros en perspectiva y el ícono del control encima.
 	var art := Rect2(r.position + Vector2(10, 10), Vector2(r.size.x - 20, r.size.y * 0.5))
-	UiTheme.draw_round_rect(self, art, Color(accent, a), 22)
-	var dot := Color(1, 1, 1, 0.16 * a)
-	var dots := UiTheme.ShapeBatch.new()  # ~20 lunares en un solo draw call.
-	var y := art.position.y + 22.0
-	var row := 0
-	while y < art.end.y - 12.0:
-		var x := art.position.x + (24.0 if row % 2 == 0 else 46.0)
-		while x < art.end.x - 16.0:
-			dots.circle(Vector2(x, y), 6.0, dot)
-			x += 44.0
-		y += 26.0
-		row += 1
-	dots.flush(self)
-	UiTheme.draw_control_icon(self, art.get_center() + Vector2(art.size.x * 0.14, 6), art.size.y * 0.28, str(info.get("layout", "")), a)
+	_draw_art(art, accent, a)
 	# Tipo de control como etiqueta sobre la ilustración (deja la línea de abajo
 	# para la cantidad de jugadores o el motivo por el que no se puede jugar).
 	var control_name: String = CONTROL_NAMES.get(info.get("layout"), "Control")
@@ -92,6 +80,9 @@ func _draw() -> void:
 		draw_circle(badge, 24, UiTheme.PAPER)
 		draw_circle(badge, 20, UiTheme.SUCCESS)
 		UiTheme.draw_check(self, badge, 24, UiTheme.PAPER, 5.0)
+	elif disabled:
+		draw_circle(badge, 24, Color(UiTheme.INK, 0.55))
+		UiTheme.draw_glyph(self, "lock", badge, 30, UiTheme.PAPER)
 	else:
 		draw_circle(badge, 22, Color(UiTheme.PAPER, 0.9 * a))
 		draw_arc(badge, 16, 0, TAU, 24, Color(UiTheme.INK_SOFT, 0.5 * a), 3.0, true)
@@ -100,6 +91,53 @@ func _draw() -> void:
 	UiTheme.draw_text_left(self, str(info.get("title", "")), Vector2(text_x, art.end.y + 30), 28,
 		Color(UiTheme.INK, a), r.size.x - 40)
 	var meta := unavailable_reason if disabled else players_text(info)
-	UiTheme.draw_text_left(self, meta, Vector2(text_x, art.end.y + 66), 24,
-		UiTheme.DANGER if disabled else UiTheme.INK_SOFT, r.size.x - 40, false)
+	var meta_x := text_x
+	if not disabled:
+		UiTheme.draw_glyph(self, "people", Vector2(text_x + 14, art.end.y + 66), 26, UiTheme.INK_SOFT)
+		meta_x += 36
+	UiTheme.draw_text_left(self, meta, Vector2(meta_x, art.end.y + 66), 24,
+		UiTheme.DANGER if disabled else UiTheme.INK_SOFT, r.size.x - 40 - (meta_x - text_x), false)
+
+
+func _draw_art(art: Rect2, accent: Color, a: float) -> void:
+	UiTheme.draw_round_rect(self, art, Color(accent.darkened(0.25), a), 22)
+	var sky := art.grow(-4)
+	var horizon := sky.position.y + sky.size.y * 0.52
+	var top := Color(accent.lightened(0.35), a)
+	var mid := Color(accent, a)
+	# Cielo: degradé vertical en un solo polígono.
+	draw_polygon(PackedVector2Array([
+		Vector2(sky.position.x + 14, sky.position.y), Vector2(sky.end.x - 14, sky.position.y),
+		Vector2(sky.end.x, horizon), Vector2(sky.position.x, horizon),
+	]), PackedColorArray([top, top, mid, mid]))
+	# Piso: baldosas en perspectiva (cada fila más ancha que la anterior).
+	var batch := UiTheme.ShapeBatch.new()
+	var rows := 4
+	var light := Color(accent.lightened(0.55), a)
+	var dark := Color(accent.lightened(0.2), a)
+	for row in rows:
+		var t0 := float(row) / rows
+		var t1 := float(row + 1) / rows
+		var y0 := lerpf(horizon, sky.end.y - 4.0, t0 * t0)
+		var y1 := lerpf(horizon, sky.end.y - 4.0, t1 * t1)
+		var cols := 6
+		for col in cols:
+			var spread0 := lerpf(0.55, 1.0, t0)
+			var spread1 := lerpf(0.55, 1.0, t1)
+			var cx := sky.get_center().x
+			var hw := sky.size.x / 2.0
+			var x00 := cx + (float(col) / cols * 2.0 - 1.0) * hw * spread0
+			var x01 := cx + (float(col + 1) / cols * 2.0 - 1.0) * hw * spread0
+			var x10 := cx + (float(col) / cols * 2.0 - 1.0) * hw * spread1
+			var x11 := cx + (float(col + 1) / cols * 2.0 - 1.0) * hw * spread1
+			batch.polygon(PackedVector2Array([Vector2(x00, y0), Vector2(x01, y0), Vector2(x11, y1), Vector2(x10, y1)]),
+				light if (row + col) % 2 == 0 else dark)
+	# Destellos en el cielo.
+	for k in 3:
+		var p := sky.position + Vector2(sky.size.x * (0.2 + 0.3 * k), sky.size.y * (0.18 + 0.1 * (k % 2)))
+		batch.polygon(UiTheme.star_points(p, 7.0 + 3.0 * (k % 2)), Color(1, 1, 1, 0.55 * a))
+	batch.flush(self)
+	var icon_c := Vector2(art.get_center().x + art.size.x * 0.14, horizon + 4.0)
+	UiTheme.draw_ellipse(self, icon_c + Vector2(0, art.size.y * 0.26), art.size.y * 0.32, art.size.y * 0.08, Color(UiTheme.INK, 0.22 * a))
+	UiTheme.draw_control_icon(self, icon_c, art.size.y * 0.28, str(info.get("layout", "")), a)
 
