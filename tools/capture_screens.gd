@@ -178,6 +178,33 @@ func _run() -> void:
 	await _seconds(2.0)
 	await _shot(root, "pingpong")
 
+	# Bots (ADR 0010): Pablo solo + 3 bots (fácil, normal, difícil). Lobby
+	# con bots, su menú, un juego con la placa BOT en el marcador y el resumen.
+	host._back_to_lobby()
+	_clients[1].leave()
+	await _until(func() -> bool: return host.server.get_players().size() == 1)
+	host._lobby._stepper.set_value(4)
+	for d in [Bot.Difficulty.EASY, Bot.Difficulty.NORMAL, Bot.Difficulty.HARD]:
+		_expect(host.add_bot(d), "se suma un bot %s" % Bot.difficulty_name(d))
+	host._lobby._seats[3].grab_focus()
+	await _seconds(1.0)
+	await _shot(root, "lobby_bots")
+	host._lobby.open_bot_menu(3)
+	await _seconds(0.6)
+	await _shot(root, "lobby_bot_menu")
+	host._lobby._bot_menu._cancel.pressed.emit()
+	_expect(host.start_tournament(["arena", "tap_race"] as Array[String]), "arranca la competencia con bots")
+	await _settle()
+	host.skip_intro()
+	await _settle()
+	await _seconds(4.0)
+	await _shot(root, "arena_bots")
+	if is_instance_valid(host._game):
+		host._game.finish(_fake_result(1))
+	await _seconds(4.5)
+	_expect(host._summary.visible, "resumen con bots")
+	await _shot(root, "round_summary_bots")
+
 	print("Capturas guardadas en ", ProjectSettings.globalize_path(_out_dir))
 	quit(0)
 

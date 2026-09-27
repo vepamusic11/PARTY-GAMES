@@ -88,7 +88,7 @@ func round_number() -> int:
 ## Registra el resultado de un minijuego (ver MiniGame.finished) y devuelve
 ## el resumen de la ronda:
 ##   { round, total_rounds, game_id, title, score_label,
-##     rows: [{id, slot, name, color, score, place, points, total_before, total}] }
+##     rows: [{id, slot, name, color, style, bot, score, place, points, total_before, total}] }
 ## `players` son los que jugaron esa ronda (MiniGame.players).
 func record(result: Dictionary, players: Array[Dictionary]) -> Dictionary:
 	var scores: Variant = result.get("scores", {})
@@ -132,7 +132,7 @@ func record(result: Dictionary, players: Array[Dictionary]) -> Dictionary:
 
 
 ## Tabla general ordenada: más puntos primero; a igualdad, por lugar (1P, 2P…).
-## Cada fila: {id, slot, name, color, style, total, place}.
+## Cada fila: {id, slot, name, color, style, bot, total, place}.
 func standings() -> Array[Dictionary]:
 	var rows: Array[Dictionary] = []
 	for pid: int in _roster:
@@ -175,5 +175,7 @@ func _playable(id: String, player_count: int) -> bool:
 
 
 func _remember(p: Dictionary) -> void:
-	# El estilo de mascota viaja con el jugador (resumen y podio lo dibujan).
-	_roster[p.id] = {"id": p.id, "slot": p.slot, "name": p.name, "color": p.color, "style": PlayerAvatar.style_of(p)}
+	# El estilo de mascota viaja con el jugador (resumen y podio lo dibujan),
+	# y también si es un bot (placa "BOT" en el resumen).
+	_roster[p.id] = {"id": p.id, "slot": p.slot, "name": p.name, "color": p.color, "style": PlayerAvatar.style_of(p),
+		"bot": bool(p.get("bot", false))}

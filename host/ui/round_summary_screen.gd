@@ -170,6 +170,8 @@ func _make_column(row: Dictionary, unit: String, count: int, last_place: int) ->
 	elif count > 1 and row.place == last_place:
 		avatar.mood = PlayerAvatar.Mood.SAD
 	col.add_child(avatar)
+	if row.get("bot", false):
+		avatar.add_child(BotBadge.new())  # Placa "BOT" (ADR 0010).
 
 	var pedestal := ScorePedestal.new()
 	pedestal.color = color

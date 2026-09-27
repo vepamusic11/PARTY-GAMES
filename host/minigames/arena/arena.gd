@@ -51,6 +51,11 @@ func on_input(player_id: int, input: Dictionary) -> void:
 		_axis[player_id] = input.axis
 
 
+## Para los bots (ver MiniGame.bot_view): mascotas y estrellas. Solo lectura.
+func bot_view() -> Dictionary:
+	return {"pos": _pos, "stars": _stars, "field": ARENA, "speed": SPEED, "time_left": _time_left}
+
+
 func _physics_process(delta: float) -> void:
 	if is_finished():
 		return
@@ -60,7 +65,12 @@ func _physics_process(delta: float) -> void:
 		queue_redraw()
 		return
 	_time_left -= delta
-	for pid: int in _pos:
+	# Orden al azar en cada paso: si dos tocan la misma estrella a la vez, no
+	# gana siempre 1P (lo encontró tools/simulate.gd con bots: 1P ganaba la
+	# mitad de las partidas entre bots iguales; ver ADR 0010).
+	var order := _pos.keys()
+	order.shuffle()
+	for pid: int in order:
 		var p: Vector2 = _pos[pid] + (_axis[pid] as Vector2) * SPEED * delta
 		advance_walk(pid, (_axis[pid] as Vector2).length(), delta, 3.0)
 		p.x = clampf(p.x, ARENA.position.x + RADIUS, ARENA.end.x - RADIUS)

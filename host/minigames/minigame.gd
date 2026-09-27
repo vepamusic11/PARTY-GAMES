@@ -69,6 +69,16 @@ func on_player_disconnected(player_id: int) -> void:
 	on_input(player_id, {"seq": -1, "axis": Vector2.ZERO, "btn": 0})
 
 
+## Estado público del juego para los bots (host/bots/, ADR 0010): lo mismo
+## que cualquiera ve en la TV (posiciones, pelota, bloques…), nunca secretos
+## ni atajos para decidir resultados. Es de SOLO LECTURA: puede devolver
+## referencias a los datos internos para no copiar nada en cada frame.
+## Por defecto {}: un juego sin bot propio igual funciona (el bot manda
+## entradas suaves al azar). BotDriver lo llama una vez por paso de física.
+func bot_view() -> Dictionary:
+	return {}
+
+
 func finish(result: Dictionary) -> void:
 	if _finished:
 		return
@@ -325,8 +335,32 @@ func _draw_hud_layer() -> void:
 			"portrait": _portrait(_hud_state[k + 1], PlayerAvatar.style_of(p)) if not p.is_empty() else null,
 		})
 	var pills := GameArt.paint_hud(_hud, entries, head[0], head[1])
+	var badges: Array[Vector2] = []
 	for i in mini(n, players.size()):
 		_draw_hud_extra(_hud, players[i], pills[i])
+		if players[i].get("bot", false):
+			badges.append(Vector2(pills[i].position.x + 44.0, pills[i].end.y + 12.0))
+	_draw_bot_badges(_hud, badges)
+
+
+## Placas "BOT" debajo de la etiqueta 1P–4P del marcador (ADR 0010): todas
+## las figuras en un lote (un draw call) y los textos después. Mismo dibujo
+## que UiTheme.draw_bot_badge, que en el marcador costaría ~6 draw calls por bot.
+static func _draw_bot_badges(ci: CanvasItem, centers: Array[Vector2], s: float = 0.9) -> void:
+	if centers.is_empty():
+		return
+	var size := UiTheme.BOT_BADGE_SIZE * s
+	var b := GameArt.TriBatch.new()
+	for c in centers:
+		var r := Rect2(c - size / 2.0, size)
+		b.capsule(Rect2(r.position + Vector2(0, 3.0 * s), r.size).grow(3.0 * s), UiTheme.INK)
+		b.capsule(r, UiTheme.BOT_BADGE_LIGHT)
+		b.capsule(r.grow(-2.0 * s), UiTheme.BOT_BADGE.darkened(0.3))
+		b.capsule(Rect2(r.position, r.size - Vector2(0, 4.0 * s)).grow(-2.0 * s), UiTheme.BOT_BADGE)
+		b.capsule(Rect2(r.position + Vector2(8.0 * s, 3.0 * s), Vector2(size.x * 0.5, size.y * 0.28)), Color(1, 1, 1, 0.3))
+	b.flush(ci)
+	for c in centers:
+		UiTheme.draw_text(ci, UiTheme.BOT_TEXT, c - Vector2(0, 2.0 * s), int(UiTheme.BOT_BADGE_FONT * s), UiTheme.PAPER, int(4 * s), UiTheme.INK)
 
 
 func _draw_hud_text_layer() -> void:

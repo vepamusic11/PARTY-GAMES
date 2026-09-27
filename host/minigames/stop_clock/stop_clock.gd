@@ -82,6 +82,14 @@ func on_input(player_id: int, input: Dictionary) -> void:
 	_was_down[player_id] = down
 
 
+## Para los bots (ver MiniGame.bot_view): lo que se ve en la TV. Con el
+## cronómetro apagado `shown` es -1: el bot tiene que contar "en su cabeza",
+## como una persona. Solo lectura.
+func bot_view() -> Dictionary:
+	return {"running": is_running(), "shown": elapsed() if is_running() and not is_blackout() else -1.0,
+		"target": TARGET, "stops": _stops}
+
+
 ## Segundos que marca el cronómetro (0 durante la cuenta regresiva).
 func elapsed() -> float:
 	return maxf(0.0, _t - COUNTDOWN)

@@ -8,6 +8,7 @@
 │ ControllerMain│ ◄─── layout / fase ──────── │  ├─ HostServer  (red, validación)│
 └──────────────┘                              │  ├─ DiscoveryBeacon (anuncio UDP)│
        ▲                                      │  ├─ Tournament (puntos, rondas)  │
+       │                                      │  ├─ BotDriver (bots en la TV)    │
        │                                      │  ├─ Pantallas (host/ui/)         │
        │                                      │  └─ MiniGame activo (lógica)     │
        └──────── anuncio UDP broadcast ────── └───────────────────────────────┘
@@ -82,6 +83,21 @@ Al unirse, cada jugador recibe un token aleatorio de 128 bits. Si el celular se 
 
 *Ejemplo:* Sofi está jugando, le entra una llamada y la app pasa a segundo plano. Su paleta queda quieta (input neutro), y cuando vuelve a la app sigue siendo la jugadora 2 sin tocar nada.
 
+### Bots: jugadores virtuales
+Para jugar solo o completar la mesa (1 persona + 3 bots, 2 + 2), la TV puede ocupar lugares libres con **bots** (Fácil / Normal / Difícil). Un bot genera **las mismas entradas que un celular** (`axis`/`btn`) en cada paso de física, sin red: mira el estado público del juego (`MiniGame.bot_view()`), decide con reglas simples y tiempo de reacción, y `BotDriver` le pasa la entrada al juego por `on_input` después de validarla con `Protocol.parse_input`. Nunca decide resultados.
+
+*Ejemplo:* en Ping Pong, el bot calcula dónde va a cruzar la pelota su línea (con los rebotes) y mueve el slider ahí, 0,13–0,34 s tarde según la dificultad. Si no llega, el punto es del otro: lo decide Ping Pong, igual que con una persona.
+
+Se suman desde el lobby con el D-pad (OK en un lugar libre → elegir dificultad) y llevan la placa **BOT** en el lobby, el marcador y el resumen. Las personas tienen prioridad: si entra un celular y la sala está llena, reemplaza a un bot. `tools/simulate.gd` usa los mismos bots para jugar cientos de competencias sin pantalla y medir el balance. Ver [ADR 0010](adr/0010-bots.md).
+
+```
+host/bots/
+├─ bot.gd            Bot: dificultad (reacción, puntería, temblor), predicción y entrada por defecto
+├─ <id>_bot.gd       un bot por juego (arena, pingpong, tap_race, stop_clock, dodge, paint, sumo)
+├─ bot_driver.gd     BotDriver: cada paso, bot_view() -> bots -> parse_input -> on_input
+└─ bot_match.gd      BotMatch: un juego entero sin pantalla (tests y simulate.gd)
+```
+
 ### Minijuegos como plugins
 Cada juego hereda de `MiniGame` y se registra en `MiniGameRegistry.GAMES`. El lobby, la red y los demás juegos no se modifican. Ver [ADDING_A_MINIGAME.md](ADDING_A_MINIGAME.md).
 
@@ -91,7 +107,7 @@ Cada juego hereda de `MiniGame` y se registra en `MiniGameRegistry.GAMES`. El lo
 2. `ControllerMain._process` lo lee a 30 Hz y lo manda **solo si cambió** (o cada 250 ms como keepalive).
 3. `ControllerClient.send_input` lo serializa con número de secuencia.
 4. `HostServer` lo recibe, aplica límite de frecuencia (90/seg), valida con `Protocol.parse_input` y emite `input_received`.
-5. `HostMain` lo pasa al `MiniGame` activo en `on_input`.
+5. `HostMain` lo pasa al `MiniGame` activo en `on_input`. (Los bots entran acá también: `BotDriver` arma la misma entrada, la valida con `Protocol.parse_input` y llama a `on_input`.)
 6. El juego guarda el último valor y lo aplica en `_physics_process`.
 
 ## Decisiones de diseño
@@ -103,6 +119,7 @@ Registradas en [adr/](adr/):
 - [0004 · Sistema visual dibujado por código](adr/0004-sistema-visual.md)
 - [0005 · Sonido sintetizado por código y vibración por eventos](adr/0005-sonido-sintetizado.md)
 - [0006 · Rendimiento: capas cacheadas, figuras en lote y bajo consumo](adr/0006-rendimiento-capas-cacheadas.md)
+- [0010 · Bots con reglas: jugadores virtuales que aprietan botones](adr/0010-bots.md)
 
 ## Límites conocidos (v0.1)
 

@@ -21,6 +21,37 @@ Más abajo: qué hace divertidos a los party games de referencia, **modos de jue
 | ¡Que no te deje la cámara! *(hecho)* | La cámara avanza sola y acelera por un recorrido de bloques, sierras, molinetes, pozos y flechas de impulso; el que se queda atrás o choca algo mortal va a la tribuna. Último en pie gana; a los 75 s ganan los que siguen, por metros. Tramos prediseñados combinados con semilla (el mismo recorrido para todos) | Joystick | 2–4 |
 | Memoria de colores | Repetir la secuencia del tablero de Simón; quien se equivoca queda afuera | Joystick (cada dirección es un botón) | 1–4 |
 
+Los 7 tienen **bot** (Fácil / Normal / Difícil) para jugar solo o completar la mesa: ver [ADR 0010](adr/0010-bots.md).
+
+## Balance con bots
+
+**Concepto: *simulación de balance*.** Se juegan cientos de competencias bot contra bot sin pantalla y se mira si algún juego dura demasiado, si los puntajes tienen sentido o si un lugar de salida gana más que los otros. Con bots iguales, cada lugar debería ganar ≈ 100 % / jugadores.
+
+```bash
+godot --headless --path . -s res://tools/simulate.gd -- --n=50 --difficulty=normal   # 4 bots iguales
+godot --headless --path . -s res://tools/simulate.gd -- --n=50 --players=2           # con Ping Pong
+godot --headless --path . -s res://tools/simulate.gd -- --n=50 --difficulty=mixed    # fácil/normal/difícil/normal
+```
+
+Resultados (50 competencias de 4 bots "Normal"; Ping Pong con 2):
+
+| Juego | Duración media (p95) | Puntaje medio (mín–máx) | % victorias 1P / 2P / 3P / 4P |
+|---|---|---|---|
+| Arena de estrellas | 30 s (30) | 32 estrellas (21–48) | 34 / 21 / 21 / 24 |
+| Ping Pong (2 bots) | 60 s (77) | 3,9 puntos (1–5) | 50 / 50 |
+| Carrera de toques | 7,7 s (8,0) | 38 toques (33–40) | 24 / 28 / 30 / 18 |
+| Reloj exacto | 15,3 s (15,6) | 825 de precisión (283–1000) | 28 / 24 / 23 / 25 |
+| Esquivar | 36 s (45) | 27 segundos (4–45) | 30 / 25 / 30 / 15 |
+| Pintar el piso | 49,5 s (49,5) | 52 baldosas (11–149) | 21 / 18 / 34 / 27 |
+| Empujones | 54 s (64) | 32 puntos (2–70) | 21 / 27 / 28 / 24 |
+
+Lo que dicen los números:
+- **Arena daba ventaja a 1P** (encontrado con esta simulación): si dos mascotas tocaban la misma estrella en el mismo paso, siempre se la llevaba el primero de la lista. Entre bots "Difícil", 1P ganaba ~50 % y 4P ~8 %. Ahora el orden es al azar en cada paso y quedó parejo (25 / 21 / 33 / 22 con 4 difíciles).
+- **Ningún lugar de salida da ventaja clara** en los demás juegos: las diferencias (ej. 3P en Pintar) cambian de una corrida a otra y con 80 partidas de Pintar quedan 21 / 14 / 21 / 24.
+- **La dificultad se nota**: con fácil / normal / difícil / normal, el difícil gana las 50 competencias y el fácil sale último en 47. El juego con más azar es Reloj exacto (el difícil gana el 51 %).
+- **Empujones 1 contra 1** entre bots parejos casi siempre termina por tiempo con los dos arriba (empate): a vigilar con personas, quizás la isla tendría que achicarse más al final.
+- **Carrera de toques es el más corto** (≈ 8 s con la cuenta regresiva): con bots dura lo mismo que con gente rápida.
+
 ## Propuestos
 
 ### Carreras

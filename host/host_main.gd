@@ -15,6 +15,11 @@ extends Control
 ## Los cambios de pantalla pasan por `_go()`: un barrido de bloques
 ## (Transition) tapa la pantalla y el cambio ocurre recién ahí, en el orden
 ## en que se pidieron.
+##
+## Bots (ADR 0010): el lobby puede sumar jugadores virtuales en lugares
+## libres (HostServer.add_bot). Durante el juego, BotDriver genera su
+## entrada en cada paso de física y la pasa por el mismo camino que la de un
+## celular (on_input). La pausa también los congela.
 
 ## Puerto y anuncio en la red configurables antes de agregarlo al árbol
 ## (los tests usan otro puerto y sin anuncio UDP).
@@ -35,6 +40,7 @@ const PORT_ATTEMPTS := 5
 
 var server := HostServer.new()
 var beacon := DiscoveryBeacon.new()
+var bots := BotDriver.new()
 var phase := Protocol.PHASE_LOBBY
 var tournament: Tournament
 
@@ -61,6 +67,7 @@ func _ready() -> void:
 	add_child(Sfx.new())
 	add_child(server)
 	add_child(beacon)
+	add_child(bots)
 	server.player_joined.connect(func(_p: Dictionary) -> void:
 		Sfx.play("join")
 		_refresh_lobby())
@@ -174,6 +181,7 @@ func _start_game() -> void:
 	game.feedback.connect(_on_game_feedback)
 	_game_layer.add_child(game)
 	game.setup(server.get_players())
+	bots.start(game, game.players)
 	_background.visible = false  # El juego dibuja su propio fondo.
 
 
@@ -235,6 +243,7 @@ func _enter_results() -> void:
 
 
 func _end_game() -> void:
+	bots.stop()
 	_pause.close()
 	_intro.hide_intro()
 	if is_instance_valid(_game):
@@ -262,6 +271,33 @@ func _play_again() -> void:
 	_back_to_lobby()
 	if _lobby.can_start():
 		start_tournament(_lobby.selected_game_ids(), _lobby.shuffle)
+
+
+# --- Bots -------------------------------------------------------------------------
+
+## Suma un bot en un lugar libre (solo en el lobby). slot -1 = el primero libre.
+## Si "¿Cuántos juegan?" no alcanza, la sube (como cuando entra una persona).
+func add_bot(difficulty: int = Bot.Difficulty.NORMAL, slot: int = -1) -> bool:
+	if phase != Protocol.PHASE_LOBBY or tournament != null:
+		return false
+	if server.get_players().size() >= server.max_players and server.max_players < Protocol.MAX_PLAYERS:
+		server.max_players += 1
+	if server.add_bot(difficulty, slot).is_empty():
+		Sfx.play("back")
+		return false
+	return true
+
+
+func remove_bot(player_id: int) -> bool:
+	if phase != Protocol.PHASE_LOBBY or tournament != null:
+		return false
+	return server.remove_bot(player_id)
+
+
+func set_bot_difficulty(player_id: int, difficulty: int) -> bool:
+	if phase != Protocol.PHASE_LOBBY or tournament != null:
+		return false
+	return server.set_bot_difficulty(player_id, difficulty)
 
 
 # --- Pausa ------------------------------------------------------------------------
@@ -339,14 +375,14 @@ func _on_player_updated(_player: Dictionary) -> void:
 
 
 ## Desconexión temporal o salida definitiva: el juego recibe input neutro.
-## Si no queda nadie, se vuelve al lobby.
+## Si no queda ninguna persona (solo bots, o nadie), se vuelve al lobby.
 func _on_player_gone(player_id: int) -> void:
 	Sfx.play("back")
 	if phase == Protocol.PHASE_PLAYING and is_instance_valid(_game):
 		_game.on_player_disconnected(player_id)
-	if phase != Protocol.PHASE_LOBBY and server.get_players().is_empty():
+	if phase != Protocol.PHASE_LOBBY and server.get_human_count() == 0:
 		_go(func() -> void:
-			if phase != Protocol.PHASE_LOBBY and server.get_players().is_empty():
+			if phase != Protocol.PHASE_LOBBY and server.get_human_count() == 0:
 				_back_to_lobby())
 	_refresh_lobby()
 
@@ -405,6 +441,9 @@ func _build_ui() -> void:
 	_lobby = LobbyScreen.new()
 	_lobby.start_requested.connect(start_tournament)
 	_lobby.capacity_changed.connect(func(n: int) -> void: server.max_players = n)
+	_lobby.bot_add_requested.connect(func(slot: int, difficulty: int) -> void: add_bot(difficulty, slot))
+	_lobby.bot_remove_requested.connect(remove_bot)
+	_lobby.bot_difficulty_requested.connect(set_bot_difficulty)
 	add_child(_lobby)
 
 	_intro = GameIntroScreen.new()

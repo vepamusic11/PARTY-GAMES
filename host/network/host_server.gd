@@ -7,6 +7,13 @@ extends Node
 ##   TCP aceptado -> WebSocket abierto -> "join" válido -> jugador
 ##   Si un jugador se desconecta, su lugar queda reservado RECONNECT_GRACE_MS
 ##   y puede volver presentando su token (ver docs/PROTOCOL.md).
+##
+## Bots (ADR 0010): la TV puede ocupar lugares libres con jugadores
+## virtuales (`add_bot`). Son jugadores como los demás (id, lugar, color,
+## estilo) con `bot: true`, sin conexión ni token: no reciben mensajes y su
+## entrada la genera BotDriver en la TV. Las personas tienen prioridad: si
+## entra un celular y la sala está llena, reemplaza a un bot (y si pide un
+## color que usa un bot, el bot se cambia de color).
 
 signal player_joined(player: Dictionary)
 signal player_reconnected(player: Dictionary)
@@ -24,6 +31,9 @@ const INPUT_RATE_LIMIT_PER_SEC := 90
 const LOOK_RATE_LIMIT_PER_SEC := 8
 const RECONNECT_GRACE_MS := 30000
 const INBOUND_BUFFER_BYTES := 4096
+## Nombres de los bots: el primero libre. Empiezan con "Bot" para que se
+## entienda también donde no hay lugar para la placa "BOT".
+const BOT_NAMES: Array[String] = ["Bot Robi", "Bot Chispa", "Bot Tuerca", "Bot Pixel"]
 
 var room_code := ""
 var port := 0
@@ -100,6 +110,15 @@ func get_players() -> Array[Dictionary]:
 	return list
 
 
+## Personas en la sala (sin contar bots), conectadas o reconectándose.
+func get_human_count() -> int:
+	var n := 0
+	for p: Dictionary in _players.values():
+		if not p.get("bot", false):
+			n += 1
+	return n
+
+
 func get_connected_count() -> int:
 	var n := 0
 	for p: Dictionary in _players.values():
@@ -151,6 +170,90 @@ func kick(player_id: int) -> void:
 		_players.erase(player_id)
 		player_left.emit(player_id)
 		_send_appearance_all()
+
+
+# --- Bots ---------------------------------------------------------------------
+
+## Agrega un bot en `slot` (o en el primer lugar libre si es -1). Solo en el
+## lobby (antes de la competencia) y si hay lugar en la sala. Devuelve el
+## jugador (como get_players) o {} si no se pudo.
+func add_bot(difficulty: int = Bot.Difficulty.NORMAL, slot: int = -1) -> Dictionary:
+	if not accepting_new_players or _players.size() >= max_players:
+		return {}
+	if slot < 0:
+		slot = _free_slot()
+	if slot < 0 or slot >= Protocol.MAX_PLAYERS or _slot_used(slot):
+		return {}
+	var color_index := _free_color(slot, 0, slot)
+	var player := {
+		"id": slot + 1,
+		"slot": slot,
+		"name": _free_bot_name(),
+		"color": Protocol.mascot_color(color_index),
+		"color_index": color_index,
+		"style": PlayerAvatar.STYLE_ROBOT,
+		"token": "",
+		"connected": true,
+		"disconnected_at": -1,
+		"bot": true,
+		"difficulty": clampi(difficulty, 0, Bot.PROFILES.size() - 1),
+	}
+	_players[player.id] = player
+	player_joined.emit(_public_player(player))
+	_send_appearance_all()
+	return _public_player(player)
+
+
+## Saca un bot (no hace nada si ese id no es un bot).
+func remove_bot(player_id: int) -> bool:
+	if not _is_bot(player_id):
+		return false
+	kick(player_id)
+	return true
+
+
+## Cambia la dificultad de un bot (solo en el lobby, como la apariencia).
+func set_bot_difficulty(player_id: int, difficulty: int) -> bool:
+	if not _is_bot(player_id) or not accepting_new_players:
+		return false
+	var p: Dictionary = _players[player_id]
+	p.difficulty = clampi(difficulty, 0, Bot.PROFILES.size() - 1)
+	player_updated.emit(_public_player(p))
+	return true
+
+
+func _is_bot(player_id: int) -> bool:
+	return _players.has(player_id) and bool((_players[player_id] as Dictionary).get("bot", false))
+
+
+## Libera un lugar para una persona: saca al bot del lugar más alto.
+## Devuelve false si no hay bots.
+func _evict_bot() -> bool:
+	var victim := -1
+	for p: Dictionary in _players.values():
+		if p.get("bot", false) and (victim < 0 or p.slot > (_players[victim] as Dictionary).slot):
+			victim = p.id
+	if victim < 0:
+		return false
+	kick(victim)
+	return true
+
+
+func _free_bot_name() -> String:
+	var used := {}
+	for p: Dictionary in _players.values():
+		used[p.name] = true
+	for n in BOT_NAMES:
+		if not used.has(n):
+			return n
+	return BOT_NAMES[0]
+
+
+func _slot_used(slot: int) -> bool:
+	for p: Dictionary in _players.values():
+		if p.slot == slot:
+			return true
+	return false
 
 
 # --- Conexiones ---------------------------------------------------------------
@@ -268,13 +371,15 @@ func _handle_join(key: int, msg: Dictionary) -> void:
 		_reject(key, Protocol.R_BAD_NAME)
 		return
 	var slot := _free_slot()
+	if (slot < 0 or _players.size() >= max_players) and _evict_bot():
+		slot = _free_slot()  # Las personas tienen prioridad: un bot le deja su lugar.
 	if slot < 0 or _players.size() >= max_players:
 		_reject(key, Protocol.R_ROOM_FULL)
 		return
 
 	# Apariencia pedida (opcional): lo inválido se ignora y se usa la del lugar.
 	var look := Protocol.parse_look(msg)
-	var color_index := _free_color(int(look.get("color", slot)), 0, slot)
+	var color_index := _free_color(int(look.get("color", slot)), 0, slot, true)
 	var player := {
 		"id": slot + 1,
 		"slot": slot,
@@ -300,7 +405,8 @@ func _handle_look(player_id: int, look: Dictionary) -> void:
 		return
 	var p: Dictionary = _players[player_id]
 	var changed := false
-	if look.has("color") and look.color != p.color_index and not _color_taken(look.color, player_id):
+	if look.has("color") and look.color != p.color_index and not _color_taken(look.color, player_id, true):
+		_move_bot_off_color(look.color)
 		p.color_index = look.color
 		p.color = Protocol.mascot_color(look.color)
 		changed = true
@@ -394,19 +500,24 @@ func _look_rate_limited(peer: _Peer, now: int) -> bool:
 	return peer.look_window_count > LOOK_RATE_LIMIT_PER_SEC
 
 
-## ¿Otro jugador (distinto de except_id) ya usa ese color?
-func _color_taken(index: int, except_id: int) -> bool:
+## ¿Otro jugador (distinto de except_id) ya usa ese color? Con
+## `humans_only`, los bots no cuentan (una persona se lo puede quitar).
+func _color_taken(index: int, except_id: int, humans_only: bool = false) -> bool:
 	for p: Dictionary in _players.values():
-		if p.id != except_id and p.color_index == index:
+		if p.id != except_id and p.color_index == index and not (humans_only and p.get("bot", false)):
 			return true
 	return false
 
 
 ## Colores únicos: el pedido si está libre; si no, el del lugar (1P rojo…);
 ## si tampoco, el primero libre de la paleta. Siempre hay uno (10 > 4).
-func _free_color(requested: int, except_id: int, slot: int) -> int:
+## `for_human`: si el color lo usa un bot, se lo queda la persona y el bot
+## pasa a otro color libre.
+func _free_color(requested: int, except_id: int, slot: int, for_human: bool = false) -> int:
 	for candidate in [requested, slot]:
-		if Protocol.parse_color_index(candidate) >= 0 and not _color_taken(candidate, except_id):
+		if Protocol.parse_color_index(candidate) >= 0 and not _color_taken(candidate, except_id, for_human):
+			if for_human:
+				_move_bot_off_color(candidate)
 			return candidate
 	for i in Protocol.MASCOT_COLORS.size():
 		if not _color_taken(i, except_id):
@@ -414,11 +525,25 @@ func _free_color(requested: int, except_id: int, slot: int) -> int:
 	return 0
 
 
+## Si un bot usa ese color, lo pasa al primer color libre (sin avisar a los
+## celulares: quien llama manda la apariencia a todos después).
+func _move_bot_off_color(index: int) -> void:
+	for p: Dictionary in _players.values():
+		if p.get("bot", false) and p.color_index == index:
+			for i in Protocol.MASCOT_COLORS.size():
+				if i != index and not _color_taken(i, p.id):
+					p.color_index = i
+					p.color = Protocol.mascot_color(i)
+					player_updated.emit(_public_player(p))
+					break
+
+
 ## Colores de los demás jugadores (para que el celular los muestre ocupados).
+## Los de los bots no cuentan: una persona los puede elegir (el bot se cambia).
 func _taken_colors(except_id: int) -> Array[int]:
 	var out: Array[int] = []
 	for p: Dictionary in _players.values():
-		if p.id != except_id:
+		if p.id != except_id and not p.get("bot", false):
 			out.append(p.color_index)
 	out.sort()
 	return out
@@ -470,8 +595,10 @@ func _peer_key_for_player(player_id: int) -> int:
 
 
 ## Copia sin el token: el token nunca sale del servidor salvo al propio jugador.
+## `bot` y `difficulty` los usan la TV (BotDriver, lobby, marcador); nunca
+## viajan a los celulares.
 func _public_player(p: Dictionary) -> Dictionary:
-	return {
+	var out := {
 		"id": p.id,
 		"slot": p.slot,
 		"name": p.name,
@@ -479,4 +606,8 @@ func _public_player(p: Dictionary) -> Dictionary:
 		"color_index": p.color_index,
 		"style": p.style,
 		"connected": p.connected,
+		"bot": bool(p.get("bot", false)),
 	}
+	if out.bot:
+		out["difficulty"] = int(p.get("difficulty", Bot.Difficulty.NORMAL))
+	return out

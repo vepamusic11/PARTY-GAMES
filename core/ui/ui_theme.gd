@@ -1321,3 +1321,31 @@ const QD_HAT_DARK := Color("#5E3A1A")
 const QD_POPGUN := Color("#5A6CD6")           ## Cebita de corcho de juguete.
 const QD_CORK := Color("#E0A868")
 const QD_SMOKE := Color(1, 1, 1, 0.85)
+
+
+# --- Bots (agente) --------------------------------------------------------------
+# Jugadores virtuales (host/bots/, ADR 0010): llevan una placa "BOT" en el
+# lobby, el marcador de los juegos y el resumen de ronda, además de su
+# nombre ("Bot Robi") y la mascota robot. Así no dependen del color.
+
+const BOT_BADGE := Color("#4B5C9E")          ## Placa "BOT": azul acero, como el metal del robot.
+const BOT_BADGE_LIGHT := Color("#8C9BD6")    ## Aro claro de la placa.
+const BOT_BADGE_SIZE := Vector2(74, 34)      ## Tamaño con escala 1 (texto de 24 px: legible a 3 m).
+const BOT_BADGE_FONT := 24
+const BOT_MENU_WIDTH := 640.0                ## Menú "Lugar 3P" del lobby (agregar/cambiar/quitar bot).
+const BOT_MENU_BUTTON := Vector2(0, 86)
+const BOT_TEXT := "BOT"
+
+
+## Placa "BOT" centrada en `center`: píldora con contorno de tinta, labio
+## oscuro abajo, brillo arriba y el texto en blanco. `s` escala todo.
+static func draw_bot_badge(ci: CanvasItem, center: Vector2, s: float = 1.0) -> void:
+	var size := BOT_BADGE_SIZE * s
+	var r := Rect2(center - size / 2.0, size)
+	var radius := size.y / 2.0
+	draw_round_rect(ci, Rect2(r.position + Vector2(0, 3.0 * s), r.size).grow(3.0 * s), INK, radius + 3.0 * s)
+	draw_round_rect(ci, r, BOT_BADGE.darkened(0.3), radius)
+	draw_round_rect(ci, Rect2(r.position, r.size - Vector2(0, 4.0 * s)), BOT_BADGE, radius, 2, BOT_BADGE_LIGHT)
+	draw_round_rect(ci, Rect2(r.position + Vector2(8.0 * s, 3.0 * s), Vector2(size.x * 0.5, size.y * 0.28)),
+		Color(1, 1, 1, 0.3), size.y * 0.14)
+	draw_text(ci, BOT_TEXT, center - Vector2(0, 2.0 * s), int(BOT_BADGE_FONT * s), PAPER, int(4 * s), INK)

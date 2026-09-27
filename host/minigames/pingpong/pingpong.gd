@@ -65,6 +65,15 @@ func on_input(player_id: int, input: Dictionary) -> void:
 	_target_x[player_id] = lerpf(TABLE.position.x + half, TABLE.end.x - half, t)
 
 
+## Para los bots (ver MiniGame.bot_view): pelota, paletas y mesa. Solo lectura.
+func bot_view() -> Dictionary:
+	return {
+		"ball": _ball, "vel": _vel, "serving": _serve_delay > 0.0, "paddle_x": _paddle_x,
+		"top_id": _top_id, "bottom_id": _bottom_id, "table": TABLE, "margin": PADDLE_MARGIN,
+		"paddle_w": PADDLE_SIZE.x, "ball_radius": BALL_RADIUS,
+	}
+
+
 func _physics_process(delta: float) -> void:
 	if is_finished() or hit_stopped(delta):
 		return

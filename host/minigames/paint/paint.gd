@@ -162,6 +162,15 @@ func on_input(player_id: int, input: Dictionary) -> void:
 	_axis[player_id] = (axis as Vector2).limit_length(1.0) if axis is Vector2 else Vector2.ZERO
 
 
+## Para los bots (ver MiniGame.bot_view): mascotas, dueño de cada baldosa
+## y power-up. Solo lectura.
+func bot_view() -> Dictionary:
+	return {
+		"pos": _pos, "owner": _owner, "cols": COLS, "rows": ROWS, "cell": CELL, "field": FIELD,
+		"powerup": _powerup, "playing": _state == State.PLAYING, "empty": EMPTY, "speed": SPEED,
+	}
+
+
 func _physics_process(delta: float) -> void:
 	if is_finished():
 		return

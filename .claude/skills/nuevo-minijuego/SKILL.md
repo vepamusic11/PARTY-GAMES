@@ -26,8 +26,9 @@ Guía completa con ejemplo: `docs/ADDING_A_MINIGAME.md`. Esta skill es el checkl
    - Cielo, campo y marcador están cacheados (capas propias): `draw_sky()`/`draw_play_field()` al principio de `_draw()`, `draw_hud()` una vez por `_draw()`. Lo fijo del juego (mesa, paneles), con `draw_static(fn)`. Ver `docs/PERFORMANCE.md`.
 6. **Sonido y vibración**: `play_sfx(nombre)` en la TV, `notify_player(pid, tipo)` en el celular del jugador y `tick_countdown(antes, después)` para la cuenta regresiva. Eventos importantes (sumar, eliminar, ganar) siempre con las dos cosas.
 7. **Efectos ("juice")**: respuesta visual a las acciones importantes con `juice()` (partículas, `float_text` del color del jugador, `shake` leve en golpes grandes), `hit_stop()` donde un golpe tenga que sentirse, `draw_countdown()` para la cuenta regresiva y `finish_after(result, "¡Tiempo!", ganadores)` para el momento final. Sin cambiar reglas; respeta "Reducir movimiento" solo. Ver ADR 0011.
-8. **Seguridad**: usar solo `input.axis` / `input.btn`; límites propios si hace falta (ver `tap_race.gd`). Nombres solo con `draw_string`/`Label`.
-9. **Márgenes**: resolución lógica 1920×1080; dejar ~64 px libres en los bordes (overscan) y los 90 px de arriba para el HUD.
+8. **Seguridad**: usar solo `input.axis` / `input.btn`; límites propios si hace falta (ver `tap_race.gd`; medí el tiempo con los delta del juego, no con el reloj del sistema, así las simulaciones aceleradas dan lo mismo). Nombres solo con `draw_string`/`Label`.
+9. **Bots** (opcional, ADR 0010): `bot_view()` con el estado público y `host/bots/<id>_bot.gd` registrado en `BotDriver.GAME_BOTS`. Sin eso el juego igual funciona con bots (entradas suaves al azar). Balance: `tools/simulate.gd -- --games=<id>`.
+10. **Márgenes**: resolución lógica 1920×1080; dejar ~64 px libres en los bordes (overscan) y los 90 px de arriba para el HUD.
 
 ## Verificar
 

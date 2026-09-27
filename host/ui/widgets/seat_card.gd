@@ -20,6 +20,13 @@ extends Control
 ##   │    Pablo     │
 ##   │   ¡Listo!    │
 ##   ╰──────────────╯
+##
+## Bots (ADR 0010): un lugar libre o con bot se puede elegir con el D-pad
+## (`selectable`); OK emite `activated` y el lobby abre el menú del bot. Un
+## bot se ve como un jugador más, con la placa "BOT" arriba a la derecha y
+## su dificultad donde las personas dicen "¡Listo!".
+
+signal activated(slot: int)
 
 enum State { READY, RECONNECTING, OPEN, LOCKED }
 
@@ -35,6 +42,14 @@ const TAG_SIZE := Vector2(72, 42)
 var slot := 0
 var state := State.OPEN
 var compact := false
+## Se puede elegir con el D-pad (lugar libre o con bot). Lo decide el lobby.
+var selectable := false:
+	set(value):
+		selectable = value
+		focus_mode = Control.FOCUS_ALL if value else Control.FOCUS_NONE
+var is_bot := false
+var _player: Dictionary = {}
+var _locked := false
 var _avatar: PlayerAvatar
 var _name: Label
 var _status: Label
@@ -107,6 +122,9 @@ func _build_row() -> void:
 ## Usa el color y el estilo de mascota del jugador si los trae (los elige
 ## desde el celular); si no, los de su lugar.
 func show_player(player: Dictionary, locked: bool) -> void:
+	_player = player
+	_locked = locked
+	is_bot = bool(player.get("bot", false))
 	_avatar.color = player.get("color", Protocol.player_color(slot))
 	_avatar.style = PlayerAvatar.style_of(player) if not player.is_empty() else -1
 	var present := not player.is_empty()
@@ -130,12 +148,20 @@ func show_player(player: Dictionary, locked: bool) -> void:
 	if not compact:
 		_name.add_theme_font_size_override("font_size", NAME_FONT if present else STATUS_FONT + 2)
 	match state:
+		State.READY when is_bot:
+			_status.text = "Bot · %s" % Bot.difficulty_name(int(player.get("difficulty", Bot.Difficulty.NORMAL)))
+			_status.add_theme_color_override("font_color", UiTheme.INK_SOFT)
 		State.READY:
 			_status.text = "¡Listo!"
 			_status.add_theme_color_override("font_color", UiTheme.SUCCESS)
 		State.RECONNECTING:
 			_status.text = "Reconectando…"
 			_status.add_theme_color_override("font_color", UiTheme.WARNING)
+		State.OPEN when has_focus():
+			# Con el foco encima, el lugar libre dice qué hace OK.
+			_name.text = "Sumar bot"
+			_status.text = "con OK"
+			_status.add_theme_color_override("font_color", UiTheme.INK)
 		State.OPEN:
 			_status.text = "Esperando…" if compact else "jugadores…"
 			_status.add_theme_color_override("font_color", UiTheme.INK_SOFT)
@@ -146,6 +172,17 @@ func show_player(player: Dictionary, locked: bool) -> void:
 	queue_redraw()
 	if _tag_layer != null:
 		_tag_layer.queue_redraw()
+
+
+func _gui_input(event: InputEvent) -> void:
+	if selectable and event.is_action_pressed("ui_accept"):
+		activated.emit(slot)
+		accept_event()
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_FOCUS_ENTER or what == NOTIFICATION_FOCUS_EXIT:
+		show_player(_player, _locked)
 
 
 ## Rectángulo de la tarjeta alta (debajo del espacio libre para la cabeza).
@@ -160,6 +197,10 @@ func _draw() -> void:
 	var r := _card_rect()
 	var col := _avatar.color
 	var filled := state == State.READY or state == State.RECONNECTING
+	if has_focus():
+		# Anillo de foco del D-pad (como el del Stepper), detrás de la tarjeta.
+		UiTheme.draw_round_rect(self, r.grow(12), Color(UiTheme.INK, 0.5), CARD_RADIUS + 12)
+		UiTheme.draw_round_rect(self, r.grow(9), UiTheme.ACCENT, CARD_RADIUS + 9)
 	if not filled:
 		# Lugar libre: tarjeta translúcida, "+" grande del color del lugar.
 		UiTheme.draw_round_rect(self, r, UiTheme.GLASS, CARD_RADIUS, 4, UiTheme.GLASS_EDGE)
@@ -197,6 +238,8 @@ func _draw_tag() -> void:
 	UiTheme.draw_gradient_round_rect(_tag_layer, Rect2(tag.position + Vector2(8, 5), Vector2(tag.size.x - 16, tag.size.y * 0.4)),
 		UiTheme.GLOSS_TOP, UiTheme.GLOSS_BOTTOM, 8)
 	UiTheme.draw_text(_tag_layer, UiTheme.player_tag(slot), tag.get_center(), 26, text_col, 6 if present else 0, UiTheme.INK)
+	if is_bot and present:
+		UiTheme.draw_bot_badge(_tag_layer, Vector2(r.end.x - UiTheme.BOT_BADGE_SIZE.x / 2.0 - 2.0, tag.get_center().y + 2.0))
 
 
 func _draw_row() -> void:
@@ -210,3 +253,5 @@ func _draw_row() -> void:
 	var tag := Rect2(Vector2(r.position.x + 14, r.get_center().y - 20), Vector2(74, 40))
 	UiTheme.draw_round_rect(self, tag, col, 19, 3, UiTheme.INK)
 	UiTheme.draw_text(self, UiTheme.player_tag(slot), tag.get_center(), 24, UiTheme.PAPER, 4, UiTheme.INK)
+	if has_focus():
+		UiTheme.draw_round_rect(self, r.grow(4), Color(UiTheme.ACCENT, 0.0), radius + 4, UiTheme.FOCUS_WIDTH, UiTheme.ACCENT)

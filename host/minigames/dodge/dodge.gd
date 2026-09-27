@@ -117,6 +117,17 @@ func on_input(player_id: int, input: Dictionary) -> void:
 	_axis[player_id] = (axis as Vector2).limit_length(1.0) if axis is Vector2 else Vector2.ZERO
 
 
+## Para los bots (ver MiniGame.bot_view): mascotas, bloques (con su sombra
+## en el piso: dónde y cuándo caen, como se ve en la TV) y el campo. Solo lectura.
+func bot_view() -> Dictionary:
+	return {
+		"pos": _pos, "out": _out_time, "blocks": _blocks, "countdown": _countdown,
+		"move_rect": Rect2(FIELD.position + Vector2(MOVE_MARGIN_X, MOVE_MARGIN_TOP),
+			FIELD.size - Vector2(MOVE_MARGIN_X * 2.0, MOVE_MARGIN_TOP + MOVE_MARGIN_BOTTOM)),
+		"speed": SPEED, "hit_radius": HIT_RADIUS, "linger": LINGER_SEC,
+	}
+
+
 func _physics_process(delta: float) -> void:
 	if is_finished() or hit_stopped(delta):
 		return

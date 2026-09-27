@@ -130,12 +130,24 @@ El juego **solo reporta su puntaje propio** en `finish(...)`. El modo competenci
 
 *Ejemplo:* `finish(result_from_scores({1: 12, 2: 9, 3: 9}))` → Pablo 1° (+100), Sofi y Tomi 2° (+70). Si el juego es "gana el primero en llegar", pasar `winners` explícitos: ese jugador queda 1° aunque otro tenga más puntaje.
 
+## Bots (opcional)
+
+Con bots, una persona sola puede jugar tu juego (ADR 0010). Sin hacer nada, el juego ya funciona con bots: el `Bot` base manda entradas suaves al azar según el control. Para que jueguen **bien**:
+
+1. En el juego, `bot_view()`: el estado público que se ve en la TV (posiciones, pelota…), de solo lectura. Nada que una persona no pueda ver.
+2. `host/bots/<id>_bot.gd` que `extends Bot` y sobrescribe `decide(view, delta) -> {axis, btn}`: qué haría una persona. Usá `aim_at`, `steer`, `predict`, `think_due` y `skill` de la base; la reacción, el error y el temblor ya los pone `Bot`.
+3. Registrarlo en `BotDriver.GAME_BOTS`.
+
+*Ejemplo:* el bot de Arena elige la estrella más cercana que nadie le va a ganar y hace `steer(yo, aim_at(estrella, yo))`. Nunca suma puntos: solo mueve el joystick.
+
+Para ver si el juego está balanceado: `godot --headless --path . -s res://tools/simulate.gd -- --n=50 --games=<id>` (duración, puntajes y ventaja por lugar de salida).
+
 ## 4. Correr los tests
 
 ```bash
 godot --headless --path . -s res://tests/run_tests.gd
 ```
-`test_registry_games_are_valid` y `test_games_run_headless` verifican automáticamente que el juego nuevo tenga metadatos válidos y que corra 30 frames con inputs aleatorios sin romperse; `test_games_have_thumbnails`, que tenga su miniatura.
+`test_registry_games_are_valid` y `test_games_run_headless` verifican automáticamente que el juego nuevo tenga metadatos válidos y que corra 30 frames con inputs aleatorios sin romperse; `test_games_have_thumbnails`, que tenga su miniatura; `test_bots_play_every_game`, que 4 bots lo jueguen hasta el final (en las 3 dificultades) sin mandar nada fuera de rango. Si tu juego no termina solo (ej. espera que alguien haga algo concreto), ese test lo marca.
 
 ## Reglas
 

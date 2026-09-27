@@ -15,6 +15,7 @@ Modos de juego, 20 ideas de juegos nuevos, retención y roadmap de contenido v0.
 | Juegos | 5 (Arena, Ping Pong, Carrera, Reloj exacto, Esquivar) y 2 en desarrollo (Empujones, Pintar el piso) |
 | Sistema visual | Propio, dibujado por código ([ADR 0004](adr/0004-sistema-visual.md)) |
 | Sonido y vibración | Sintetizados por código ([ADR 0005](adr/0005-sonido-sintetizado.md)) |
+| Bots | Uno por juego, 3 dificultades, para jugar solo o completar la mesa; simulación de balance ([ADR 0010](adr/0010-bots.md)) |
 | Calidad | ~450 verificaciones automáticas, CI con compilación y capturas en cada PR |
 | Sin probar todavía | TV y celulares reales, exportación a tiendas |
 
@@ -75,7 +76,10 @@ Principio: cada juego nuevo tiene que sumar **algo distinto** (control, dinámic
 | Memoria de colores | Repetir la secuencia | **Cuatro botones** (layout nuevo) | Juego de cabeza, no de reflejos |
 | Equilibrio | Mantener la bandeja nivelada | **Inclinación** (layout nuevo, acelerómetro) | Usa el celular como objeto físico |
 
-Bots con reglas en GDScript para completar lugares y simulación de miles de partidas en CI para balancear (ver "¿Una red neuronal…?" en [PRODUCCION.md](PRODUCCION.md)).
+- [x] **Bots con reglas** en GDScript para completar lugares y jugar solo, uno por juego, con 3 dificultades ([ADR 0010](adr/0010-bots.md)).
+- [x] **Simulación** bot contra bot sin pantalla (`tools/simulate.gd`): duración, puntajes y ventaja por lugar de salida (ver [JUEGOS.md](JUEGOS.md#balance-con-bots)). Ya encontró un problema de Arena (1P ganaba los empates).
+- [ ] Correr la simulación en CI y fallar si un juego se desbalancea (ej. un lugar gana > 40 % con 4 bots iguales).
+- [ ] Un bot reemplaza a quien se desconecta a mitad de partida (ver [CALIDAD.md](CALIDAD.md)).
 
 Cada layout nuevo cambia el protocolo y obliga a actualizar la app del celular: conviene sumarlos juntos en una sola versión.
 - **Listo cuando:** 10 juegos o más, al menos 4 tipos de control y 1 por equipos, con puntajes balanceados (ningún juego decide la competencia solo).

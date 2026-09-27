@@ -229,6 +229,29 @@ Apenas la TV manda un control (`layout`), vuelve todo a 60 fps y se apaga el baj
 - Una hoja determinista extra (fondo con las nubes quietas, mascotas con caminata, mirada, saludo y *squash*, vacías, estrellas rotadas, elipses, chips del marcador, medalla, tarjetas del lobby y Carrera y Pintar el piso escalados): **0 píxeles distintos**.
 - `tools/capture_screens.gd` antes y después: solo cambia lo que depende del tiempo o del azar (nubes, respiración, parpadeo y saludo, estrellas y bloques al azar, código de sala, confeti). Dos corridas de la punta *sin* el cambio difieren entre sí en la misma medida.
 
+### Bots (ADR 0010)
+
+Los bots corren en la TV en cada paso de física: tienen que costar poco. **Presupuesto: ≤ 0,5 ms por juego sobre el p95 de Scripts** (todos los bots juntos). Dos formas de medirlo:
+
+- `tools/benchmark.gd -- --bots`: los jugadores de cada juego son bots "Normal" en vez de entradas inventadas. Comparar con la corrida sin `--bots` en la misma máquina.
+- `tools/simulate.gd` (sin pantalla): la columna "Bots p95 / máx" mide solo `BotDriver.step` (todos los bots de un paso).
+
+Medido con 4 bots (2 en Ping Pong), 50 competencias, en el contenedor de desarrollo:
+
+| Juego | Bots p95 (ms) |
+|---|---:|
+| arena | 0,09 |
+| pingpong | 0,04 |
+| tap_race | 0,06 |
+| stop_clock | 0,06 |
+| dodge | 0,10–0,16 |
+| paint | 0,13–0,16 |
+| sumo | 0,07 |
+
+Con `tools/benchmark.gd -- --bots` (xvfb, contenedor cargado: los valores absolutos varían ±30 % entre corridas) la diferencia en Scripts p95 queda dentro del ruido en Arena, Ping Pong, Reloj, Esquivar y Pintar (−1,7 a +2 ms entre corridas, en ambos sentidos). En **Empujones** sube bastante (p95 23 → 38 ms en xvfb), pero no por los bots: con bots hay choques de verdad, y el juego dibuja estrellitas, sacudón y "+5" que con las entradas inventadas del benchmark casi no aparecen. Es el costo del juego con acción real y conviene mirarlo aparte. La placa "BOT" del marcador suma ~9 draw calls por juego (un lote para las figuras y un texto por bot).
+
+Cómo se mantiene bajo: `bot_view()` devuelve referencias (no copia nada), se llama una vez por paso para todos los bots, y los bots caros no piensan en cada frame: Esquivar prueba 9 movidas cada 0,07–0,3 s (según la dificultad) y Pintar busca primero en un radio de 4 baldosas. Hay máximos aislados de 1–14 ms (uno cada varios miles de pasos, incluso en Carrera, cuyo bot no calcula casi nada): parecen pausas del contenedor y no afectan el p95, pero conviene mirarlos en la TV real con el profiler.
+
 ## En la CI
 
 El job `capturas` de `.github/workflows/ci.yml` (que ya tiene pantalla virtual) corre además el benchmark con `--frames=150`:

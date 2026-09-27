@@ -10,6 +10,9 @@ extends SceneTree
 ##   … -- --frames=600               (más frames por escena; default 300)
 ##   … -- --only=lobby,dodge         (solo algunas escenas)
 ##   … -- --json=/tmp/bench.json     (además guarda la tabla en JSON)
+##   … -- --bots                     (los jugadores de los juegos son bots
+##                                    "Normal" en vez de entradas inventadas:
+##                                    mide cuánto cuestan los bots; ADR 0010)
 ##
 ## Igual que tools/capture_screens.gd necesita una pantalla (real o xvfb):
 ## con --headless no se dibuja nada y los números no sirven.
@@ -67,6 +70,8 @@ var _game_players: Array[Dictionary] = []
 var _game_t := 0.0
 var _restarts := 0
 var _late_sec := 0.0  ## > 0: adelantar el juego antes de medir (ver LATE_SCENES).
+var _use_bots := false  ## --bots: los jugadores los maneja un BotDriver.
+var _driver := BotDriver.new()
 
 
 func _initialize() -> void:
@@ -82,6 +87,9 @@ func _run() -> void:
 				_only.append(id.strip_edges())
 		elif arg.begins_with("--json="):
 			_json_path = arg.trim_prefix("--json=")
+		elif arg == "--bots":
+			_use_bots = true
+	_driver.auto_step = false
 	if DisplayServer.get_name() == "headless":
 		printerr("El benchmark necesita una pantalla: correlo con xvfb-run (ver el comentario del script).")
 		quit(1)
@@ -93,7 +101,8 @@ func _run() -> void:
 	RenderingServer.frame_pre_draw.connect(func() -> void: _pre_draw_us = Time.get_ticks_usec())
 	RenderingServer.frame_post_draw.connect(_on_frame_drawn)
 
-	print("\n=== Party Games · benchmark (%d frames por escena, %s) ===\n" % [_frames, _renderer_name()])
+	print("\n=== Party Games · benchmark (%d frames por escena, %s%s) ===\n" % [_frames, _renderer_name(),
+		", juegos con bots" if _use_bots else ""])
 	await _bench("lobby", _make_lobby)
 	await _bench("game_intro", _make_intro)
 	await _bench("round_summary", _make_summary)
@@ -106,6 +115,7 @@ func _run() -> void:
 	_print_table()
 	if not _json_path.is_empty():
 		_save_json()
+	_driver.free()
 	quit(0)
 
 
@@ -132,12 +142,16 @@ func _bench_game(info: Dictionary) -> void:
 	_game_id = info.id
 	_game_layout = info.layout
 	_game_players = _fake_players(mini(int(info.max_players), Protocol.MAX_PLAYERS))
+	if _use_bots:
+		for p in _game_players:
+			p["bot"] = true
+			p["difficulty"] = Bot.Difficulty.NORMAL
 	_restarts = -1
 	_start_game()
 	await _measure(info.id)
 	if is_instance_valid(_game):
 		_game.queue_free()
-	if LATE_SCENES.has(info.id) and _wanted(info.id + "_tarde"):
+	if LATE_SCENES.has(info.id) and _wanted(info.id + "_tarde") and not _use_bots:
 		await _frames_wait(3)
 		_late_sec = LATE_SCENES[info.id]
 		_restarts = -1
@@ -301,6 +315,8 @@ func _start_game() -> void:
 	_game = MiniGameRegistry.create(_game_id)
 	root.add_child(_game)
 	_game.setup(_game_players.duplicate(true))
+	if _use_bots:
+		_driver.start(_game, _game.players)
 	_game_t = 0.0
 	_restarts += 1
 	if _late_sec > 0.0 and _game.has_method("step"):
@@ -315,6 +331,9 @@ func _start_game() -> void:
 ## (más de lo que manda un celular real: peor caso).
 func _feed_game_input() -> void:
 	if not is_instance_valid(_game) or _game.is_finished():
+		return
+	if _use_bots:
+		_driver.step(1.0 / TARGET_FPS)  # Los bots deciden y mandan su entrada (medido en "scripts").
 		return
 	_game_t += 1.0 / TARGET_FPS
 	var t := _game_t
@@ -388,6 +407,7 @@ func _save_json() -> void:
 		"renderer": _renderer_name(),
 		"frames": _frames,
 		"target_fps": TARGET_FPS,
+		"bots": _use_bots,
 		"date": Time.get_datetime_string_from_system(true),
 		"scenes": _results,
 	}

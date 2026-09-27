@@ -18,9 +18,18 @@ extends Control
 ##
 ## Navegación con D-pad: ▲▼ entre filas, ◀▶ entre tarjetas o para cambiar
 ## la cantidad de jugadores, OK para marcar/desmarcar o empezar.
+##
+## Bots (ADR 0010): los lugares libres y los que tienen un bot también se
+## eligen con el D-pad. OK abre BotMenu: elegir la dificultad suma un bot
+## (o la cambia) y "Quitar bot" lo saca. Así juega una persona sola contra
+## bots, o se completa la mesa (2 personas + 2 bots). El lobby solo pide:
+## HostMain le pasa el pedido a HostServer.
 
 signal start_requested(game_ids: Array[String], shuffle: bool)
 signal capacity_changed(count: int)
+signal bot_add_requested(slot: int, difficulty: int)
+signal bot_remove_requested(player_id: int)
+signal bot_difficulty_requested(player_id: int, difficulty: int)
 
 const DEFAULT_PLAYERS := 2
 const JOIN_WIDTH := 508          ## Columna "¡Sumate!" (entran los pasos en letra grande).
@@ -44,6 +53,8 @@ var _code_box: HBoxContainer
 var _address: Label
 var _status: Label
 var _selection: Label
+var _bot_menu: BotMenu
+var _menu_slot := -1  # lugar cuyo menú de bot está abierto
 
 
 func _ready() -> void:
@@ -78,16 +89,35 @@ func refresh(players: Array[Dictionary]) -> void:
 	_stepper.set_range(maxi(1, players.size()), Protocol.MAX_PLAYERS)
 	player_count = _stepper.value
 	for i in _seats.size():
-		var p: Dictionary = {}
-		for candidate in players:
-			if candidate.slot == i:
-				p = candidate
-		_seats[i].show_player(p, i >= player_count and p.is_empty())
+		var p := _player_in_slot(i)
+		var locked := i >= player_count and p.is_empty()
+		_seats[i].show_player(p, locked)
+		# Lugar libre o con bot: se elige con el D-pad para sumar/cambiar un bot.
+		_seats[i].selectable = (p.is_empty() and not locked) or bool(p.get("bot", false))
 	for id: String in _cards:
 		var card: GameCard = _cards[id]
 		var ok := MiniGameRegistry.can_play(card.info, player_count)
 		card.set_unavailable("" if ok else "Solo " + GameCard.players_text(card.info))
 	_update_start()
+	# Si el lugar con foco dejó de ser elegible (entró una persona), el foco
+	# vuelve a un lugar con sentido. Solo con el lobby a la vista.
+	if is_inside_tree() and is_visible_in_tree() and not _bot_menu.visible:
+		focus_default()
+
+
+## Abre el menú de bots del lugar `slot` (OK sobre su tarjeta).
+func open_bot_menu(slot: int) -> void:
+	var p := _player_in_slot(slot)
+	var has_bot := bool(p.get("bot", false))
+	if not p.is_empty() and not has_bot:
+		return  # Una persona: no se toca.
+	_menu_slot = slot
+	_bot_menu.open(slot, has_bot, int(p.get("difficulty", Bot.Difficulty.NORMAL)),
+		p.get("color", Protocol.player_color(slot)))
+
+
+func is_bot_menu_open() -> bool:
+	return _bot_menu.visible
 
 
 func selected_game_ids() -> Array[String]:
@@ -115,6 +145,39 @@ func focus_default() -> void:
 
 
 # --- Lógica interna ---------------------------------------------------------------
+
+func _player_in_slot(slot: int) -> Dictionary:
+	for p in _players:
+		if p.slot == slot:
+			return p
+	return {}
+
+
+func _on_bot_difficulty(difficulty: int) -> void:
+	var p := _player_in_slot(_menu_slot)
+	if p.is_empty():
+		bot_add_requested.emit(_menu_slot, difficulty)
+	elif p.get("bot", false):
+		bot_difficulty_requested.emit(p.id, difficulty)
+
+
+func _on_bot_remove() -> void:
+	var p := _player_in_slot(_menu_slot)
+	if p.get("bot", false):
+		bot_remove_requested.emit(p.id)
+
+
+## Al cerrar el menú, el foco vuelve a la tarjeta del lugar (si sigue
+## siendo elegible) o a donde tenga sentido.
+func _on_bot_menu_closed() -> void:
+	var slot := _menu_slot
+	_menu_slot = -1
+	(func() -> void:
+		if slot >= 0 and _seats[slot].selectable and is_visible_in_tree():
+			_seats[slot].grab_focus()
+		else:
+			focus_default()).call_deferred()
+
 
 func _missing_players() -> int:
 	return maxi(0, player_count - _players.size())
@@ -170,6 +233,11 @@ func _build() -> void:
 	margin.add_child(columns)
 	columns.add_child(_build_join_column())
 	columns.add_child(_build_setup_column())
+	_bot_menu = BotMenu.new()
+	_bot_menu.difficulty_chosen.connect(_on_bot_difficulty)
+	_bot_menu.remove_requested.connect(_on_bot_remove)
+	_bot_menu.closed.connect(_on_bot_menu_closed)
+	add_child(_bot_menu)
 
 
 ## Columna izquierda: cómo unirse, en tres pasos numerados.
@@ -261,6 +329,7 @@ func _build_setup_column() -> Control:
 	for i in Protocol.MAX_PLAYERS:
 		var seat := SeatCard.new(i)
 		seat.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		seat.activated.connect(open_bot_menu)
 		seats.add_child(seat)
 		_seats.append(seat)
 	_stepper = Stepper.new()
@@ -331,7 +400,7 @@ func _build_setup_column() -> Control:
 
 	var hints := KeyHint.new()
 	hints.add_hint(["up", "down", "left", "right"], "Moverse") \
-		.add_hint(["OK"], "Elegir / quitar juego") \
+		.add_hint(["OK"], "Elegir juego · sumar bot") \
 		.add_hint(["left", "right"], "Cambiar cantidad")
 	col.add_child(hints)
 	return col

@@ -78,7 +78,7 @@ Seguido del cierre de la conexión con código **4000** y el motivo como razón 
 |---|---|
 | `bad_version` | Versión de protocolo distinta |
 | `bad_room` | Código incorrecto |
-| `room_full` | La sala alcanzó la capacidad elegida en la TV ("¿Cuántos juegan?", máximo 4) |
+| `room_full` | La sala alcanzó la capacidad elegida en la TV ("¿Cuántos juegan?", máximo 4) y no hay bots: si hay, un bot le deja su lugar a la persona (ver [Bots](#bots)) |
 | `bad_name` | Apodo vacío tras limpiarlo |
 | `game_in_progress` | Hay partida en curso (solo reconexiones permitidas) |
 | `malformed` | Mensaje inválido antes de unirse |
@@ -160,6 +160,14 @@ Cada jugador elige desde el celular el color y el estilo de su mascota (ver [ADR
 - **Validación** (`Protocol.parse_color_index`, `parse_style_index`, `parse_look`): número entero (se acepta `3.0`, no `3.5`), finito y en rango. Cualquier otra cosa se descarta sin rechazar la conexión.
 - **Solo cosmético**: nunca cambia puntos, puestos, lugar ni nombre.
 - **Compatible**: `VERSION` sigue en 1. Un control viejo (sin `color`/`style` ni `look`) juega con la apariencia de su lugar; con una TV vieja el celular no muestra el selector.
+
+## Bots
+
+Los bots ([ADR 0010](adr/0010-bots.md)) **no usan el protocolo**: viven en la TV, no tienen conexión ni token y su entrada (`axis`/`btn`) pasa por la misma validación que la de un celular (`Protocol.parse_input`). Para los celulares casi no existen: cuentan en `standing.players` (son rivales de la tabla), pero su color **no** aparece en `appearance.taken`, porque una persona lo puede elegir.
+
+- Si entra una persona y la sala está llena, reemplaza a un bot en vez de recibir `room_full`.
+- Si una persona pide (en `join` o `look`) un color que usa un bot, se lo queda y el bot cambia de color.
+- **Sin cambios de mensajes:** `VERSION` sigue en 1.
 
 ## Descubrimiento (UDP)
 

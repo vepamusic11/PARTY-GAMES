@@ -2082,6 +2082,340 @@ func _memory_run(game: Variant) -> void:
 		if game.is_finished():
 			return
 		game.step(1.0 / 60.0)
+# --- Bots (ADR 0010) ------------------------------------------------------------
+
+## Cada bot juega su juego entero (en todas las dificultades), sin errores,
+## termina, y NUNCA genera una entrada fuera de rango (eje ≤ 1, solo
+## botones conocidos): son entradas de celular, nada más.
+func test_bots_play_every_game() -> void:
+	for info in MiniGameRegistry.all_info():
+		for d in Bot.PROFILES.size():
+			var players := BotMatch.bot_players(int(info.max_players), d)
+			var r := BotMatch.run(root, info.id, players, 400.0, 0, Callable(), true)
+			check(r.finished, "%s (%s): los bots terminan el juego (%.0f s)" % [info.id, Bot.difficulty_name(d), r.seconds])
+			check(r.invalid_outputs == 0, "%s: %d entradas fuera de rango" % [info.id, r.invalid_outputs])
+			var bad := 0
+			for e: Array in r.raw_log:
+				var axis: Vector2 = e[1]
+				if not (is_finite(axis.x) and is_finite(axis.y)) or axis.length() > 1.0001 or (int(e[2]) & ~Protocol.BTN_MASK) != 0:
+					bad += 1
+			check(not r.raw_log.is_empty() and bad == 0, "%s: %d de %d entradas crudas fuera de rango" % [info.id, bad, r.raw_log.size()])
+			check((r.result.get("scores", {}) as Dictionary).size() == players.size(), "%s: puntaje para cada bot" % info.id)
+	await process_frame
+
+
+## Un juego sin bot propio (ej. uno nuevo) igual se juega: el Bot base manda
+## entradas suaves y válidas según el control.
+func test_bot_fallback_for_new_games() -> void:
+	var p := BotMatch.bot_players(1)[0]
+	for layout in Protocol.LAYOUTS:
+		var bot := BotDriver.create_bot("juego_nuevo", p, {"id": "juego_nuevo", "layout": layout}, 5)
+		check(bot.get_script() == Bot, "sin bot propio usa el Bot base")
+		var moved := false
+		var pressed := false
+		var ok := true
+		for i in 600:
+			var out := bot.tick({}, 1.0 / 60.0)
+			ok = ok and Bot.is_valid_output(out)
+			moved = moved or (out.axis as Vector2).length() > 0.1
+			pressed = pressed or out.btn != 0
+		check(ok, "%s: entradas válidas" % layout)
+		check(moved == (layout in [Protocol.LAYOUT_JOYSTICK, Protocol.LAYOUT_SLIDER_H]), "%s: mueve el eje solo si el control lo tiene" % layout)
+		check(pressed == (layout == Protocol.LAYOUT_ONE_BUTTON), "%s: aprieta solo si el control es un botón" % layout)
+	check(not Bot.is_valid_output({"axis": Vector2(2, 0), "btn": 0}), "detecta eje fuera de rango")
+	check(not Bot.is_valid_output({"axis": Vector2.ZERO, "btn": 4}), "detecta botón desconocido")
+	check(not Bot.is_valid_output({"axis": Vector2(NAN, 0), "btn": 0}), "detecta NaN")
+
+
+## Los bots juegan "bien" según su dificultad (umbrales holgados: hay azar).
+func test_bot_skill() -> void:
+	var hard := Bot.Difficulty.HARD
+	# Arena: el difícil, solo, junta estrellas.
+	var r := BotMatch.run(root, "arena", BotMatch.bot_players(1, hard))
+	check(int(r.result.scores[1]) >= 30, "Arena: el bot difícil junta estrellas (%d)" % int(r.result.scores[1]))
+	# Ping Pong: los difíciles devuelven casi todas las pelotas que les llegan.
+	var taps := {1: 0, 2: 0}
+	var players := BotMatch.bot_players(2, hard)
+	var game: Variant = MiniGameRegistry.create("pingpong")
+	game.process_mode = Node.PROCESS_MODE_DISABLED
+	root.add_child(game)
+	game.setup(players)
+	game.feedback.connect(func(pid: int, kind: String) -> void:
+		if kind == "tap":
+			taps[pid] += 1)
+	var driver := BotDriver.new()
+	driver.auto_step = false
+	driver.start(game, players)
+	var t := 0.0
+	while not game.is_finished() and t < 400.0:
+		driver.step(BotMatch.STEP)
+		game._physics_process(BotMatch.STEP)
+		t += BotMatch.STEP
+	var points: int = game._score[1] + game._score[2]
+	var returns: int = taps[1] + taps[2]
+	check(returns >= 20 and float(returns) / (returns + points) >= 0.75,
+		"Ping Pong: los difíciles devuelven pelotas (%d devoluciones, %d puntos)" % [returns, points])
+	driver.free()
+	game.free()
+	# Carrera: el normal llega a la meta en un tiempo humano.
+	r = BotMatch.run(root, "tap_race", BotMatch.bot_players(1))
+	check(r.finished and r.seconds < 12.0, "Carrera: el bot normal llega a la meta (%.1f s)" % r.seconds)
+	# Reloj exacto: el difícil frena cerca de 10.00 (promedio de 3).
+	var total := 0
+	for i in 3:
+		total += int(BotMatch.run(root, "stop_clock", BotMatch.bot_players(1, hard)).result.scores[1])
+	check(total / 3 >= 800, "Reloj: el bot difícil frena cerca de 10 s (%d de 1000)" % (total / 3))
+	# Pintar: el difícil, solo, pinta casi todo.
+	r = BotMatch.run(root, "paint", BotMatch.bot_players(1, hard))
+	check(int(r.result.scores[1]) >= 120, "Pintar: el bot difícil pinta el piso (%d baldosas)" % int(r.result.scores[1]))
+	# Esquivar y Empujones: contra alguien que no toca el control, gana el bot.
+	for id in ["dodge", "sumo"]:
+		var wins := 0
+		for i in 3:
+			var vs := BotMatch.bot_players(2, hard)
+			vs[0].bot = false  # 1P: una persona que no toca nada.
+			r = BotMatch.run(root, id, vs, 180.0, 0, func(_g: MiniGame, _pid: int, _t: float) -> Dictionary: return {})
+			if r.result.get("winners", []) == [2]:
+				wins += 1
+		check(wins >= 2, "%s: el bot difícil le gana a un jugador quieto (%d de 3)" % [id, wins])
+	await process_frame
+
+
+## El driver solo maneja a los bots: la entrada de una persona no se toca, y
+## la del bot llega por on_input ya validada (como la de la red).
+func test_bot_driver_only_moves_bots() -> void:
+	var players := BotMatch.bot_players(2)
+	players[0].bot = false
+	var game: Variant = MiniGameRegistry.create("arena")
+	game.process_mode = Node.PROCESS_MODE_DISABLED
+	root.add_child(game)
+	game.setup(players)
+	var driver := BotDriver.new()
+	driver.auto_step = false
+	driver.start(game, players)
+	check(driver.bots.size() == 1 and driver.bots[0].player_id == 2, "un bot, solo para el jugador bot")
+	for i in 60:
+		driver.step(BotMatch.STEP)
+		game._physics_process(BotMatch.STEP)
+	check(game._axis[1] == Vector2.ZERO, "la persona no se mueve sola")
+	check((game._axis[2] as Vector2).length() > 0.2, "el bot mueve su joystick")
+	driver.stop()
+	check(driver.bots.is_empty() and driver.game == null, "stop suelta el juego")
+	driver.free()
+	game.free()
+
+
+## Lobby con bots: sumar desde la tarjeta del lugar (menú con el D-pad),
+## cambiar la dificultad, quitarlo; las personas tienen prioridad (lugar y
+## color); los bots no reciben nada por la red.
+func test_host_bots_lobby() -> void:
+	var port := TEST_PORT + 60
+	var host := HostMain.new()
+	host.server_port = port
+	host.announce = false
+	host.transition_seconds = 0.0
+	root.add_child(host)
+	await process_frame
+	var c1 := _client()
+	c1.join("127.0.0.1", port, host.server.room_code, "Pablo")
+	await _until(func() -> bool: return host.server.get_players().size() == 1)
+	var lobby := host._lobby
+	check(lobby.player_count == 2 and lobby._seats[1].selectable and not lobby._seats[0].selectable,
+		"el lugar libre se puede elegir; el de una persona no")
+	# OK sobre el lugar 2P -> menú -> "Difícil".
+	var accept := InputEventAction.new()
+	accept.action = "ui_accept"
+	accept.pressed = true
+	lobby._seats[1]._gui_input(accept)
+	check(lobby.is_bot_menu_open(), "OK en un lugar libre abre el menú del bot")
+	lobby._bot_menu._choices[Bot.Difficulty.HARD].pressed.emit()
+	await process_frame
+	var players := host.server.get_players()
+	if not check_that(players.size() == 2, "se suma un bot (%d jugadores)" % players.size()):
+		host.queue_free()
+		await _free_clients()
+		return
+	check(players[1].bot and players[1].slot == 1, "el bot va en 2P")
+	check(players[1].name == "Bot Robi" and players[1].style == PlayerAvatar.STYLE_ROBOT and players[1].difficulty == Bot.Difficulty.HARD,
+		"bot con nombre, mascota robot y la dificultad elegida (%s)" % players[1])
+	check(not players[0].bot, "la persona no es bot")
+	check(host.server.get_human_count() == 1, "cuenta solo personas")
+	check(lobby.can_start(), "1 persona + 1 bot: se puede empezar")
+	check(lobby._seats[1].is_bot and lobby._seats[1]._status.text == "Bot · Difícil", "la tarjeta dice que es un bot")
+	check(not lobby.is_bot_menu_open() and lobby._seats[1].has_focus(), "al elegir se cierra y el foco vuelve al lugar")
+	# Cambiar la dificultad y quitarlo desde el mismo menú.
+	lobby.open_bot_menu(1)
+	check(lobby._bot_menu._remove.visible, "con bot, el menú ofrece quitarlo")
+	lobby._bot_menu._choices[Bot.Difficulty.EASY].pressed.emit()
+	check(host.server.get_players()[1].difficulty == Bot.Difficulty.EASY, "cambia la dificultad")
+	lobby.open_bot_menu(1)
+	lobby._bot_menu._remove.pressed.emit()
+	check(host.server.get_players().size() == 1, "quitar bot libera el lugar")
+	lobby.open_bot_menu(1)
+	var cancel := InputEventAction.new()
+	cancel.action = "ui_cancel"
+	cancel.pressed = true
+	lobby._bot_menu._unhandled_input(cancel)
+	check(not lobby.is_bot_menu_open() and host.server.get_players().size() == 1, "Atrás cierra el menú sin cambiar nada")
+
+	# Personas primero: sala llena (1 persona + 1 bot de 2) y entra otra.
+	check(host.add_bot(Bot.Difficulty.NORMAL), "suma un bot")
+	var bot_color: int = host.server.get_players()[1].color_index
+	await _frames(10)
+	check(c1.player_info.has("taken") and not bot_color in (c1.player_info.taken as Array),
+		"el color de un bot no figura como ocupado en el celular (%s)" % [c1.player_info.get("taken")])
+	var c2 := _client()
+	var rejected: Array = []
+	c2.rejected.connect(func(r: String) -> void: rejected.append(r))
+	c2.join("127.0.0.1", port, host.server.room_code, "Sofi", {"color": bot_color})
+	await _until(func() -> bool: return host.server.get_human_count() == 2)
+	players = host.server.get_players()
+	check(rejected.is_empty() and players.size() == 2 and not players[0].bot and not players[1].bot,
+		"una persona reemplaza al bot si no hay lugar (%s)" % [rejected])
+	check(players[1].name == "Sofi" and players[1].color_index == bot_color, "y se queda con el color que pidió")
+	# Un bot nunca le quita el color a una persona: si una persona lo pide, el bot se cambia.
+	host._lobby._stepper.set_value(4)
+	check(host.add_bot(), "suma un bot en 3P")
+	var bot3: Dictionary = host.server.get_players()[2]
+	var colors := {}
+	for p in host.server.get_players():
+		colors[p.color_index] = true
+	check(bot3.bot and colors.size() == 3, "colores únicos con bots")
+	var c3 := _client()
+	c3.join("127.0.0.1", port, host.server.room_code, "Tomi", {"color": bot3.color_index})
+	await _until(func() -> bool: return host.server.get_human_count() == 3)
+	players = host.server.get_players()
+	check(players.size() == 4 and players[3].name == "Tomi" and players[3].color_index == bot3.color_index,
+		"Tomi entra con el color que tenía el bot")
+	check(players[2].bot and players[2].color_index != bot3.color_index, "el bot se cambió de color")
+
+	# Durante la competencia no se suman ni se quitan bots.
+	check(host.start_tournament(["tap_race"] as Array[String]), "arranca con 3 personas + 1 bot")
+	check(not host.add_bot() and not host.remove_bot(3), "no se tocan los bots en plena competencia")
+	host.queue_free()
+	await _free_clients()
+
+
+## Competencia completa: 1 persona (simulada) + 3 bots de las 3 dificultades,
+## todos los juegos que admiten 4, hasta el podio. Los juegos avanzan a mano
+## (pasos de 1/60 s) para que el test sea rápido.
+func test_competition_one_human_three_bots() -> void:
+	var port := TEST_PORT + 61
+	var host := HostMain.new()
+	host.server_port = port
+	host.announce = false
+	host.transition_seconds = 0.0
+	root.add_child(host)
+	await process_frame
+	var c1 := _client()
+	c1.join("127.0.0.1", port, host.server.room_code, "Pablo")
+	await _until(func() -> bool: return host.server.get_players().size() == 1)
+	host._lobby._stepper.set_value(4)
+	for d in [Bot.Difficulty.EASY, Bot.Difficulty.NORMAL, Bot.Difficulty.HARD]:
+		check(host.add_bot(d), "suma bot %s" % Bot.difficulty_name(d))
+	check(host._lobby.can_start(), "1 persona + 3 bots: lista para empezar")
+	var ids := host._lobby.selected_game_ids()
+	if not check_that(host.start_tournament(ids), "arranca la competencia"):
+		host.queue_free()
+		await _free_clients()
+		return
+	host.bots.auto_step = false
+	var rounds := 0
+	var bot_rows_ok := true
+	var badges := 0
+	var seq := 0
+	while host.phase == Protocol.PHASE_PLAYING and rounds < 20:
+		host.skip_intro()
+		var game := host._game
+		if not check_that(is_instance_valid(game), "arranca el juego %d" % (rounds + 1)):
+			break
+		check(host.bots.bots.size() == 3, "%s: 3 bots jugando" % host.tournament.current_game_id)
+		var t := 0.0
+		while is_instance_valid(game) and not game.is_finished() and t < 200.0:
+			# La persona: mueve el joystick en círculos y toca el botón (como un celular).
+			seq += 1
+			var input := Protocol.parse_input({"seq": seq, "axis": [cos(t), sin(t * 1.3)], "btn": int(t * 6.0) % 2})
+			host._on_input(1, input)
+			host.bots.step(BotMatch.STEP)
+			game._physics_process(BotMatch.STEP)
+			t += BotMatch.STEP
+		rounds += 1
+		if not check_that(host._summary.visible, "resumen de la ronda %d (%.0f s)" % [rounds, t]):
+			break
+		var summary: Dictionary = host.tournament.history.back()
+		for row: Dictionary in summary.rows:
+			bot_rows_ok = bot_rows_ok and row.bot == (row.id != 1)
+		for col in host._summary._columns.get_children():
+			badges += col.find_children("*", "BotBadge", true, false).size()
+		host._summary._on_continue()
+	check(host._final.visible and host.phase == Protocol.PHASE_RESULTS, "termina en el podio")
+	var playable := 0
+	for id in ids:
+		if MiniGameRegistry.can_play(MiniGameRegistry.info(id), 4):
+			playable += 1
+	check(rounds == playable and rounds >= 6, "se jugaron todos los juegos para 4 (%d de %d)" % [rounds, playable])
+	check(bot_rows_ok, "el resumen marca quiénes son bots")
+	check(badges >= 3, "placa BOT en el resumen (%d)" % badges)
+	var standings := host.tournament.standings()
+	check(standings.size() == 4 and int(standings[0].total) > 0, "tabla final con los 4")
+	check(host.bots.bots.is_empty(), "sin juego, los bots no juegan")
+	host.queue_free()
+	await _free_clients()
+
+
+## Pausa: los bots se congelan con el juego (no "juegan solos" con el menú abierto).
+func test_bots_freeze_on_pause() -> void:
+	var port := TEST_PORT + 62
+	var host := HostMain.new()
+	host.server_port = port
+	host.announce = false
+	host.transition_seconds = 0.0
+	root.add_child(host)
+	await process_frame
+	var c1 := _client()
+	c1.join("127.0.0.1", port, host.server.room_code, "Pablo")
+	await _until(func() -> bool: return host.server.get_players().size() == 1)
+	host.add_bot(Bot.Difficulty.HARD)
+	host.start_tournament(["arena"] as Array[String])
+	host.skip_intro()
+	await _physics_frames(30)
+	var game: Variant = host._game
+	check((game._axis[2] as Vector2).length() > 0.1, "el bot se mueve durante el juego")
+	var cancel := InputEventAction.new()
+	cancel.action = "ui_cancel"
+	cancel.pressed = true
+	host._unhandled_input(cancel)
+	var before: Vector2 = game._pos[2]
+	await _physics_frames(20)
+	check(game._pos[2] == before, "en pausa el bot no se mueve")
+	host._unhandled_input(cancel)
+	await _physics_frames(20)
+	check(game._pos[2] != before, "al seguir, vuelve a jugar")
+	host.queue_free()
+	await _free_clients()
+
+
+## Tarjeta del lugar con un bot: placa BOT, dificultad y se puede elegir.
+func test_seat_card_bot() -> void:
+	var seat := SeatCard.new(2)
+	root.add_child(seat)
+	seat.show_player({"id": 3, "slot": 2, "name": "Bot Robi", "connected": true, "color": Protocol.player_color(2),
+		"style": PlayerAvatar.STYLE_ROBOT, "bot": true, "difficulty": Bot.Difficulty.EASY}, false)
+	check(seat.is_bot and seat._status.text == "Bot · Fácil", "muestra que es un bot y su dificultad")
+	seat.selectable = true
+	check(seat.focus_mode == Control.FOCUS_ALL, "elegible con el D-pad")
+	seat.show_player({}, false)
+	seat.grab_focus()
+	check(seat._name.text == "Sumar bot", "lugar libre con foco: dice qué hace OK")
+	seat.selectable = false
+	check(seat.focus_mode == Control.FOCUS_NONE, "una persona: no se elige")
+	seat.queue_free()
+	await process_frame
+
+
+func _physics_frames(n: int) -> void:
+	for i in n:
+		await physics_frame
 
 
 # --- Utilidades -----------------------------------------------------------------

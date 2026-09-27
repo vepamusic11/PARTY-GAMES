@@ -13,6 +13,10 @@ var _taps: Dictionary = {}       # player_id -> int
 var _was_down: Dictionary = {}   # player_id -> bool
 var _tap_times: Dictionary = {}  # player_id -> Array[int] (ms del último segundo)
 var _countdown := 3.0
+## Reloj del juego en ms (suma de los delta de _physics_process): el tope de
+## toques por segundo se mide en tiempo de juego, así una pausa no lo altera
+## y las simulaciones aceleradas (tools/simulate.gd) dan lo mismo que en vivo.
+var _clock_ms := 0.0
 ## Meta, separadores y carteles de los carriles: no cambian en toda la
 ## carrera, así que el lote de triángulos se arma una sola vez y en cada frame
 ## solo se vuelve a mandar (ver _draw).
@@ -50,8 +54,13 @@ func on_input(player_id: int, input: Dictionary) -> void:
 	_was_down[player_id] = down
 
 
+## Para los bots (ver MiniGame.bot_view): cuenta regresiva y toques. Solo lectura.
+func bot_view() -> Dictionary:
+	return {"countdown": _countdown, "taps": _taps, "goal": TAPS_TO_WIN}
+
+
 func _register_tap(player_id: int) -> void:
-	var now := Time.get_ticks_msec()
+	var now := int(_clock_ms)
 	var times: Array = _tap_times[player_id]
 	while not times.is_empty() and now - int(times[0]) > 1000:
 		times.pop_front()
@@ -84,6 +93,7 @@ func _lanes() -> Rect2:
 
 
 func _physics_process(delta: float) -> void:
+	_clock_ms += delta * 1000.0
 	if _countdown > -1.0:
 		var before := _countdown
 		_countdown -= delta
