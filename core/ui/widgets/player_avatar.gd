@@ -143,6 +143,10 @@ static func draw_mascot(ci: CanvasItem, feet: Vector2, u: float, col: Color, p_s
 	var look: Vector2 = anim.get("look", Vector2.ZERO)
 	var sq := clampf(float(anim.get("squash", 0.0)), -0.5, 0.5)
 	var wave := bool(anim.get("wave", false))
+	# Transformación que ya tenía el lienzo (ej. la mascota que cae girando en
+	# Empujones): el squash se compone encima y al final se restaura, en vez
+	# de volver a la identidad y dibujar el resto en la esquina.
+	var outer: Transform2D = anim.get("xform", Transform2D.IDENTITY)
 	var walking := walk >= 0.0
 	var style := posmod(p_style, STYLE_NAMES.size())
 	# Colores oscuros (negro, azul noche) necesitan más luz para leerse.
@@ -158,7 +162,8 @@ static func draw_mascot(ci: CanvasItem, feet: Vector2, u: float, col: Color, p_s
 	# Al caminar, rebota un poco con cada paso.
 	var step_bob := absf(sin(walk * TAU)) * 3.0 * u if walking else 0.0
 	# Squash & stretch alrededor de los pies: ancho × alto ≈ constante.
-	ci.draw_set_transform(feet - Vector2(0, lift + step_bob), 0.0, Vector2(1.0 + sq * 0.6, 1.0 - sq * 0.6))
+	ci.draw_set_transform_matrix(outer * Transform2D(0.0, Vector2(1.0 + sq * 0.6, 1.0 - sq * 0.6), 0.0,
+		feet - Vector2(0, lift + step_bob)))
 	var base := Vector2.ZERO
 	var head := base + Vector2(0, -52.0 * u + bob)
 	var r := 34.0 * u
@@ -248,7 +253,7 @@ static func draw_mascot(ci: CanvasItem, feet: Vector2, u: float, col: Color, p_s
 	batch.circle(head, r, shade if not is_empty else col)
 	if is_empty:
 		batch.flush(ci)
-		ci.draw_set_transform(Vector2.ZERO)
+		ci.draw_set_transform_matrix(outer)
 		return
 	batch.circle(head + Vector2(-0.05 * r, -0.07 * r), r * 0.92, col)
 	batch.ellipse(head + Vector2(-0.22 * r, -0.36 * r), 0.5 * r, 0.32 * r, Color(light, 0.55), -0.35)
@@ -347,7 +352,7 @@ static func draw_mascot(ci: CanvasItem, feet: Vector2, u: float, col: Color, p_s
 				batch.circle(screw, 2.6 * u, ink)
 				batch.circle(screw, 1.7 * u, METAL)
 	batch.flush(ci)
-	ci.draw_set_transform(Vector2.ZERO)
+	ci.draw_set_transform_matrix(outer)
 
 
 ## Agranda (o achica) un polígono desde su centro: contornos y rellenos internos.

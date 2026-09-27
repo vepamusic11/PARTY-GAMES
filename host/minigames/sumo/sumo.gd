@@ -600,8 +600,10 @@ func _draw_falling(ci: CanvasItem, p: Dictionary, off: Vector2) -> void:
 	if s <= 0.01:
 		return
 	var spin := k * PI * 1.5 * (1.0 if p.slot % 2 == 0 else -1.0)
-	ci.draw_set_transform(_pos[p.id] + off, spin, Vector2(s, s))
-	PlayerAvatar.draw_mascot(ci, Vector2(0, FEET_OFFSET), MASCOT_SCALE, p.color, p.slot, PlayerAvatar.Mood.SAD)
+	var xform := Transform2D(spin, Vector2(s, s), 0.0, _pos[p.id] + off)
+	ci.draw_set_transform_matrix(xform)
+	PlayerAvatar.draw_mascot(ci, Vector2(0, FEET_OFFSET), MASCOT_SCALE, p.color, p.slot, PlayerAvatar.Mood.SAD,
+		0.0, 0.0, false, {"xform": xform})
 	ci.draw_set_transform(Vector2.ZERO)
 
 
