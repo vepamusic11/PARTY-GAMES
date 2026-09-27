@@ -3,7 +3,12 @@ extends SceneTree
 ##   godot --headless --path . -s res://tests/run_tests.gd
 ## Sale con código 0 si todo pasa y 1 si algo falla (lo usa la CI).
 
-const TEST_PORT := 47990
+## Puertos de test por DEBAJO del rango efímero de Linux (32768–60999). En
+## ese rango el sistema elige al azar el puerto local de cada conexión
+## saliente: si un cliente de un test anterior quedaba en, por ejemplo, el
+## 47994, la TV del test siguiente no podía abrir ese puerto y fallaba de
+## forma intermitente en la CI.
+const TEST_PORT := 28990
 
 var _passed := 0
 var _failed := 0
@@ -34,6 +39,13 @@ func check(cond: bool, what: String) -> void:
 	else:
 		_failed += 1
 		printerr("    [%s] %s" % [_current, what])
+
+
+## Como check, pero devuelve el resultado: para cortar un test cuyo resto
+## no tiene sentido (y no romper con un error de script) si esto falla.
+func check_that(cond: bool, what: String) -> bool:
+	check(cond, what)
+	return cond
 
 
 # --- Protocolo ------------------------------------------------------------------
@@ -783,6 +795,23 @@ func test_host_tournament_flow() -> void:
 
 ## Cada celular recibe SU resultado ("standing") al terminar un juego de la
 ## competencia y en el podio, y lo recupera si se reconecta.
+func test_host_port_fallback() -> void:
+	# Si el puerto habitual está ocupado, la TV abre el siguiente libre.
+	var port := TEST_PORT + 50
+	var blocker := TCPServer.new()
+	check(blocker.listen(port, "*") == OK, "ocupa el puerto de prueba")
+	var host := HostMain.new()
+	host.server_port = port
+	host.announce = false
+	root.add_child(host)
+	await process_frame
+	check(host.server.is_listening() and host.server.port == port + 1,
+		"abre el siguiente puerto (%d)" % host.server.port)
+	host.queue_free()
+	blocker.stop()
+	await process_frame
+
+
 func test_host_sends_standing() -> void:
 	var port := TEST_PORT + 4
 	var host := HostMain.new()
@@ -791,6 +820,7 @@ func test_host_sends_standing() -> void:
 	host.transition_seconds = 0.0
 	root.add_child(host)
 	await process_frame
+	check(host.server.is_listening(), "la TV abre el puerto %d" % port)
 	var c1 := _client()
 	var c2 := _client()
 	var got1: Array[Dictionary] = []
@@ -801,7 +831,10 @@ func test_host_sends_standing() -> void:
 	await _until(func() -> bool: return host.server.get_players().size() == 1)
 	c2.join("127.0.0.1", port, host.server.room_code, "Sofi")
 	await _until(func() -> bool: return host.server.get_players().size() == 2)
-	check(host.start_tournament(["tap_race", "arena"] as Array[String]), "arranca la competencia")
+	if not check_that(host.start_tournament(["tap_race", "arena"] as Array[String]), "arranca la competencia"):
+		host.queue_free()
+		await _free_clients()
+		return
 	host.skip_intro()
 	await process_frame
 	check(got1.is_empty() and got2.is_empty(), "sin standing mientras se juega")

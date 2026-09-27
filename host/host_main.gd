@@ -30,6 +30,8 @@ const SETTINGS_PATH := "user://tv_settings.cfg"
 ## Mínimo entre dos avisos "feedback" al mismo celular: un juego no puede
 ## inundar la red aunque pida vibrar en cada frame.
 const FEEDBACK_MIN_MS := 80
+## Puertos consecutivos que prueba la TV si el habitual está ocupado.
+const PORT_ATTEMPTS := 5
 
 var server := HostServer.new()
 var beacon := DiscoveryBeacon.new()
@@ -68,7 +70,13 @@ func _ready() -> void:
 	server.player_updated.connect(_on_player_updated)
 
 	_build_ui()
-	var err := server.start(server_port)
+	# Si el puerto está ocupado (otra app, u otra conexión que el sistema puso
+	# justo ahí), prueba los siguientes: el lobby y el anuncio muestran el real.
+	var err := ERR_CANT_CREATE
+	for offset in PORT_ATTEMPTS:
+		err = server.start(server_port + offset)
+		if err == OK:
+			break
 	if err != OK:
 		_lobby.set_status("No se pudo abrir el puerto %d (error %d). ¿Hay otra instancia abierta?" % [server_port, err])
 		return
