@@ -76,6 +76,7 @@ const SHOTS := {
 		"orbit": {"c": Vector2(960, 620), "r": Vector2(90, 50), "spread": Vector2(140, 60)},
 	},
 	"sumo": {"sec": 5.5, "crop": Rect2(690, 420, 540, 304)},
+	"karts": {"sec": 8.0, "crop": Rect2(0, 0, 620, 349), "follow": true},
 }
 
 var _out_dir := OUT_DIR

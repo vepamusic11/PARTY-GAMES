@@ -139,6 +139,19 @@ Escenario desenfocado, tablero con volumen, marcador con mascotas, globito 1P–
 - **Render en xvfb**: sube en los juegos sin tablero (Ping Pong, Reloj exacto: el escenario es una textura estirada a pantalla completa y llvmpipe paga cada muestra). Con tablero, el escenario se pinta solo alrededor y el piso no tiene capas que se tapen (cada baldosa es cara + labio + brillo sin superponerse; la junta va solo en las rendijas): queda igual o menos que antes. Una primera versión con baldosas y bloques redondeados (~36 triángulos cada uno) y una sombra `StyleBoxFlat` del tamaño del tablero duplicaba el render: ver [ADR 0009](adr/0009-arte-de-los-juegos.md).
 - **Pintar el piso**: cada fila de baldosas es un lote de triángulos armado con la baldosa precalculada de cada jugador (`GameArt.tile_template`): 172 → 81 draw calls.
 
+### Karts de mascotas
+
+Medido con Empujones en la misma corrida como control (la máquina tenía varias corridas en paralelo: los tiempos absolutos salieron ~3× los de las tablas de arriba, con el juego a ~11 fps y varios pasos de física por frame). `karts_tarde` es la carrera a los 14 s (se midió con `LATE_SCENES` agregado en una copia local del benchmark):
+
+| Escena | Scripts prom. (ms) | Scripts p95 (ms) | Draw calls |
+|---|---:|---:|---:|
+| sumo (control) | 12,05 | 18,64 | 94 |
+| karts | 13,19 | 18,08 | **41** |
+| karts_tarde | 15,15 | 20,84 | **39** |
+
+- **CPU parecida a Empujones** (que en condiciones normales da p95 ≈ 6 ms): Karts debería quedar en el mismo rango, dentro de los 8 ms. La física son pasos fijos de 1/60 s (búsqueda local del tramo más cercano, ±8 puntos) y los centros de charcos y turbos se calculan una vez.
+- **Draw calls: ~40.** Pasto, pista (bordes de bloques, asfalto, líneas, largada a cuadros), turbos, charcos, árboles y el marco van en **un** lote en la capa fija (`draw_static`); el escenario se pinta solo alrededor del tablero. Por frame: un lote por kart (sombra, ruedas, chasis de plantilla por color, llamas), la mascota y el asiento, los globitos 1P–4P y las flechas que se prenden en los turbos. Las pestañas de vuelta debajo del marcador son una capa propia que se redibuja solo cuando cambia alguna vuelta.
+
 ## Qué se cambió y por qué
 
 ### 1. Capas estáticas que se dibujan una sola vez

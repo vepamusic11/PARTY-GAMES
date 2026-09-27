@@ -6,7 +6,7 @@ Más abajo: qué hace divertidos a los party games de referencia, **modos de jue
 
 **Regla de oro:** cada juego nuevo tiene que sumar algo distinto, ya sea un control, una dinámica o una emoción. Un juego que se parece mucho a otro ocupa lugar en el lobby sin aportar.
 
-## Los 7 de hoy
+## Los de hoy
 
 | Juego | Dinámica | Control | Jugadores |
 |---|---|---|---|
@@ -17,6 +17,7 @@ Más abajo: qué hace divertidos a los party games de referencia, **modos de jue
 | Esquivar | Evitar bloques que caen | Joystick | 1–4 |
 | Pintar el piso | Pintar más territorio que los demás | Joystick | 1–4 |
 | Empujones | Tirar a los otros de la isla | Joystick | 2–4 |
+| Karts de mascotas | Carrera de 3 vueltas vista desde arriba | Joystick | 1–4 |
 
 ## Propuestos
 
@@ -28,7 +29,7 @@ Más abajo: qué hace divertidos a los party games de referencia, **modos de jue
 
 | Juego | Cómo se juega | Control | Qué suma | Dificultad |
 |---|---|---|---|---|
-| **Karts de mascotas** | Circuito de 3 vueltas con curvas, turbos y charcos resbalosos. El kart acelera solo: el jugador solo dobla. | Joystick (usa el eje X; el Y frena) | La primera carrera de verdad: adelantar, cerrar al rival, la tensión de la última vuelta | Media: pista con curvas (`Curve2D`), vueltas y puestos |
+| **Karts de mascotas** ✅ *hecho* (`host/minigames/karts/`) | Circuito de 3 vueltas con curvas, turbos y charcos resbalosos. El kart acelera solo: el jugador solo dobla. | Joystick (usa el eje X; abajo frena, arriba turbo suave) | La primera carrera de verdad: adelantar, cerrar al rival, la tensión de la última vuelta | Media: pista suavizada (Catmull-Rom, polilínea), vueltas y puestos |
 | **Carrera de obstáculos** | Vista de costado, 4 carriles. Se salta con el botón para esquivar vallas y pozos, y tropezar frena un segundo. | Un botón | Timing puro; se aprende en 5 segundos | Baja |
 | **Derrape** | Mini circuito ovalado. Mantener apretado derrapa: más derrape da más turbo, pero con riesgo de salirse. | Un botón | Riesgo contra recompensa con un solo botón | Media |
 
@@ -36,6 +37,13 @@ Más abajo: qué hace divertidos a los party games de referencia, **modos de jue
 - **Nadie debe quedar "fuera de carrera".** Técnica de *rubber banding* (goma elástica): el que viene último recibe un turbo un poco más fuerte. *Ejemplo:* si Tomi va 2 vueltas atrás, sus turbos duran 20 % más. Tiene que ser sutil, que no se note como trampa.
 - **Cámara:** la pista entra entera en la pantalla. No hay pantalla dividida, porque en una TV a 3 metros cuatro pantallas chicas no se leen.
 - **Latencia:** doblar con 60 ms de demora se siente bien si el auto tiene algo de inercia. Con giros bruscos se sentiría "pesado".
+
+**Cómo quedó Karts de mascotas** (`host/minigames/karts/karts.gd`):
+- **Pista:** 16 puntos de control suavizados (Catmull-Rom) en una polilínea con un punto cada 12 px; el punto 0 es la línea de largada. Cada kart busca su tramo más cercano cerca del anterior (no se teletransporta) y suma lo que avanzó: cruzar la línea marcha atrás resta, no cuenta vuelta. Los bordes de bloques son paredes blanditas: frenan (×0,6), rebotan poco y enderezan el kart, así nadie queda trabado.
+- **Manejo:** acelera solo hasta 380 px/s; el eje X dobla con inercia de volante (τ ≈ 90 ms); abajo frena (hasta 40 %) y dobla más cerrado; arriba da +8 % pero en diagonal se dobla menos. Derrape: la velocidad de costado se la come el agarre (9/s; en un charco, 1/s durante 1 s).
+- **Turbos** ×1,55 durante 1,1 s; **goma elástica:** el último, 1,32 s (20 % más). **Choques** suaves entre karts (rebote 0,45).
+- **Fin:** cuando llegan todos, a los 90 s o 15 s después del primero. Puntaje "vueltas": los que llegaron, 3 + centésimas por orden de llegada; los demás, las vueltas recorridas.
+- **Física determinista:** pasos fijos de 1/60 s (`advance` acumula el delta real); mismo control, mismo resultado a 30, 60 o 144 fps (lo verifica `test_karts_deterministic`).
 
 ### Estilo pool
 
@@ -71,7 +79,7 @@ Toda la lógica vive en la TV, que sigue siendo autoritativa: el celular solo ma
 ## Orden recomendado
 
 1. **Pool loco:** no necesita un layout nuevo y su física se reutiliza en Mini golf y Bochas.
-2. **Karts de mascotas:** es la carrera que la gente espera en un party game y usa el joystick que ya existe.
+2. ~~**Karts de mascotas**~~ (hecho): es la carrera que la gente espera en un party game y usa el joystick que ya existe.
 3. **Carrera de obstáculos:** barata y muy clara para jugadores nuevos.
 4. **Hockey de mesa:** primer juego por equipos.
 5. Después, los que necesitan layouts nuevos (Memoria de colores, Equilibrio), sumados juntos en una sola versión del protocolo.

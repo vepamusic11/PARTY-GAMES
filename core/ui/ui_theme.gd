@@ -1148,3 +1148,15 @@ const GLOW := Color("#FFD84A")
 ## Mesa de Ping Pong.
 const TABLE_BLUE := Color("#2F6FDB")
 const TABLE_BLUE_DARK := Color("#1F4FB0")
+
+
+# --- Karts (agente) ---------------------------------------------------------------
+const ACCENT_KARTS := Color("#FF6B3D")      ## Tarjeta de Karts de mascotas en el lobby.
+const KARTS_GRASS := Color("#7ED35E")       ## Pasto en franjas (dos verdes).
+const KARTS_GRASS_ALT := Color("#71C852")
+const KARTS_TREE := Color("#3E9E48")        ## Copas de árboles y matas.
+const KARTS_ROAD := Color("#646C8F")        ## Asfalto.
+const KARTS_ROAD_LIGHT := Color("#6C7497")  ## Franja del medio del asfalto (gastada).
+const KARTS_ROAD_LINE := Color(1, 1, 1, 0.8)
+const KARTS_PUDDLE := Color("#4AA8F2")      ## Charcos resbalosos.
+const KARTS_PUDDLE_SHINE := Color("#CDEBFF")

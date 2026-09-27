@@ -1531,3 +1531,279 @@ func _until(cond: Callable, timeout_ms: int = 3000) -> void:
 	var start := Time.get_ticks_msec()
 	while not cond.call() and Time.get_ticks_msec() - start < timeout_ms:
 		await process_frame
+
+
+# --- Karts de mascotas ---------------------------------------------------------------
+
+const KARTS := preload("res://host/minigames/karts/karts.gd")
+
+
+## Pista: entra entera en el pasto (con bordes), sin curvas más cerradas que
+## su ancho, y ubicar un punto en la vuelta funciona.
+func test_karts_track() -> void:
+	var tr: Variant = KARTS.track()
+	var edge: float = KARTS.HALF_WIDTH + KARTS.CURB
+	check(tr.length > 3000.0 and tr.size() > 200, "pista cerrada de largo razonable (%.0f px)" % tr.length)
+	check(tr.min_radius() > edge, "ninguna curva más cerrada que el ancho de la pista (%.0f)" % tr.min_radius())
+	var inside := true
+	for i in tr.size():
+		for side: float in [-1.0, 1.0]:
+			inside = inside and KARTS.FIELD.grow(-6.0).has_point(tr.pts[i] + tr.nrm[i] * side * (edge + 6.0))
+	check(inside, "la pista entera (con bordes) entra en el pasto")
+	check(KARTS.FIELD.position.y - UiTheme.BOARD_FRAME >= UiTheme.HUD_TOP + UiTheme.HUD_CLOCK_H,
+		"el marco no queda debajo del marcador")
+	var loc: Array = tr.locate(tr.point_at(500.0, 30.0), -1)
+	check(absf(float(loc[1]) - 500.0) < 2.0 and absf(float(loc[2]) - 30.0) < 2.0, "ubica s y lateral (%s)" % [loc])
+	check(is_equal_approx(tr.wrap_delta(tr.length - 10.0), -10.0) and is_equal_approx(tr.wrap_delta(-tr.length + 10.0), 10.0),
+		"cruzar la línea no cuenta como una vuelta entera")
+	var start: Vector2 = tr.frame_at(0.0)[1]
+	check(start.x > 0.99, "la largada va hacia la derecha")
+	for pad: Vector2 in KARTS.PADS:
+		check(absf(pad.y) + KARTS.PAD_SIZE.y / 2.0 <= KARTS.HALF_WIDTH, "turbo dentro del asfalto")
+	for puddle: Vector3 in KARTS.PUDDLES:
+		check(absf(puddle.y) + puddle.z <= KARTS.HALF_WIDTH, "charco dentro del asfalto")
+
+
+## Manejo: acelera solo hasta la velocidad máxima, frena con el joystick
+## abajo, dobla con el X y en un charco patina (conserva el derrape).
+func test_karts_driving() -> void:
+	var k: Variant = KARTS.Kart.new()
+	for i in 180:
+		KARTS.drive(k, Vector2.ZERO, KARTS.FIXED_DT)
+	check(absf(k.vel.length() - KARTS.MAX_SPEED) < 1.0 and absf(k.heading) < 0.0001, "acelera solo y va derecho (%s)" % k.vel)
+	for i in 120:
+		KARTS.drive(k, Vector2(0, 1), KARTS.FIXED_DT)
+	check(absf(k.vel.length() - KARTS.MAX_SPEED * (1.0 - KARTS.BRAKE)) < 1.0, "abajo frena (%.0f)" % k.vel.length())
+	check(KARTS.target_speed(Vector2(0, -1), false, false, false) > KARTS.MAX_SPEED, "arriba: turbo suave")
+	check(KARTS.target_speed(Vector2.ZERO, true, false, false) > KARTS.target_speed(Vector2(0, -1), false, false, false),
+		"el turbo del piso es más fuerte que el suave")
+	var before: float = k.heading
+	for i in 10:
+		KARTS.drive(k, Vector2(1, 0), KARTS.FIXED_DT)
+	check(k.heading > before, "el X a la derecha dobla a la derecha")
+	# Derrape: la misma velocidad de costado dura más en un charco.
+	var dry: Variant = KARTS.Kart.new()
+	var wet: Variant = KARTS.Kart.new()
+	for kk: Variant in [dry, wet]:
+		kk.vel = Vector2(300, 200)
+	wet.slip = KARTS.SLIP_SEC
+	for i in 20:
+		KARTS.drive(dry, Vector2.ZERO, KARTS.FIXED_DT)
+		KARTS.drive(wet, Vector2.ZERO, KARTS.FIXED_DT)
+	check(absf(wet.vel.y) > absf(dry.vel.y) * 4.0, "en el charco resbala (%.0f vs %.0f)" % [wet.vel.y, dry.vel.y])
+	# Choque suave: se separan y el que embiste frena.
+	var a: Variant = KARTS.Kart.new()
+	var b: Variant = KARTS.Kart.new()
+	a.vel = Vector2(300, 0)
+	b.pos = Vector2(40, 0)
+	check(KARTS.bump(a, b) > 0.0 and a.pos.distance_to(b.pos) >= KARTS.KART_RADIUS * 2.0 - 0.01, "choque: se separan")
+	check(a.vel.x < 300.0 and b.vel.x > 0.0 and b.vel.x < 300.0, "choque suave: rebote parcial (%s, %s)" % [a.vel, b.vel])
+
+
+## Pone un kart en la pista: `dist` recorrido (con vueltas), a velocidad
+## máxima y mirando hacia adelante (o hacia atrás).
+func _karts_put(game: Variant, pid: int, dist: float, lateral: float = 0.0, backwards: bool = false) -> void:
+	var tr: Variant = KARTS.track()
+	var s := fposmod(dist, tr.length)
+	var k: Variant = game._karts[pid]
+	var dir: Vector2 = tr.frame_at(s)[1]
+	if backwards:
+		dir = -dir
+	k.pos = tr.point_at(s, lateral)
+	k.heading = dir.angle()
+	k.vel = dir * KARTS.MAX_SPEED
+	var loc: Array = tr.locate(k.pos, -1)
+	k.seg = loc[0]
+	k.s = loc[1]
+	k.lat = loc[2]
+	k.dist = dist
+
+
+func _karts_game(n: int, results: Array) -> Variant:
+	var game: Variant = MiniGameRegistry.create("karts")
+	root.add_child(game)
+	game.set_physics_process(false)
+	game.setup(_fake_players(n))
+	game.finished.connect(func(r: Dictionary) -> void: results.append(r))
+	return game
+
+
+## Vueltas: nadie se mueve en la cuenta regresiva, cruzar la línea suma una
+## vuelta, ir marcha atrás no, "¡Última vuelta!" y orden de llegada.
+func test_karts_laps_and_finish_order() -> void:
+	var results: Array = []
+	var game: Variant = _karts_game(3, results)
+	var L: float = KARTS.track().length
+	var start: Vector2 = game._karts[1].pos
+	game.on_input(1, {"seq": 0, "axis": Vector2(1, -1), "btn": 0})
+	for i in 60:
+		game.step_fixed()
+	check(game._karts[1].pos == start, "quieto durante la cuenta regresiva")
+	for i in 125:
+		game.step_fixed()
+	check(game._phase == KARTS.Phase.RACING and game._karts[1].pos != start, "después del ¡YA! acelera solo")
+	game.on_input(1, {"seq": 1, "axis": Vector2.ZERO, "btn": 0})
+	# Pablo cruza la línea: segunda vuelta.
+	_karts_put(game, 1, L - 20.0)
+	_karts_put(game, 2, 400.0)
+	_karts_put(game, 3, 300.0, -40.0)
+	for i in 10:
+		game.step_fixed()
+	check(game._karts[1].dist > L and KARTS.lap_of(game._karts[1].dist, L) == 2, "cruzar la línea suma una vuelta")
+	check(game.places()[1] == 1, "Pablo va primero")
+	# Sofi cruza la línea marcha atrás: no suma, resta.
+	_karts_put(game, 2, 10.0, 40.0, true)
+	for i in 20:
+		game.step_fixed()
+	check(game._karts[2].dist < 0.0 and KARTS.lap_of(game._karts[2].dist, L) == 1, "marcha atrás no cuenta vuelta (%.0f)" % game._karts[2].dist)
+	# Pablo empieza la última vuelta.
+	_karts_put(game, 1, 2.0 * L - 10.0)
+	for i in 5:
+		game.step_fixed()
+	check(game._banner == "¡Última vuelta!" and game._banner_t > 0.0, "cartel de última vuelta")
+	check(game._hud_center()[0] == "Vuelta 3/3", "el marcador muestra la vuelta del que va primero (%s)" % [game._hud_center()])
+	# Llegada: Tomi, Pablo y Sofi (en ese orden, en fila por el mismo carril).
+	_karts_put(game, 3, 3.0 * L - 15.0)
+	_karts_put(game, 1, 3.0 * L - 80.0)
+	_karts_put(game, 2, 3.0 * L - 145.0)
+	for i in 40:
+		game.step_fixed()
+	check(game._finish_order == [3, 1, 2], "orden de llegada (%s)" % [game._finish_order])
+	check(game._phase == KARTS.Phase.ENDING and results.is_empty(), "muestra ¡Meta! antes de terminar")
+	for i in 200:
+		game.step_fixed()
+	check(results.size() == 1, "termina una sola vez (%d)" % results.size())
+	if results.size() == 1:
+		var r: Dictionary = results[0]
+		check(r.winners == [3], "gana Tomi (%s)" % [r.winners])
+		var entries: Array[Dictionary] = []
+		for pid: int in r.scores:
+			entries.append({"id": pid, "score": float(r.scores[pid]), "winner": pid in r.winners})
+		var places := Tournament.rank(entries)
+		check(places[3] == 1 and places[1] == 2 and places[2] == 3, "la competencia respeta el orden de llegada (%s)" % [places])
+		check(float(r.scores[2]) >= KARTS.LAPS, "los que llegaron tienen las 3 vueltas (%s)" % [r.scores])
+	game.finish({"winners": [1], "scores": {}})
+	check(results.size() == 1, "finished se emite una sola vez")
+	check(KARTS.get_info().score_label == "vueltas", "puntaje en vueltas")
+	game.queue_free()
+	await process_frame
+
+
+## Goma elástica: el que va último recibe un turbo 20 % más largo; el
+## primero, el normal. Los charcos hacen patinar.
+func test_karts_rubber_band() -> void:
+	check(is_equal_approx(KARTS.turbo_duration(true), KARTS.TURBO_SEC * 1.2), "último: turbo 20 % más largo")
+	check(is_equal_approx(KARTS.turbo_duration(false), KARTS.TURBO_SEC), "los demás: turbo normal")
+	var results: Array = []
+	var game: Variant = _karts_game(2, results)
+	var L: float = KARTS.track().length
+	game._countdown = 0.0
+	game._phase = KARTS.Phase.RACING
+	var pad: Vector2 = KARTS.PADS[0]
+	# Sofi (última) pisa el turbo.
+	_karts_put(game, 1, pad.x * L + 900.0)
+	_karts_put(game, 2, pad.x * L - 8.0, pad.y)
+	game.step_fixed()
+	check(is_equal_approx(game._karts[2].turbo, KARTS.TURBO_SEC * KARTS.RUBBER_BAND), "Sofi, última, turbo largo (%.2f)" % game._karts[2].turbo)
+	# Pablo (primero) pisa otro turbo: el normal.
+	var pad2: Vector2 = KARTS.PADS[1]
+	_karts_put(game, 1, L + pad2.x * L - 8.0, pad2.y)
+	game.step_fixed()
+	check(is_equal_approx(game._karts[1].turbo, KARTS.TURBO_SEC), "Pablo, primero, turbo normal (%.2f)" % game._karts[1].turbo)
+	# Con turbo va más rápido (sin pista: solo el manejo).
+	var fast: Variant = KARTS.Kart.new()
+	fast.vel = Vector2(KARTS.MAX_SPEED, 0)
+	fast.turbo = KARTS.TURBO_SEC
+	for i in 30:
+		KARTS.drive(fast, Vector2.ZERO, KARTS.FIXED_DT)
+	check(fast.vel.length() > KARTS.MAX_SPEED * 1.2, "con turbo supera la velocidad máxima (%.0f)" % fast.vel.length())
+	# Charco: patina.
+	var puddle: Vector3 = KARTS.PUDDLES[0]
+	_karts_put(game, 1, 2.0 * L + puddle.x * L, puddle.y)
+	game.step_fixed()
+	check(game._karts[1].slip > 0.0, "el charco hace patinar")
+	game.queue_free()
+	await process_frame
+
+
+## Fin por tiempo: a los 90 s (o 15 s después del primero) los que no
+## llegaron quedan por distancia recorrida.
+func test_karts_time_limit() -> void:
+	var results: Array = []
+	var game: Variant = _karts_game(3, results)
+	var L: float = KARTS.track().length
+	game._countdown = 0.0
+	game._phase = KARTS.Phase.RACING
+	game._elapsed = KARTS.TIME_LIMIT_SEC - 0.05
+	_karts_put(game, 1, 1.5 * L)
+	_karts_put(game, 2, 2.2 * L)
+	_karts_put(game, 3, 0.4 * L)
+	check(game._hud_center()[1] == "clock", "al final el marcador muestra el reloj")
+	for i in 10:
+		game.step_fixed()
+	check(game._phase == KARTS.Phase.ENDING and game._end_text == "¡Tiempo!", "a los 90 s: ¡Tiempo!")
+	for i in 200:
+		game.step_fixed()
+	check(results.size() == 1, "termina una sola vez")
+	if results.size() == 1:
+		var r: Dictionary = results[0]
+		check(r.winners == [2], "gana el que más avanzó (%s)" % [r.winners])
+		var s: Dictionary = r.scores
+		check(float(s[2]) > float(s[1]) and float(s[1]) > float(s[3]), "por distancia (%s)" % [s])
+		check(absf(float(s[2]) - 2.2) < 0.05 and float(s[2]) < KARTS.LAPS, "puntaje = vueltas recorridas (%s)" % [s])
+	game.queue_free()
+	# Llega uno: los demás tienen 15 s más.
+	results.clear()
+	var g2: Variant = _karts_game(2, results)
+	g2._countdown = 0.0
+	g2._phase = KARTS.Phase.RACING
+	g2._elapsed = 30.0
+	_karts_put(g2, 1, 3.0 * L - 10.0)
+	_karts_put(g2, 2, 1.5 * L)
+	for i in 5:
+		g2.step_fixed()
+	check(g2._karts[1].finished() and g2._phase == KARTS.Phase.RACING, "llegó uno: la carrera sigue")
+	g2._elapsed = g2._first_finish + KARTS.FINISH_GRACE_SEC - 0.02
+	for i in 5:
+		g2.step_fixed()
+	check(g2._phase == KARTS.Phase.ENDING and g2._end_text == "¡Tiempo!", "15 s después del primero: ¡Tiempo!")
+	for i in 200:
+		g2.step_fixed()
+	check(results.size() == 1 and results[0].winners == [1] and float(results[0].scores[2]) < KARTS.LAPS,
+		"gana el que llegó; el otro, por distancia")
+	g2.queue_free()
+	await process_frame
+
+
+## Física determinista: la misma carrera con los mismos controles da
+## exactamente lo mismo, a 60 o a 30 fps (pasos fijos), con choques incluidos.
+func test_karts_deterministic() -> void:
+	var runs: Array = []
+	for fps: int in [60, 60, 30, 144]:
+		var game: Variant = MiniGameRegistry.create("karts")
+		game.setup(_fake_players(4))
+		game.place_on_grid(1)
+		# Los controles cambian cada 4 pasos fijos (1/15 s): así los frames
+		# de 30 fps no parten un cambio al medio.
+		while game._ticks < 60 * 15:
+			var block := floori(game._ticks / 4.0)
+			for pid: int in game._karts:
+				game.on_input(pid, {"seq": block, "axis": Vector2(sin(block * 0.37 + pid), cos(block * 0.23 + pid * 2.0) * 0.7), "btn": 0})
+			if fps == 144:
+				game.advance(1.0 / fps)  # Frames más cortos que el paso: a veces ninguno.
+			else:
+				for k in roundi(60.0 / fps):
+					game.step_fixed()
+		var snap: Array = []
+		for pid: int in game._karts:
+			snap.append(game._karts[pid].snapshot())
+		runs.append(snap)
+		game.free()
+	check(runs[0] == runs[1], "misma entrada, mismo resultado")
+	check(runs[0] == runs[2], "a 30 fps da lo mismo que a 60")
+	check(runs[0] == runs[3], "con frames de 144 Hz (advance acumula) da lo mismo")
+	# Nadie se sale de la pista.
+	var lat_ok := true
+	for snap: Array in runs[0]:
+		lat_ok = lat_ok and absf(float(snap[8])) <= KARTS.HALF_WIDTH - KARTS.KART_RADIUS + 1.0
+	check(lat_ok, "todos siguen dentro de la pista")
