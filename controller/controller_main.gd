@@ -585,6 +585,9 @@ func _update_header() -> void:
 ## adapta (tinta o blanco, UiTheme.text_on) para que se lea con blanco y negro.
 func _set_backdrop(color: Color, slot: int, style: int) -> void:
 	_backdrop.set_player(color, slot, style)
+	# Mascota 3D (ADR 0012): la propia queda horneada; la anterior (si cambió
+	# de look en el selector) se suelta sola.
+	MascotAtlas.keep_only("phone", [{"color": color, "style": slot if style < 0 else style}])
 	_wait_sub.add_theme_color_override("font_color", _backdrop.ink())
 
 

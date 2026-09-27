@@ -4043,3 +4043,210 @@ func test_boot_selector() -> void:
 		"◀ ▶ pasan de una tarjeta a la otra")
 	boot.queue_free()
 	await process_frame
+
+
+# --- Mascotas 3D horneadas (MascotAtlas, ADR 0012) (agente) --------------------------
+
+## Sin render (--headless, como la CI): el caché no hornea ni encola nada y
+## todas las mascotas se dibujan en 2D, igual que siempre.
+func test_mascot_atlas_headless_fallback() -> void:
+	if DisplayServer.get_name() != "headless":
+		return  # Con pantalla lo cubre tools/mascot_atlas_check.gd.
+	check(not MascotAtlas.available(), "sin render no hay 3D horneado")
+	MascotAtlas.prewarm_game([{"id": 1, "slot": 0, "color": Color.RED, "style": 2}], 0.8)
+	check(MascotAtlas.is_idle() and MascotAtlas.pending_count() == 0, "precalentar sin render no encola nada")
+	check(MascotAtlas.lookup(Color.RED, 2, 0.8, "idle@0").is_empty(), "sin render no hay cuadro")
+	var job := Mascot3DBaker.Job.new({"color": 3, "style": 6}, [MascotAtlas.pose_def("wave_1@1")], Vector2i(40, 50))
+	check(job.step(root) and not job.ok and job.texture == null, "un horneado sin render termina enseguida, vacío")
+	var before := PlayerAvatar.drawn
+	var before_baked := PlayerAvatar.drawn_baked
+	var probe := Control.new()
+	probe.draw.connect(func() -> void:
+		for m in PlayerAvatar.Mood.size():
+			PlayerAvatar.draw_mascot(probe, Vector2(50, 100), 0.8, Color.RED, m, m, 0.0, 0.0, false,
+				{"t": 1.0, "walk": 0.3, "look": Vector2(1, 0)}))
+	root.add_child(probe)
+	await _frames(2)
+	check(PlayerAvatar.drawn - before == PlayerAvatar.Mood.size(), "se dibujan todas (2D)")
+	check(PlayerAvatar.drawn_baked == before_baked, "ninguna como sprite 3D")
+	probe.queue_free()
+
+
+## Nombres de pose: cada combinación de ánimo y animación da un cuadro que
+## el baker sabe hornear, con alternativas mientras se hornea.
+func test_mascot_atlas_pose_keys() -> void:
+	var M := PlayerAvatar.Mood
+	check(MascotAtlas.pose_for(M.NORMAL, {}) == "idle@0", "quieta")
+	check(MascotAtlas.pose_for(M.HAPPY, {"t": 0.0, "wave": true}) == "wave_0@1", "saludando")
+	check(MascotAtlas.pose_for(M.HAPPY, {"t": MascotAtlas.WAVE_PERIOD * 0.6, "wave": true}) == "wave_2@1", "cuadro del saludo según t")
+	check(MascotAtlas.pose_for(M.NORMAL, {"walk": 0.5, "look": Vector2(1, 0)}) == "walk_r_4@0", "camina a la derecha")
+	check(MascotAtlas.pose_for(M.SAD, {"walk": 1.99, "look": Vector2(-0.9, 0.2)}) == "walk_l_7@2", "camina a la izquierda, triste")
+	check(MascotAtlas.pose_for(M.NORMAL, {"walk": 0.0, "look": Vector2(0, 1)}) == "walk_f_0@0", "camina de frente")
+	check(MascotAtlas.pose_for(M.NORMAL, {"look": Vector2(0, -1)}) == "look_u@0", "mira arriba")
+	check(MascotAtlas.pose_for(M.NORMAL, {"look": Vector2(0.2, 0)}) == "idle@0", "mirada chica: de frente")
+	check(MascotAtlas.pose_for(M.NORMAL, {"t": 0.05}, 0) == "blink@0", "parpadea con el reloj de la 2D")
+	check(MascotAtlas.pose_for(M.HAPPY, {"t": 0.05}, 0) == "idle@1", "feliz no parpadea")
+	check(MascotAtlas.pose_for(M.WINNER, {"t": 0.3, "dance": 1.0, "dance_kind": 2}).begins_with("dance2_"), "baila")
+	check(MascotAtlas.pose_for(M.NORMAL, {"dance": 1.0, "dance_kind": 99}, 4).begins_with("dance1_"), "baile del estilo")
+	check(MascotAtlas.pose_for(M.NORMAL, {"greet": 1.0}).begins_with("greet_") and
+		MascotAtlas.pose_for(M.SAD, {"defeat": 1.0}) == "defeat@2", "saludo y derrota")
+	check(MascotAtlas.pose_for(99, {}) == "idle@%d" % (M.size() - 1), "ánimo fuera de rango: se recorta")
+	# Todo lo que puede pedir pose_for y todo lo que se precalienta se puede hornear.
+	var keys: Array[String] = []
+	keys.append_array(MascotAtlas.SCREEN_POSES)
+	keys.append_array(MascotAtlas.GAME_POSES_STATIC)
+	for m in M.size():
+		for anim in [{}, {"t": 1.7}, {"look": Vector2(-1, 0)}, {"look": Vector2(0, 1)}, {"t": 0.2, "wave": true},
+				{"walk": 0.6, "look": Vector2(1, 0)}, {"walk": 0.1}, {"greet": 1.0, "t": 0.4}, {"defeat": 1.0},
+				{"dance": 1.0, "t": 0.8, "dance_kind": 0}, {"dance": 1.0, "t": 0.3, "dance_kind": 1}]:
+			keys.append(MascotAtlas.pose_for(m, anim, 3))
+	for k in keys:
+		var d := MascotAtlas.pose_def(k, 5)
+		check(not d.is_empty() and d.name == k and d.anim.get("in_place", false), "pose horneable: %s" % k)
+		var fb := MascotAtlas.fallbacks(k)
+		check(k == "idle@0" or (not fb.is_empty() and fb[fb.size() - 1] == "idle@0"), "%s termina en idle@0 (%s)" % [k, fb])
+	for bad in ["", "idle", "idle@", "idle@x", "idle@99", "walk_x_1@0", "walk_r_9@0", "wave_7@1", "dance9_0@0",
+			"look_q@0", "nada@0", "@0"]:
+		check(MascotAtlas.pose_def(bad).is_empty(), "pose inválida descartada: '%s'" % bad)
+	# Los cuadros animados no caen en un parpadeo automático de la 3D.
+	for st in PlayerAvatar.STYLE_NAMES.size():
+		for f in 4:
+			var t := float(MascotAtlas.pose_def("wave_%d@0" % f, st).anim.t)
+			check(fposmod(t + st * 1.37, 3.3) >= 0.12, "saludo sin parpadeo (estilo %d)" % st)
+
+
+## Tamaños de horneado: cada tamaño de juego y pantalla cae en uno que se
+## achica poco (≤ 1,08× de agrandamiento) y la memoria por pose es la documentada.
+func test_mascot_atlas_tiers() -> void:
+	var last := -1
+	for u in [0.3, 0.56, 0.58, 0.7, 0.76, 0.8, 0.85, 1.3, 1.45, 1.5, 1.65, 1.8, 2.2, 2.9, 3.4, 6.0]:
+		var tier := MascotAtlas.tier_for(u)
+		check(tier >= last, "tier_for crece con u")
+		last = tier
+		var k: float = u / MascotAtlas.TIERS_U[tier]
+		if u <= MascotAtlas.TIERS_U[-1]:
+			check(k <= MascotAtlas.MAX_UPSCALE + 0.001 and k >= 0.45, "u=%.2f se dibuja a %.2f× de su tamaño" % [u, k])
+	var cell := Mascot3DBaker.atlas_cell_px(0.95)
+	check(cell == Vector2i(114, 133), "celda de juego 114×133 (%s)" % cell)
+	check(cell.x * cell.y * 4 < 64 * 1024, "una pose de juego ocupa < 64 KB")
+	var screen := Mascot3DBaker.atlas_cell_px(MascotAtlas.TIERS_U[MascotAtlas.tier_for(MascotAtlas.SCREEN_U)])
+	check(screen.x * screen.y * 4 < 360 * 1024, "una pose de pantalla ocupa < 360 KB (%s)" % screen)
+	var feet := Mascot3DBaker.atlas_feet(cell)
+	check(is_equal_approx(feet.x, cell.x / 2.0) and feet.y > cell.y * 0.9 and feet.y < cell.y, "pies abajo al centro (%s)" % feet)
+	for c in [Vector2i(75, 87), cell, screen, Mascot3DBaker.atlas_cell_px(3.4)]:
+		var g := Mascot3DBaker.job_grid(c)
+		var px: int = g.x * c.x * g.y * c.y * Mascot3DBaker.SUPERSAMPLE * Mascot3DBaker.SUPERSAMPLE
+		check(g.x >= 1 and g.y >= 1 and (px <= Mascot3DBaker.MAX_JOB_PIXELS or g.x * g.y == 1),
+			"viewport de horneado acotado (%s: %d px)" % [c, px])
+		check(g.x * c.x * Mascot3DBaker.SUPERSAMPLE <= Mascot3DBaker.MAX_VIEWPORT, "ancho del viewport ≤ %d" % Mascot3DBaker.MAX_VIEWPORT)
+
+
+## Encuadre: en todas las poses que se hornean, la mascota (con su contorno)
+## entra en la celda del atlas. Si la mascota 3D crece (orejas, accesorios),
+## este test avisa antes de que aparezcan mascotas recortadas.
+func test_mascot_atlas_framing() -> void:
+	var b := Basis(Vector3.RIGHT, -deg_to_rad(Mascot3DBaker.PITCH_DEG))
+	var cell := Mascot3DBaker.ATLAS_CELL
+	var cy := (cell.y / 2.0 - Mascot3DBaker.ATLAS_FEET) * b.y.y
+	# La celda en el plano de la cámara (y hacia arriba, pies en 0).
+	var box := Rect2(Vector2(-cell.x / 2.0, cy - cell.y / 2.0), cell)
+	var ink := 0.35  # Contorno inflado (INK_W) y un poco de antialiasing.
+	var poses := ["idle@0", "wave_1@1", "walk_r_2@0", "walk_l_6@0", "look_u@0", "look_d@2", "greet_0@1",
+		"dance0_1@1", "dance1_2@1", "dance2_3@1", "defeat@2"]
+	var worst := Rect2()
+	for st in PlayerAvatar.STYLE_NAMES.size():
+		var m := Mascot3D.new().setup(Protocol.MASCOT_COLORS[st], st)
+		root.add_child(m)
+		for pose: String in poses:
+			var d := MascotAtlas.pose_def(pose, st)
+			m.apply(int(d.mood), d.anim)
+			var lo := Vector2(INF, INF)
+			var hi := Vector2(-INF, -INF)
+			for mi: MeshInstance3D in m.find_children("*", "MeshInstance3D", true, false):
+				if not mi.is_visible_in_tree() or mi.mesh == null:
+					continue
+				var xf := mi.global_transform
+				for sfc in mi.mesh.get_surface_count():
+					var verts: PackedVector3Array = xf * (mi.mesh.surface_get_arrays(sfc)[Mesh.ARRAY_VERTEX] as PackedVector3Array)
+					for v in verts:
+						var p := Vector2(v.dot(b.x), v.dot(b.y))
+						lo = lo.min(p)
+						hi = hi.max(p)
+			var ext := Rect2(lo, hi - lo).grow(ink)
+			worst = ext if worst.size == Vector2.ZERO else worst.merge(ext)
+			check(box.encloses(ext), "estilo %d, %s: entra en la celda (%s de %s)" % [st, pose, ext, box])
+		m.free()
+	print("    encuadre: la mascota ocupa %s; celda %s" % [worst, box])
+	await process_frame
+
+
+## Caché: busca lo horneado (y alternativas), encola lo que falta, suelta a
+## los jugadores que se fueron y respeta el presupuesto de memoria.
+func test_mascot_atlas_cache() -> void:
+	MascotAtlas.clear()
+	MascotAtlas.fake_render = true
+	MascotAtlas.release_after_msec = 0  # Sin demora: lo que no se usa se suelta ya.
+	var img := Image.create(8, 8, false, Image.FORMAT_RGBA8)
+	img.fill(Color.RED)
+	var tex := ImageTexture.create_from_image(img)
+	var red := Protocol.mascot_color(0)
+	var pink := Protocol.mascot_color(5)
+	var old := Time.get_ticks_msec() - 60000
+	MascotAtlas.inject(red, 0, 0.8, "idle@0", tex, old)
+	MascotAtlas.inject(red, 0, 0.8, "wave_0@1", tex, old)
+	MascotAtlas.inject(pink, 6, 0.8, "idle@0", tex, old)
+	MascotAtlas.inject(pink, 6, 2.0, "idle@1", tex, old)
+	check(MascotAtlas.look_count() == 2 and MascotAtlas.pose_count() == 4, "2 apariencias, 4 poses")
+	var f := MascotAtlas.lookup(red, 0, 0.8, "idle@0")
+	check(f.size() == 4 and f[0] == tex, "encuentra la pose horneada")
+	check(f.size() == 4 and is_equal_approx(float(f[3]), 0.8 / MascotAtlas.TIERS_U[MascotAtlas.tier_for(0.8)]),
+		"escala al tamaño pedido")
+	check(MascotAtlas.lookup(red, 4, 0.8, "idle@0").is_empty(), "otro estilo: no hay (2D)")
+	check(MascotAtlas.lookup(red, 0, 0.8, "wave_3@1").size() == 4, "falta wave_3: usa wave_0 mientras se hornea")
+	check(MascotAtlas.pending_count() == 2 and not MascotAtlas.is_idle(), "y la encola (con la idle@0 del estilo 4)")
+	MascotAtlas.lookup(red, 0, 0.8, "wave_3@1")
+	check(MascotAtlas.pending_count() == 2, "no la encola dos veces")
+	MascotAtlas.lookup(red, 0, 0.8, "no-es-pose")
+	check(MascotAtlas.pending_count() == 2, "un nombre inválido no se encola")
+	check(MascotAtlas.lookup(pink, 6, 1.45, "idle@1").size() == 4, "sin ese tamaño: usa otro de la misma apariencia")
+	# Dibujo: con cuadro, sprite; sin cuadro o silueta vacía, 2D.
+	var before := PlayerAvatar.drawn_baked
+	var before_all := PlayerAvatar.drawn
+	var probe := Control.new()
+	probe.draw.connect(func() -> void:
+		PlayerAvatar.draw_mascot(probe, Vector2(50, 100), 0.8, red, 0, PlayerAvatar.Mood.NORMAL, 0.5, 3.0, false,
+			{"squash": 0.3, "xform": Transform2D(0.2, Vector2(10, 0))})
+		PlayerAvatar.draw_mascot(probe, Vector2(50, 100), 0.8, Color.BLUE, 1)
+		PlayerAvatar.draw_mascot(probe, Vector2(50, 100), 0.8, red, 0, PlayerAvatar.Mood.NORMAL, 0.0, 0.0, true))
+	root.add_child(probe)
+	await _frames(2)
+	var baked := PlayerAvatar.drawn_baked - before
+	var total := PlayerAvatar.drawn - before_all
+	check(baked >= 1 and total == baked * 3, "1 de cada 3 como sprite (%d de %d)" % [baked, total])
+	probe.queue_free()
+	# Liberación: la TV se queda solo con el rojo; el rosa hace rato que no se dibuja.
+	MascotAtlas.inject(pink, 6, 0.8, "idle@0", tex, old)
+	var mem := MascotAtlas.memory_bytes()
+	MascotAtlas.keep_only("tv", [{"color": red, "style": 0}])
+	check(MascotAtlas.look_count() == 1 and MascotAtlas.memory_bytes() < mem, "suelta al jugador que se fue")
+	check(MascotAtlas.lookup(pink, 6, 0.8, "idle@0").is_empty(), "y ya no lo encuentra")
+	# Otro dueño (el celular) conserva su apariencia aunque la TV no la use.
+	MascotAtlas.inject(pink, 6, 0.8, "idle@0", tex, old)
+	MascotAtlas.keep_only("phone", [{"color": pink, "style": 6}])
+	MascotAtlas.keep_only("tv", [{"color": red, "style": 0}])
+	check(MascotAtlas.look_count() == 2, "cada dueño conserva lo suyo")
+	# Presupuesto: con poco lugar se sueltan las hojas que hace rato no se usan.
+	MascotAtlas.inject(red, 0, 0.8, "idle@0", tex, old)
+	MascotAtlas.inject(red, 0, 0.8, "wave_0@1", tex, old)
+	MascotAtlas.budget_bytes = 1
+	MascotAtlas.keep_only("tv", [{"color": red, "style": 0}])
+	check(MascotAtlas.pose_count() == 0, "sobre el presupuesto suelta lo viejo (%d)" % MascotAtlas.pose_count())
+	MascotAtlas.budget_bytes = MascotAtlas.BUDGET_BYTES
+	MascotAtlas.inject(red, 0, 0.8, "idle@0", tex)
+	MascotAtlas.release(red, 0)
+	check(MascotAtlas.lookup(red, 0, 0.8, "idle@0").is_empty(), "release() suelta todos los tamaños de un look")
+	MascotAtlas.clear()
+	check(MascotAtlas.pose_count() == 0 and MascotAtlas.memory_bytes() == 0 and MascotAtlas.is_idle(), "clear() deja todo vacío")
+	MascotAtlas.fake_render = false
+	MascotAtlas.release_after_msec = MascotAtlas.RELEASE_AFTER_MSEC
+	await process_frame

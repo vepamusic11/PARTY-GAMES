@@ -14,6 +14,11 @@ extends SceneTree
 ##                                    "Normal" en vez de entradas inventadas:
 ##                                    mide cuánto cuestan los bots; ADR 0010)
 ##   … -- --no-audio                 (sin música ni efectos, para comparar)
+##   … -- --mascots=both             (cada escena dos veces seguidas, con las
+##                                    mascotas 2D por código y con las 3D
+##                                    horneadas, alternando cuál va primero;
+##                                    también 2d o 3d. Default: 3d, como el
+##                                    juego. ADR 0012)
 ##
 ## Igual que tools/capture_screens.gd necesita una pantalla (real o xvfb):
 ## con --headless no se dibuja nada y los números no sirven.
@@ -75,6 +80,9 @@ var _use_bots := false  ## --bots: los jugadores los maneja un BotDriver.
 var _driver := BotDriver.new()
 ## Como en la TV: música sonando y efectos (con ducking) durante la medición.
 var _audio := true
+## Mascotas a medir: "2d" (por código), "3d" (horneadas, MascotAtlas) o las dos.
+var _mascot_modes: Array[String] = ["3d"]
+var _mode_turn := 0  ## Alterna qué modo va primero en cada escena.
 var _music_tracks: Array = []
 
 
@@ -95,6 +103,9 @@ func _run() -> void:
 			_use_bots = true
 		elif arg == "--no-audio":
 			_audio = false
+		elif arg.begins_with("--mascots="):
+			var m := arg.trim_prefix("--mascots=")
+			_mascot_modes.assign(["2d", "3d"] if m == "both" else [m])
 	_driver.auto_step = false
 	if DisplayServer.get_name() == "headless":
 		printerr("El benchmark necesita una pantalla: correlo con xvfb-run (ver el comentario del script).")
@@ -135,20 +146,44 @@ func _wanted(scene: String) -> bool:
 	return _only.is_empty() or scene in _only or scene.trim_suffix("_tarde") in _only
 
 
+## Modos de mascota para la próxima escena (alternando el orden si son dos).
+func _modes() -> Array[String]:
+	var out := _mascot_modes.duplicate()
+	if out.size() > 1 and _mode_turn % 2 == 1:
+		out.reverse()
+	_mode_turn += 1
+	return out
+
+
+## Nombre de la fila: con sufijo ·2d/·3d solo si se miden los dos modos.
+func _row_name(scene: String, mode: String) -> String:
+	return scene if _mascot_modes.size() == 1 else "%s·%s" % [scene, mode]
+
+
 ## Construye la escena, la deja estabilizarse y mide _frames frames.
 func _bench(scene: String, build: Callable) -> void:
 	if not _wanted(scene):
 		return
-	var node: Node = build.call()
-	await _measure(scene)
-	node.queue_free()
-	OS.low_processor_usage_mode = false  # Lo puede prender el control del celular.
-	await _frames_wait(3)
+	for mode in _modes():
+		MascotAtlas.enabled = mode == "3d"
+		var node: Node = build.call()
+		await _measure(_row_name(scene, mode), mode)
+		node.queue_free()
+		OS.low_processor_usage_mode = false  # Lo puede prender el control del celular.
+		await _frames_wait(3)
+	MascotAtlas.enabled = true
 
 
 func _bench_game(info: Dictionary) -> void:
 	if not _wanted(info.id):
 		return
+	for mode in _modes():
+		MascotAtlas.enabled = mode == "3d"
+		await _bench_game_mode(info, mode)
+	MascotAtlas.enabled = true
+
+
+func _bench_game_mode(info: Dictionary, mode: String) -> void:
 	_game_id = info.id
 	_game_layout = info.layout
 	_game_players = _fake_players(mini(int(info.max_players), Protocol.MAX_PLAYERS))
@@ -158,7 +193,7 @@ func _bench_game(info: Dictionary) -> void:
 			p["difficulty"] = Bot.Difficulty.NORMAL
 	_restarts = -1
 	_start_game()
-	await _measure(info.id)
+	await _measure(_row_name(info.id, mode), mode)
 	if is_instance_valid(_game):
 		_game.queue_free()
 	if LATE_SCENES.has(info.id) and _wanted(info.id + "_tarde") and not _use_bots:
@@ -166,7 +201,7 @@ func _bench_game(info: Dictionary) -> void:
 		_late_sec = LATE_SCENES[info.id]
 		_restarts = -1
 		_start_game()
-		await _measure(info.id + "_tarde")
+		await _measure(_row_name(info.id + "_tarde", mode), mode)
 		_late_sec = 0.0
 		if is_instance_valid(_game):
 			_game.queue_free()
@@ -175,10 +210,22 @@ func _bench_game(info: Dictionary) -> void:
 	await _frames_wait(3)
 
 
-func _measure(scene: String) -> void:
+func _measure(scene: String, mode: String = "3d") -> void:
 	if _audio:  # Cambio de pista al entrar (fundido cruzado dentro del calentamiento).
 		Music.play(str(_music_tracks[_results.size() % _music_tracks.size()]))
 	await _frames_wait(WARMUP_FRAMES)
+	if mode == "3d" and MascotAtlas.available():
+		# Como en la TV, las mascotas se hornean antes (lobby / intro): no se mide el horneado.
+		var players := _game_players if not _game_id.is_empty() else _fake_players(4)
+		MascotAtlas.prewarm_screens(players)
+		if not _game_id.is_empty():
+			MascotAtlas.prewarm_game(players, _mascot_scale(_game_id))
+		for i in 2:
+			var t0 := Time.get_ticks_msec()
+			while not MascotAtlas.is_idle() and Time.get_ticks_msec() - t0 < 60000:
+				await process_frame
+			await _frames_wait(WARMUP_FRAMES)  # Poses que se piden recién al dibujar (parpadeo, saludo).
+	var jobs_before := int(MascotAtlas.stats.jobs)
 	var process: Array[float] = []
 	var physics: Array[float] = []
 	var draw_calls: Array[float] = []
@@ -213,10 +260,14 @@ func _measure(scene: String) -> void:
 		"objects": _avg(objects),
 		"draws_per_sec": _draws_counted / maxf(wall, 0.001),
 		"restarts": maxi(_restarts, 0) if not _game_id.is_empty() else 0,
+		"mascots": mode,
+		"bakes_during": int(MascotAtlas.stats.jobs) - jobs_before,
+		"atlas_mb": MascotAtlas.memory_bytes() / 1048576.0,
 	}
 	_results.append(row)
-	print("  %-14s proceso %6.2f ms  scripts %5.2f ms (p95 %5.2f)  render %6.2f ms  draws %4.0f  objetos %5.0f" % [
-		scene, row.process_avg_ms, row.script_avg_ms, row.script_p95_ms, row.render_avg_ms, row.draw_calls, row.objects])
+	print("  %-17s proceso %6.2f ms  scripts %5.2f ms (p95 %5.2f)  render %6.2f ms  draws %4.0f  objetos %5.0f  atlas %4.1f MB%s" % [
+		scene, row.process_avg_ms, row.script_avg_ms, row.script_p95_ms, row.render_avg_ms, row.draw_calls, row.objects,
+		row.atlas_mb, "  (horneó %d durante la medición)" % row.bakes_during if row.bakes_during > 0 else ""])
 
 
 ## El frame arranca con el primer paso de física o, si no hay, con el proceso.
@@ -388,6 +439,14 @@ func _make_controller(layout: String) -> Node:
 
 
 # --- Datos inventados -----------------------------------------------------------
+
+## MASCOT_SCALE del juego (u de sus mascotas), para precalentar el atlas.
+func _mascot_scale(game_id: String) -> float:
+	for script in MiniGameRegistry.GAMES:
+		if script.call("get_info").id == game_id:
+			return float(script.get_script_constant_map().get("MASCOT_SCALE", 0.8))
+	return 0.8
+
 
 func _fake_players(n: int) -> Array[Dictionary]:
 	var out: Array[Dictionary] = []

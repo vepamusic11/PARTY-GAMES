@@ -9,6 +9,8 @@ extends SceneTree
 ##   … -- --out=/tmp/estilos/pixel --style=pixel
 ##        (exploración de estilos: post-proceso sobre la TV y el celular; ver
 ##        docs/ESTILOS.md. Sin --style las capturas quedan como siempre.)
+##   … -- --mascots-2d            (mascotas 2D por código en vez de las 3D
+##                                  horneadas, para comparar; ADR 0012)
 ##
 ## Necesita una pantalla (real o virtual con xvfb): con --headless Godot no
 ## dibuja nada. También sirve como prueba de humo visual: si una pantalla
@@ -62,6 +64,8 @@ func _run() -> void:
 			_lobby_only = true
 		elif arg.begins_with("--style="):
 			_style = arg.trim_prefix("--style=")
+		elif arg == "--mascots-2d":
+			MascotAtlas.enabled = false  # Capturas con la mascota 2D (para comparar).
 	_style_params = StyleLayer.params_from_args(OS.get_cmdline_user_args())
 	if _style != "" and _out_dir == OUT_DIR:
 		printerr("--style necesita --out=<carpeta>: las capturas con estilo no van a docs/img.")
@@ -142,6 +146,8 @@ func _run() -> void:
 			_clients[2].send_input(Vector2.ZERO, Protocol.BTN_A)
 			await _seconds(1.2)
 			await _shot(root, "game_intro")
+		# Como en la TV: las mascotas del juego se hornean mientras se lee la intro.
+		await _until(func() -> bool: return MascotAtlas.is_idle(), 30000)
 		host.skip_intro()
 		await _settle()
 		_expect(host._game != null, "arranca %s después de la intro" % game_id)
@@ -177,6 +183,7 @@ func _run() -> void:
 	host._lobby._stepper.set_value(2)
 	_expect(host.start_tournament(["pingpong"] as Array[String]), "arranca Ping Pong con 2")
 	await _settle()
+	await _until(func() -> bool: return MascotAtlas.is_idle(), 30000)
 	host.skip_intro()
 	await _settle()
 	await _seconds(2.0)
@@ -227,6 +234,7 @@ func _run() -> void:
 	host._lobby._bot_menu._cancel.pressed.emit()
 	_expect(host.start_tournament(["arena", "tap_race"] as Array[String]), "arranca la competencia con bots")
 	await _settle()
+	await _until(func() -> bool: return MascotAtlas.is_idle(), 30000)
 	host.skip_intro()
 	await _settle()
 	await _seconds(4.0)
@@ -275,6 +283,11 @@ func _expect(cond: bool, what: String) -> void:
 
 
 func _shot(vp: Viewport, name: String) -> void:
+	# Mascotas 3D (ADR 0012): si todavía se están horneando poses que se
+	# pidieron recién, espera un poco (acá el render es por software).
+	if not MascotAtlas.is_idle():
+		await _until(func() -> bool: return MascotAtlas.is_idle(), 2500)
+		await _frames(3)
 	await RenderingServer.frame_post_draw
 	var img := vp.get_texture().get_image()
 	if img.get_width() != _out_width:

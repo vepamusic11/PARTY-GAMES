@@ -18,6 +18,7 @@ xvfb-run -a -s "-screen 0 1920x1080x24" godot --path . --rendering-driver opengl
 #   --only=lobby,dodge      solo algunas escenas
 #   --json=/tmp/bench.json  además guarda los resultados en JSON (para comparar)
 #   --no-audio              sin música ni efectos (por defecto suenan, como en la TV)
+#   --mascots=both          cada escena con mascotas 2D y 3D horneadas, intercaladas (también 2d o 3d; default 3d)
 ```
 
 Por defecto el benchmark agrega `Sfx` y `Music` como la TV: cada escena cambia de pista (fundido cruzado durante el calentamiento) y un `go` por segundo dispara el *ducking*. El presupuesto del audio es **≤ 0,3 ms de p95 de Scripts** frente a `--no-audio` ([ADR 0015](adr/0015-musica-y-mezcla.md)); el OGG se decodifica en el hilo de audio y no cuenta en Scripts.
@@ -201,6 +202,57 @@ Partículas en lote con pool fijo (`FxParticles`, un draw call), números flotan
 
 Los inputs del benchmark casi nunca vuelven a 0, así que en `pool` todos apuntan todo el tiempo (flechas y guías en cada frame) y casi no tiran. Con una variante que suelta el joystick cada 1,6 s (tiros, choques y troneras todo el tiempo), `pool` quedó ≈ 1,6× Arena en Scripts (p95 6,84 contra 4,19 ms en una corrida con la máquina menos cargada).
 
+### Mascotas 3D horneadas (ADR 0012)
+
+Todas las mascotas se dibujan como un sprite del atlas horneado (`MascotAtlas`, ver [ARTE.md](ARTE.md#integración-27092026)); la 2D por código queda de respaldo. Medido con `--mascots=both`: **en la misma corrida**, cada escena con 2D y con 3D, alternando cuál va primero (27/09/2026, la máquina estaba cargada por otros procesos: los valores absolutos están inflados; comparar las columnas entre sí):
+
+| Escena | Scripts prom. 2D → 3D (ms) | Scripts p95 2D → 3D (ms) | Draw calls 2D → 3D | Atlas (MB) |
+|---|---:|---:|---:|---:|
+| lobby | 3,53 → **1,13** (−68 %) | 4,69 → **1,57** | 467 → 467 | 15,9 |
+| arena | 9,09 → **3,92** (−57 %) | 13,09 → **5,80** | 31 → 31 | 24,5 |
+| sumo | 13,00 → **7,07** (−46 %) | 19,48 → **10,70** | 90 → 91 | 25,8 |
+| sumo_tarde | 14,83 → **9,35** (−37 %) | 22,05 → **14,03** | 93 → 92 | 25,8 |
+| pool | 14,96 → **8,06** (−46 %) | 22,39 → **11,66** | 32 → 31 | 29,7 |
+| karts | 17,61 → **10,63** (−40 %) | 26,58 → **15,94** | 40 → 42 | 29,7 |
+
+- **CPU:** dibujar un sprite (elegir el cuadro + sombra + una transformación) cuesta mucho menos que armar ~40 figuras por mascota: los Scripts bajan entre 37 % y 68 %. Es el mismo hallazgo del prototipo (ARTE.md), ahora en el juego completo.
+- **Draw calls:** iguales (una mascota eran 2 lotes; ahora son la sombra y el sprite). Juegos ≤ 150 y lobby ≤ 500.
+- **p95 ≤ 8 ms:** en esta corrida (máquina cargada, juegos a ~15 fps en xvfb, o sea 3–4 pasos de física y dibujos por frame) la 3D lo cumple en lobby y arena y la 2D en ninguna escena de juego; en una máquina sin carga los valores de la 2D eran ~2–3× más chicos (tabla de arriba) y la 3D los baja a la mitad.
+- "Atlas" es la memoria de texturas horneadas en ese momento (acumula las escenas anteriores de la corrida: no se sueltan porque el presupuesto no se llena).
+
+**Horneado** (`tools/mascot_atlas_check.gd`: 4 jugadores, poses de juego a u = 0,8 + avisos + pantallas, como en el lobby y la intro; llvmpipe):
+
+| Qué | Valor |
+|---|---|
+| Poses / trabajos | 188 poses en 28 trabajos (≤ 17 poses por trabajo en juego, 3 en pantalla) |
+| Tiempo total | 5,5 s en llvmpipe (render por software; en una GPU real el render es decenas de veces más rápido). Se tapa con el lobby y la intro |
+| CPU del horneado | 277 ms en total; **3–5 ms por cuadro** (armar 1 mascota ≈ 2–3 ms, leer la imagen ≈ 1–4 ms, achicar ≈ 1–3 ms, subir < 1 ms); peor cuadro 15,6 ms (el primer trabajo: crea el viewport y compila los shaders) |
+| Cuadro de la escena mientras hornea | prom. 26,7 ms (base 14,9 ms), p95 51 ms, máx. 149 ms (el primero, con la compilación de shaders); casi todo es el render por software de 3 mascotas por cuadro |
+| Memoria | **21,5 MB** para 4 jugadores (≈ 5,4 MB por jugador); en una partida completa (lobby + varios juegos) 25–30 MB |
+
+**Presupuesto de memoria** (`MascotAtlas.BUDGET_BYTES` = 40 MB; RGBA8, sin mipmaps):
+
+| Tamaño (u) | Celda (px) | Por pose | Uso | Poses precalentadas por jugador | Por jugador |
+|---|---|---:|---|---:|---:|
+| 0,62 | 74 × 87 | 25 KB | karts, tribuna (u 0,56–0,67) | según el juego | ≤ 1 MB |
+| 0,95 | 114 × 133 | 60 KB | la mayoría de los juegos (u 0,7–0,85), avisos | 13 + 24 de caminata + 3 de avisos | ≈ 2,4 MB |
+| 1,45 | 174 × 203 | 141 KB | juegos con mascotas grandes (u 1,3–1,5) | 13 (sin caminata) | ≈ 1,8 MB |
+| 2,25 | 270 × 315 | 340 KB | lobby, intro, resumen, podio, marcador, celular | 10 | ≈ 3,3 MB |
+| 3,4 | 408 × 476 | 777 KB | mascota anfitriona del lobby, selector | lo que se dibuje | ≈ 3 MB en total |
+
+- Lo que se usa se queda; si la memoria pasa de 40 MB se sueltan las hojas que hace más de 3 s no se dibujan.
+- Al irse un jugador (o cambiar de color o estilo en el lobby) su apariencia se suelta a los ~3 s (`MascotAtlas.keep_only`, lo llama el host en cada cambio de jugadores y el celular con la suya).
+- Durante el horneado se reserva además un viewport temporal (≤ 1 MP con supersampling, ≈ 8 MB con profundidad) que se suelta al terminar.
+
+Cómo repetirlo:
+
+```bash
+xvfb-run -a -s "-screen 0 1920x1080x24" godot --path . --rendering-driver opengl3 --audio-driver Dummy \
+  -s res://tools/benchmark.gd -- --only=lobby,arena,sumo,pool,karts --mascots=both
+xvfb-run -a -s "-screen 0 1920x1080x24" godot --path . --rendering-driver opengl3 --audio-driver Dummy \
+  -s res://tools/mascot_atlas_check.gd -- --out=/tmp/atlas.png --log   # tiempos por trabajo y hoja 2D vs 3D
+```
+
 ## Qué se cambió y por qué
 
 ### 1. Capas estáticas que se dibujan una sola vez
@@ -300,5 +352,6 @@ Reglas prácticas al dibujar:
 
 - **Empujones mientras se achica la isla**: el anillo recortado y el borde se redibujan en cada frame. Se podría redibujar por saltos (cada pocos px de radio), pero se vería distinto: se dejó exacto.
 - **Redibujar en `_process` en vez de `_physics_process`**: si la TV no llega a 60 fps, hay dos pasos de física por frame y los juegos se dibujan dos veces. Mover el `queue_redraw()` a `_process` evita ese trabajo extra justo cuando más falta hace.
-- **Mascotas como nodos**: en los juegos las mascotas se redibujan en cada frame aunque solo cambie su posición. Como nodos hijos con `position` no haría falta redibujarlas (cuando llegue arte con sprites, ver ADR 0004).
+- **Mascotas como nodos**: en los juegos las mascotas se redibujan en cada frame aunque solo cambie su posición. Ahora que son sprites horneados (ADR 0012) cada una cuesta poco, pero como nodos hijos con `position` no haría falta ni eso.
+- **Horneado en la TV real:** medir en una Google TV cuánto tarda el render de 3 mascotas por cuadro (`Mascot3DBaker.POSES_PER_FRAME`) y ajustar ese número (1 si traba, más si sobra).
 - Medir en el aparato real (Google TV) con el profiler remoto de Godot y el monitor de `Performance`, y ajustar estos presupuestos con esos números.

@@ -1,6 +1,6 @@
 # Arte de las mascotas: cómo llegar a la calidad de la maqueta
 
-La maqueta de mascotas (`docs/design/referencia_mascotas.webp`) muestra personajes con acabado de **juguete de plástico 3D**: volumen real, reflejo chico y nítido, brillo ancho de barniz, luz de contorno, zapatos lustrados y un contorno de tinta grueso. Este documento compara cuatro caminos para llegar ahí (o superarla), con un **prototipo 3D real** hecho en Godot para medir en vez de suponer. La decisión queda en [ADR 0012](adr/0012-mascotas-3d.md) (estado: propuesta).
+La maqueta de mascotas (`docs/design/referencia_mascotas.webp`) muestra personajes con acabado de **juguete de plástico 3D**: volumen real, reflejo chico y nítido, brillo ancho de barniz, luz de contorno, zapatos lustrados y un contorno de tinta grueso. Este documento compara cuatro caminos para llegar ahí (o superarla), con un **prototipo 3D real** hecho en Godot para medir en vez de suponer. La decisión queda en [ADR 0012](adr/0012-mascotas-3d.md) (aceptada el 27/09/2026; integrada en todo el juego: ver "Integración" abajo).
 
 | Maqueta | 2D por código (hoy) | 3D en Godot (prototipo) |
 |---|---|---|
@@ -27,12 +27,27 @@ Comparación directa (mismas 4 mascotas, "Normal" y "Feliz"; arriba recortes de 
 | `mascot3d_meshes.gd` | Recetas de mallas por código: esfera, torno (`lathe`), tubo con radio variable (antena, cuernos que se afinan, arcos de los ojos felices, cejas), figura plana con espesor (bocas) y la almohadilla de la cara. En caché: todas las mascotas comparten buffers. |
 | `toy_plastic.gdshader` | Plástico de juguete: rampa sombra→color→luz (mismos colores que la 2D), relleno, rebote del piso, contraluz, brillo nítido y brillo de barniz. Sin luces reales. |
 | `ink_outline.gdshader` | Contorno por casco invertido, inflado en el plano de la pantalla y medido en unidades del mundo: 3 u como en 2D, a cualquier resolución. |
-| `mascot3d_baker.gd` (`Mascot3DBaker`) | `bake(host, look, poses, cell_px) -> Dictionary[String, Texture2D]`: hornea las poses en un atlas (una grilla, un render, supersampling 2×). `POSES` y `GAME_POSES` traen las poses con nombre; `feet_offset()` dice dónde quedan los pies en la celda. |
+| `mascot3d_baker.gd` (`Mascot3DBaker`) | `bake(host, look, poses, cell_px) -> Dictionary[String, Texture2D]`: hornea las poses en un atlas (una grilla, un render, supersampling 2×). `POSES` y `GAME_POSES` traen las poses con nombre; `feet_offset()` dice dónde quedan los pies en la celda. `Job`: el mismo horneado repartido en cuadros (lo usa `MascotAtlas`). |
+| `mascot_atlas.gd` (`MascotAtlas`) | Caché de cuadros horneados por apariencia (color + estilo) y tamaño, con presupuesto de memoria. `PlayerAvatar.draw_mascot` le pide el cuadro de cada pose y, si no está, dibuja la 2D. Ver "Integración". |
 | `mascot3d_live.gd` (`Mascot3DLive`) | Camino "en vivo": `Sprite2D` con su propio `SubViewport` 3D que se renderiza en cada cuadro. |
 | `tools/mascot3d_sheet.gd` | Hojas: mismas columnas que `tools/character_sheet.gd` (y `--styles`, `--closeup`, `--compare`, `--standard`, `--all=DIR`). |
 | `tools/mascot3d_benchmark.gd` | Mide 2D vs 3D en vivo vs horneado, y el horneado. |
 
-Nada de esto lo usa el juego todavía (ni `PlayerAvatar` ni los minijuegos). El test `test_mascot3d_prototype` arma todas las combinaciones de estilo y ánimo y ejerce el horneado (sin pantalla solo verifica que arma la escena).
+El juego ya lo usa en todas las pantallas (ver "Integración"). El test `test_mascot3d_prototype` arma todas las combinaciones de estilo y ánimo y ejerce el horneado (sin pantalla solo verifica que arma la escena); los `test_mascot_atlas_*` cubren el caché, las poses, los tamaños y el encuadre.
+
+## Integración (27/09/2026)
+
+Todo el juego (lobby, intro, juegos, resumen, podio, pausa, avisos, selector y el celular) muestra las mascotas 3D horneadas, sin cambios en las pantallas ni en los juegos: `PlayerAvatar.draw_mascot` elige el cuadro y lo dibuja como sprite.
+
+- **Qué cuadro:** `MascotAtlas.pose_for(ánimo, anim)` da un nombre `"<base>@<ánimo>"`: `idle`, `blink` (mismo reloj de parpadeo que la 2D), `look_l/r/u/d`, `walk_{r,l,f}_0..7` (8 cuadros de caminata por dirección; se hornea también la izquierda para que la luz no cambie de lado al espejar), `wave_0..3` (festejo), `greet_0..1`, `defeat`, `danceK_0..3`. *Ejemplo:* caminando hacia la derecha a mitad de paso y feliz → `walk_r_4@1`.
+- **Lo que va en 2D encima del sprite:** sombra en el piso, salto (`lift`), *squash & stretch*, inclinación (mareo, baile), respiración (un estirado de 1 %) y los efectos que se mueven solos (estrellitas del mareo, Z al dormir, destellos del ganador). Son las mismas cuentas que la 2D, así que el salto del podio o el aterrizaje en Carrera de obstáculos se ven igual.
+- **Tamaños:** se hornea a 5 tamaños fijos (`TIERS_U`: 0,62 · 0,95 · 1,45 · 2,25 · 3,4 en u de `PlayerAvatar`) y se dibuja escalado (nunca más de 1,08× de agrandamiento). Celdas rectangulares de 12 × 14 unidades (más altas que anchas: ~25 % menos memoria que cuadradas); `test_mascot_atlas_framing` verifica que todas las poses de los 7 estilos entran con su contorno.
+- **Cuándo se hornea:** al sumarse un jugador o cambiar su look en el lobby (poses de pantalla) y en la intro "¿Cómo se juega?" (poses del juego al tamaño de su `MASCOT_SCALE`, más la de los avisos). Lo que falte se pide al dibujar (horneado perezoso) y mientras tanto se muestra la pose más parecida ya horneada, o la 2D si esa apariencia no tiene ninguna.
+- **Cómo se hornea sin trabar la TV:** `Mascot3DBaker.Job` reparte el trabajo: arma una mascota por cuadro (3 por trabajo, que se reutilizan con `apply()`), renderiza 3 poses por cuadro en un viewport que no se borra (render acumulado), lee la imagen una vez, la achica (supersampling 2× con filtro de caja) en otro cuadro y la sube en otro. El viewport se reutiliza entre trabajos del mismo tamaño.
+- **Respaldo 2D:** sin render (`--headless`, tests), si el horneado falla dos veces (se apaga el 3D), mientras se hornea, con la silueta de lugar vacío y con los ánimos que la cara 3D todavía no tiene (se detecta solo: si `Mascot3D` muestra la cara normal para ese ánimo). `--mascots-2d` en `tools/capture_screens.gd` y `--mascots=2d|3d|both` en `tools/benchmark.gd` sirven para comparar.
+- **Memoria:** presupuesto de 40 MB (`MascotAtlas.BUDGET_BYTES`); números medidos en [PERFORMANCE.md](PERFORMANCE.md#mascotas-3d-horneadas-adr-0012).
+
+Convención con `Mascot3D` (para quien cambie el modelo): el baker pasa en `anim` las claves de siempre (`t`, `walk`, `look`, `wave`, `blink`, `dance`, `dance_kind`, `defeat`, `greet`) más `"in_place": true` y `"fx": false`. Con `in_place`, lo que mueve el cuerpo entero (saltos del baile, squash) lo pone `PlayerAvatar` en 2D; con `fx: false`, los efectos que giran o suben solos (estrellitas, Z) también. Si la mascota crece (orejas, accesorios), `test_mascot_atlas_framing` avisa y hay que agrandar `Mascot3DBaker.ATLAS_CELL`.
 
 ### Qué se ganó frente a la 2D
 
@@ -135,4 +150,4 @@ Evidencia:
 
 Para la Google TV de gama baja: **hornear** al empezar la partida (21 poses a ~116 px para los juegos, ~7 MB para 4 jugadores) y, para lobby y podio, pocas poses a ~360 px o render en vivo de 1–2 mascotas grandes si el profiler lo permite. Renderer: el material propio (sin luces reales) da lo mismo en Mobile y en Compatibility; el horneado hace que la elección del renderer no afecte a las mascotas.
 
-Próximos pasos (fuera de este prototipo): medir en la TV real; integrar en `PlayerAvatar.draw_mascot` con el atlas del jugador (el *squash* y el salto siguen siendo transformaciones 2D sobre el sprite); hornear en la intro; y, si se quiere más identidad, encargar a un ilustrador la cara y los reflejos (camino 4) reutilizando el mismo horneado.
+Próximos pasos: medir en la TV real (la integración en `PlayerAvatar.draw_mascot` y el horneado en el lobby y la intro ya están, ver "Integración"); y, si se quiere más identidad, encargar a un ilustrador la cara y los reflejos (camino 4) reutilizando el mismo horneado.

@@ -114,6 +114,8 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_t = slot * 0.8
 	_update_processing()
+	# Cuando se hornea su mascota 3D, se redibuja (aunque esté quieta).
+	MascotAtlas.redraw_on_bake(self)
 
 
 func _notification(what: int) -> void:
@@ -273,6 +275,8 @@ static func breath(t: float, p_style: int) -> float:
 ## Mascotas dibujadas desde que arrancó el programa (lo usan los tests para
 ## saber que draw_mascot llegó al final sin errores).
 static var drawn := 0
+## De esas, cuántas fueron el sprite 3D horneado (MascotAtlas); para los tests.
+static var drawn_baked := 0
 
 
 ## Dibuja la mascota. feet: punto donde apoya. u: unidad de escala (mide ~105u).
@@ -313,6 +317,10 @@ static var drawn := 0
 static func draw_mascot(ci: CanvasItem, feet: Vector2, u: float, col: Color, p_style: int,
 		p_mood: int = Mood.NORMAL, bob: float = 0.0, lift: float = 0.0, is_empty: bool = false,
 		anim: Dictionary = {}) -> void:
+	# Mascota 3D horneada si ya está en el caché (ADR 0012); si no, la 2D.
+	if not is_empty and MascotAtlas.available() and MascotAtlas.mood_supported(p_mood) \
+			and _draw_baked(ci, feet, u, col, p_style, p_mood, bob, lift, anim):
+		return
 	var detail := u >= LOD_U
 	var sh := _shapes(detail)
 	var ink := UiTheme.INK
@@ -637,6 +645,94 @@ static func draw_mascot(ci: CanvasItem, feet: Vector2, u: float, col: Color, p_s
 					head + Vector2(sx * face_k * 20.0 * u, -21.0 * u).rotated(tilt), Vector2(2.2, 2.2) * u, 0.0, 1.0 * u, ink)
 
 	# Efectos del ánimo alrededor de la cabeza.
+	_mood_fx(batch, sh, p_mood, head, hr, tilt, t, u, ink, detail, face + ax * 7.5 * u + ay * 5.0 * u)
+	batch.flush(ci)
+	ci.draw_set_transform_matrix(outer)
+	drawn += 1
+
+
+## Mascota 3D horneada (MascotAtlas, ADR 0012): dibuja el cuadro de la pose
+## (MascotAtlas.pose_for) como un sprite. Lo que en el horneado no está
+## (salto, squash & stretch, inclinación, respiración, sombra en el piso y
+## los efectos que se mueven solos) va en 2D, con las mismas cuentas que la
+## mascota 2D. Devuelve false si todavía no hay cuadro: se dibuja la 2D.
+##
+## Concepto: *sprite + transformación*. El cuadro horneado es una foto
+## quieta; para que salte o se aplaste no hace falta otra foto: se estira la
+## foto alrededor de los pies (ancho × alto ≈ constante), como hace la 2D.
+static func _draw_baked(ci: CanvasItem, feet: Vector2, u: float, col: Color, p_style: int, p_mood: int,
+		bob: float, lift: float, anim: Dictionary) -> bool:
+	var style := posmod(p_style, STYLE_NAMES.size())
+	var spr := MascotAtlas.lookup(col, style, u, MascotAtlas.pose_for(p_mood, anim, style))
+	if spr.is_empty():
+		return false
+	var t := float(anim.get("t", 0.0))
+	var walking := float(anim.get("walk", -1.0)) >= 0.0
+	var sq := float(anim.get("squash", 0.0))
+	var outer: Transform2D = anim.get("xform", Transform2D.IDENTITY)
+	var dance := clampf(float(anim.get("dance", 0.0)), 0.0, 1.0)
+	var defeat := clampf(float(anim.get("defeat", 0.0)), 0.0, 1.0)
+	var lean := 0.0
+	var breathing := breath(t, style) if not walking and t > 0.0 else 0.0
+	match p_mood:
+		Mood.DIZZY:
+			lean += sin(t * 2.8 - 0.6) * 0.045
+		Mood.LAUGHING:  # Se sacude de risa.
+			lift += absf(sin(t * 8.5)) * 2.2 * u
+			lean += sin(t * 17.0) * 0.02
+		Mood.ANGRY:
+			lean += sin(t * 31.0) * 0.006
+	if dance > 0.0:  # Lo que el baile le hace a todo el cuerpo (ver draw_mascot).
+		var kind := int(anim.get("dance_kind", -1))
+		if kind < 0 or kind >= DANCE_KINDS:
+			kind = posmod(style, DANCE_KINDS)
+		var beat := t * 2.0
+		match kind:
+			DANCE_HOPS:
+				var h := absf(sin(beat * PI))
+				lift += dance * h * 12.0 * u
+				sq += dance * (0.24 * pow(1.0 - h, 6.0) - 0.1 * h)
+			DANCE_SPIN:
+				var p := fposmod(beat / 2.0, 1.0)
+				if p < 0.5:
+					lift += dance * sin(p / 0.5 * PI) * 9.0 * u
+				else:
+					lean += dance * sin((p - 0.5) / 0.5 * TAU) * 0.09
+			_:
+				var h := absf(sin(beat * PI))
+				lean += dance * sin(beat * PI) * 0.12
+				lift += dance * h * 3.5 * u
+				sq += dance * 0.12 * pow(1.0 - h, 4.0)
+	sq = clampf(sq + 0.05 * defeat, -0.5, 0.5)
+
+	var detail := u >= LOD_U
+	var sh := _shapes(detail)
+	var batch := MascotShading.Batch.new()
+	var shadow_k := clampf(1.0 - lift / (80.0 * u), 0.3, 1.0)
+	batch.add(sh.glow, MascotShading.GLOW, SHADOW, feet + Vector2(0, 0.5 * u), Vector2(30.0, 7.0) * u * shadow_k)
+	batch.flush(ci)
+	# Respira: el pecho se infla apenas; cuando la cabeza baja (bob), se achica.
+	var sy := 1.0 + 0.012 * breathing - 0.4 * bob / (105.0 * u)
+	ci.draw_set_transform_matrix(outer * Transform2D(lean, Vector2(1.0 + sq * 0.6, (1.0 - sq * 0.6) * sy), 0.0,
+		feet - Vector2(0, lift)))
+	var region: Rect2 = spr[1]
+	var k: float = spr[3]
+	ci.draw_texture_rect_region(spr[0], Rect2(-(spr[2] as Vector2) * k, region.size * k), region)
+	if p_mood == Mood.DIZZY or p_mood == Mood.SLEEPY or p_mood == Mood.WINNER:
+		_mood_fx(batch, sh, p_mood, Vector2(0, -58.5 * u), Vector2(HEAD_RX, HEAD_RY) * u, 0.0, t, u, UiTheme.INK,
+			detail, Vector2.INF)
+		batch.flush(ci)
+	ci.draw_set_transform_matrix(outer)
+	drawn += 1
+	drawn_baked += 1
+	return true
+
+## Efectos del ánimo alrededor de la cabeza (los que se mueven solos:
+## estrellitas del mareo, Z y globito al dormir, destellos del ganador, venita
+## de enojo). Los usan la 2D y la mascota horneada (dibujados encima del
+## sprite). nose: dónde nace el globito de dormida (Vector2.INF = sin globito).
+static func _mood_fx(batch: MascotShading.Batch, sh: Dictionary, p_mood: int, head: Vector2, hr: Vector2, tilt: float,
+		t: float, u: float, ink: Color, detail: bool, nose: Vector2) -> void:
 	match p_mood:
 		Mood.DIZZY:  # Estrellitas que dan vueltas sobre la cabeza.
 			for k in 3:
@@ -649,9 +745,9 @@ static func draw_mascot(ci: CanvasItem, feet: Vector2, u: float, col: Color, p_s
 				var ph := fposmod(t * 0.45 + k * 0.5, 1.0)
 				var z := head + Vector2(hr.x * 0.6 + ph * 16.0 * u, -hr.y * 0.55 - ph * 26.0 * u)
 				batch.add(sh.zee, MascotShading.GLOW, Color(ink, sin(ph * PI)), z, Vector2(4.0, 4.0) * u * (0.6 + ph * 0.7), -0.15)
-			if detail:
+			if detail and nose != Vector2.INF:
 				var r := (2.0 + 2.6 * (0.5 + 0.5 * sin(t * 1.9))) * u
-				var bub := face + ax * 7.5 * u + ay * 5.0 * u + Vector2(r * 0.7, 0)
+				var bub := nose + Vector2(r * 0.7, 0)
 				batch.add(sh.ball_s, MascotShading.FLAT, BUBBLE, bub, Vector2(r, r), 0.0, 0.9 * u, ink)
 				batch.add(sh.dot, MascotShading.FLAT, SHINE, bub + Vector2(-0.4, -0.45) * r, Vector2(0.28, 0.2) * r, -0.6)
 		Mood.WINNER:  # Destellos que titilan a los costados.
@@ -667,9 +763,6 @@ static func draw_mascot(ci: CanvasItem, feet: Vector2, u: float, col: Color, p_s
 					var d := Vector2.from_angle(PI * 0.25 + k * PI * 0.5)
 					batch.add(sh.arc, MascotShading.GLOW, UiTheme.DANGER, v + d * 4.6 * u, Vector2(3.0, 3.0) * u,
 						d.angle() + PI * 0.5)
-	batch.flush(ci)
-	ci.draw_set_transform_matrix(outer)
-	drawn += 1
 
 
 ## Ojos, cejas, cachetes y boca según el ánimo. face: centro de la cara; ax,

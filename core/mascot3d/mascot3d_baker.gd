@@ -138,6 +138,272 @@ static func bake(host: Node, look: Dictionary, poses: Array, cell_px := 192,
 	return out
 
 
+## --- Horneado repartido en cuadros (lo usa MascotAtlas) -------------------------
+##
+## Concepto: *trabajo en cuotas* (time slicing). Armar ~40 mascotas 3D en
+## GDScript lleva decenas de ms: si se hace todo en un cuadro, la TV se traba
+## (se nota en las animaciones del lobby). Job arma unas pocas mascotas por
+## cuadro (hasta BUILD_BUDGET_USEC), recién después pide el render (un solo
+## cuadro de GPU), en el cuadro siguiente lee la imagen y en otro la achica y
+## la sube como textura. Ejemplo: 16 poses a 114×133 px → ~6 cuadros de
+## trabajo chico en vez de uno de 80 ms.
+##
+## Celdas rectangulares (ATLAS_CELL, más altas que anchas: la mascota es más
+## alta que ancha) en vez de cuadradas: ~25 % menos memoria por pose.
+
+## Celda del atlas en unidades del mundo (ancho, alto): entran las orejas de
+## conejo, la antena estirada, los brazos arriba y los ojos de costado. El
+## salto, el squash y el baile se aplican después en 2D (no ocupan celda).
+const ATLAS_CELL := Vector2(12.0, 14.0)
+const ATLAS_FEET := 0.55  ## Pies arriba del borde de abajo (u. del mundo).
+## Mascotas que se renderizan por cuadro durante un horneado (ver Job).
+const POSES_PER_FRAME := 3
+## Tope de píxeles del viewport de un trabajo (con supersampling): limita
+## el costo del cuadro de render y la memoria temporal.
+const MAX_JOB_PIXELS := 1024 * 1024
+
+
+## Tamaño en px de una celda del atlas para mascotas de unidad u (PlayerAvatar).
+static func atlas_cell_px(u: float) -> Vector2i:
+	return Vector2i(maxi(8, roundi(ATLAS_CELL.x * 10.0 * u)), maxi(8, roundi(ATLAS_CELL.y * 10.0 * u)))
+
+
+## Pies dentro de una celda del atlas de cell px (ver atlas_cell_px).
+static func atlas_feet(cell: Vector2i) -> Vector2:
+	var k := cell.y / ATLAS_CELL.y
+	var cy := ATLAS_CELL.y / 2.0 - ATLAS_FEET
+	return Vector2(cell.x / 2.0, cell.y / 2.0 + cy * _cam_basis().y.y * k)
+
+
+## Cuántas poses entran en un trabajo con celdas de cell px.
+static func max_job_poses(cell: Vector2i) -> int:
+	var px := cell.x * cell.y * SUPERSAMPLE * SUPERSAMPLE
+	return clampi(MAX_JOB_PIXELS / maxi(1, px), 1, 24)
+
+
+## Grilla (columnas, filas) de los trabajos con celdas de cell px: siempre
+## la misma para un tamaño, así el viewport se reutiliza entre trabajos.
+static func job_grid(cell: Vector2i) -> Vector2i:
+	var n := max_job_poses(cell)
+	var cols := clampi(MAX_VIEWPORT / maxi(1, cell.x * SUPERSAMPLE), 1, n)
+	return Vector2i(cols, ceili(float(n) / cols))
+
+
+## Viewport y mascotas del último trabajo, para reutilizarlos en el siguiente
+## (crear un viewport grande cuesta ~12 ms por megapíxel en llvmpipe: es
+## reservar y limpiar la memoria del render). MascotAtlas lo suelta cuando
+## no queda nada por hornear (release_pool).
+static var _pool_vp: SubViewport
+static var _pool_mascots: Array[Mascot3D] = []
+static var _pool_look := ""
+
+
+## Suelta el viewport y las mascotas guardadas para el próximo horneado.
+static func release_pool() -> void:
+	if is_instance_valid(_pool_vp):
+		_pool_vp.queue_free()
+	_pool_vp = null
+	_pool_mascots.clear()
+	_pool_look = ""
+
+
+## Un horneado en curso. Uso: job = Job.new(look, poses, cell); en cada
+## cuadro job.step(host) hasta que devuelva true; después job.ok, job.texture
+## y job.regions (nombre -> Rect2 en px dentro de la textura).
+##
+## Concepto: *render acumulado*. El viewport no se borra entre cuadros
+## (fondo Environment.BG_KEEP): en cada cuadro se ponen POSES_PER_FRAME
+## mascotas en las celdas siguientes, se renderiza y en el cuadro siguiente
+## se mueven a otras celdas con otra pose. Las celdas ya dibujadas quedan.
+## Así un cuadro de la TV nunca renderiza más que unas pocas mascotas, se
+## arman solo POSES_PER_FRAME mascotas por trabajo (apply() cambia la pose
+## sin volver a armarlas) y se lee la imagen una sola vez al final.
+class Job extends RefCounted:
+	enum State { NEW, BUILD, RENDER, READBACK, SHRINK, UPLOAD, DONE }
+	var look: Dictionary
+	var poses: Array[Dictionary]
+	var cell := Vector2i(114, 133)
+	var state := State.NEW
+	var ok := false
+	var texture: ImageTexture
+	var regions: Dictionary = {}   ## nombre -> Rect2 (px) en texture.
+	var bytes := 0
+	## Medición: ms de CPU del peor cuadro, total de CPU y cuadros usados.
+	var worst_ms := 0.0
+	var cpu_ms := 0.0
+	var frames := 0
+	var started_msec := 0
+	## ms por etapa (el peor cuadro de cada una).
+	var stage_ms := {"setup": 0.0, "build": 0.0, "pose": 0.0, "readback": 0.0, "shrink": 0.0, "upload": 0.0}
+	var _vp: SubViewport
+	var _env: Environment
+	var _mascots: Array[Mascot3D] = []
+	var _next := 0          ## Próxima pose a renderizar.
+	var _cols := 1
+	var _rows := 1
+	var _rendered := true
+	var _img: Image
+
+	func _init(p_look: Dictionary, p_poses: Array, p_cell: Vector2i) -> void:
+		look = p_look
+		cell = Vector2i(maxi(8, p_cell.x), maxi(8, p_cell.y))
+		var grid := Mascot3DBaker.job_grid(cell)
+		poses = Mascot3DBaker._resolve(p_poses).slice(0, grid.x * grid.y)
+		_cols = grid.x
+		_rows = grid.y
+
+	## Avanza un paso. Devuelve true cuando terminó (bien o mal: ver ok).
+	func step(host: Node) -> bool:
+		if state == State.DONE:
+			return true
+		var t0 := Time.get_ticks_usec()
+		var stage := ""
+		frames += 1
+		match state:
+			State.NEW:
+				stage = "setup"
+				started_msec = Time.get_ticks_msec()
+				if poses.is_empty() or host == null or not host.is_inside_tree() \
+						or DisplayServer.get_name() == "headless":
+					_finish(false)
+				else:
+					_setup(host)
+			State.BUILD:
+				# Una mascota por cuadro (armarla es lo más caro en CPU).
+				stage = "build"
+				var m := Mascot3D.new().setup(Mascot3DBaker._look_color(look), int(look.get("style", 0)))
+				m.visible = false
+				_vp.add_child(m)
+				_mascots.append(m)
+				if _mascots.size() >= mini(POSES_PER_FRAME, poses.size()):
+					state = State.RENDER
+					_render_next()
+			State.RENDER:
+				if _rendered:
+					stage = "pose"
+					if _next < poses.size():
+						_render_next()
+					else:
+						state = State.READBACK
+			State.READBACK:
+				stage = "readback"
+				_img = _vp.get_texture().get_image()
+				_release()
+				if _img == null or _img.is_empty():
+					_finish(false)
+				else:
+					state = State.SHRINK
+			State.SHRINK:
+				stage = "shrink"
+				if _img.get_format() != Image.FORMAT_RGBA8:
+					_img.convert(Image.FORMAT_RGBA8)
+				# Solo las celdas usadas (el viewport es el de la grilla completa).
+				var used := Vector2i(mini(poses.size(), _cols), ceili(float(poses.size()) / _cols))
+				var ss := Mascot3DBaker.SUPERSAMPLE
+				if used != Vector2i(_cols, _rows):
+					_img = _img.get_region(Rect2i(Vector2i.ZERO, used * cell * ss))
+				# Supersampling 2×: promedio de 2×2 píxeles (filtro de caja).
+				if ss == 2:
+					_img.shrink_x2()
+				elif ss > 1:
+					_img.resize(used.x * cell.x, used.y * cell.y, Image.INTERPOLATE_BILINEAR)
+				state = State.UPLOAD
+			State.UPLOAD:
+				stage = "upload"
+				texture = ImageTexture.create_from_image(_img)
+				bytes = _img.get_width() * _img.get_height() * 4
+				_img = null
+				for i in poses.size():
+					regions[poses[i].name] = Rect2(Vector2(i % _cols * cell.x, i / _cols * cell.y), Vector2(cell))
+				_finish(true)
+		var dt := (Time.get_ticks_usec() - t0) / 1000.0
+		cpu_ms += dt
+		worst_ms = maxf(worst_ms, dt)
+		if stage != "":
+			stage_ms[stage] = maxf(float(stage_ms[stage]), dt)
+		return state == State.DONE
+
+	## Corta el trabajo (ej. el jugador se fue).
+	func cancel() -> void:
+		_finish(false)
+
+	func _setup(host: Node) -> void:
+		var px := Vector2i(_cols * cell.x, _rows * cell.y) * Mascot3DBaker.SUPERSAMPLE
+		var look_key := "%s|%d" % [Mascot3DBaker._look_color(look).to_html(), int(look.get("style", 0))]
+		var vp := Mascot3DBaker._pool_vp
+		if is_instance_valid(vp) and vp.size == px and vp.is_inside_tree():
+			_vp = vp
+			if Mascot3DBaker._pool_look == look_key:
+				_mascots = Mascot3DBaker._pool_mascots.duplicate()
+			else:
+				for m in Mascot3DBaker._pool_mascots:
+					m.queue_free()
+		else:
+			Mascot3DBaker.release_pool()
+			_vp = Mascot3DBaker.make_viewport(px, _cols, _rows, Mascot3D.Shading.TOON, ATLAS_CELL.y)
+			host.add_child(_vp)
+		Mascot3DBaker._pool_vp = null
+		Mascot3DBaker._pool_mascots.clear()
+		Mascot3DBaker._pool_look = look_key
+		_vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
+		var env := _vp.find_children("*", "WorldEnvironment", false, false)
+		_env = (env[0] as WorldEnvironment).environment if not env.is_empty() else null
+		if _env:
+			_env.background_mode = Environment.BG_CLEAR_COLOR  # El primer render borra (ver _render_next).
+		for m in _mascots:
+			m.visible = false
+		state = State.BUILD if _mascots.size() < mini(POSES_PER_FRAME, poses.size()) else State.RENDER
+		if state == State.RENDER:
+			_render_next()
+
+	## Pone las próximas poses en sus celdas y pide un render.
+	func _render_next() -> void:
+		var cell_w := ATLAS_CELL.y * cell.x / float(cell.y)  # Ancho exacto de la celda en el mundo.
+		if _env and _next > 0:
+			_env.background_mode = Environment.BG_KEEP  # Desde el segundo render, acumula.
+		for m in _mascots:
+			m.visible = _next < poses.size()
+			if not m.visible:
+				continue
+			var p := poses[_next]
+			m.apply(int(p.mood), p.anim)
+			m.position = Mascot3DBaker.cell_origin(_next % _cols, _next / _cols, _cols, _rows,
+				Vector2(cell_w, ATLAS_CELL.y), ATLAS_FEET)
+			_next += 1
+		_rendered = false
+		RenderingServer.frame_post_draw.connect(_on_rendered, CONNECT_ONE_SHOT)
+		_vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+
+	func _on_rendered() -> void:
+		_rendered = true
+
+	## Devuelve el viewport y las mascotas al pozo (para el próximo trabajo).
+	func _release() -> void:
+		if is_instance_valid(_vp):
+			_vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
+			for m in _mascots:
+				m.visible = false
+			if is_instance_valid(Mascot3DBaker._pool_vp) and Mascot3DBaker._pool_vp != _vp:
+				Mascot3DBaker.release_pool()
+			Mascot3DBaker._pool_vp = _vp
+			Mascot3DBaker._pool_mascots = _mascots.duplicate()
+		_vp = null
+		_mascots.clear()
+
+	func _finish(p_ok: bool) -> void:
+		if not p_ok and is_instance_valid(_vp):
+			_vp.queue_free()  # Algo falló: no se reutiliza.
+			if Mascot3DBaker._pool_vp == _vp:
+				Mascot3DBaker.release_pool()
+		elif is_instance_valid(_vp):
+			_release()
+		_vp = null
+		_mascots.clear()
+		_img = null
+		ok = p_ok
+		state = State.DONE
+
+
 ## Punto de los pies dentro de una celda de cell_px (para ubicar el sprite).
 static func feet_offset(cell_px: float) -> Vector2:
 	var k := cell_px / CELL_WORLD
@@ -152,7 +418,8 @@ static func cell_for_u(u: float) -> int:
 
 ## SubViewport con mundo propio, fondo transparente y la cámara de las
 ## mascotas, para una grilla de cols × rows celdas.
-static func make_viewport(px: Vector2i, cols := 1, rows := 1, p_shading := Mascot3D.Shading.TOON) -> SubViewport:
+static func make_viewport(px: Vector2i, cols := 1, rows := 1, p_shading := Mascot3D.Shading.TOON,
+		cell_h := CELL_WORLD) -> SubViewport:
 	var vp := SubViewport.new()
 	vp.size = px
 	vp.own_world_3d = true
@@ -163,7 +430,7 @@ static func make_viewport(px: Vector2i, cols := 1, rows := 1, p_shading := Masco
 	var cam := Camera3D.new()
 	cam.projection = Camera3D.PROJECTION_ORTHOGONAL
 	cam.keep_aspect = Camera3D.KEEP_HEIGHT
-	cam.size = CELL_WORLD * rows
+	cam.size = cell_h * rows
 	cam.near = 1.0
 	cam.far = 200.0
 	cam.basis = _cam_basis()
@@ -202,12 +469,14 @@ static func add_studio_lights(vp: Node, env: Environment) -> void:
 ## Dónde poner los pies de la mascota de la celda (i, j) para que se vea
 ## centrada en su celda (con la cámara inclinada, la grilla se arma en el
 ## plano de la pantalla, no en el piso).
-static func cell_origin(i: int, j: int, cols: int, rows: int) -> Vector3:
+## cell_world: ancho y alto de la celda (default: cuadrada de CELL_WORLD).
+static func cell_origin(i: int, j: int, cols: int, rows: int, cell_world := Vector2(CELL_WORLD, CELL_WORLD),
+		feet_margin := FEET_MARGIN) -> Vector3:
 	var b := _cam_basis()
-	var sx := (i - (cols - 1) / 2.0) * CELL_WORLD
-	var sy := ((rows - 1) / 2.0 - j) * CELL_WORLD
+	var sx := (i - (cols - 1) / 2.0) * cell_world.x
+	var sy := ((rows - 1) / 2.0 - j) * cell_world.y
 	# El punto de la mascota que va al centro de la celda: (0, cy, 0).
-	var cy := CELL_WORLD / 2.0 - FEET_MARGIN
+	var cy := cell_world.y / 2.0 - feet_margin
 	return b.x * sx + b.y * (sy - cy * b.y.y)
 
 

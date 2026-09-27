@@ -135,6 +135,13 @@ func _run() -> void:
 	quit(0)
 
 
+## Espera a que MascotAtlas termine de hornear (sin render no hace nada).
+func _atlas_idle() -> void:
+	var t0 := Time.get_ticks_msec()
+	while not MascotAtlas.is_idle() and Time.get_ticks_msec() - t0 < 30000:
+		await process_frame
+
+
 func _make(info: Dictionary) -> void:
 	var shot: Dictionary = SHOTS.get(info.id, DEFAULT_SHOT)
 	var game := MiniGameRegistry.create(info.id)
@@ -143,6 +150,10 @@ func _make(info: Dictionary) -> void:
 	_viewport.add_child(game)
 	game.setup(_players(int(info.max_players)))
 	_seed(game, _seed_override if _seed_override >= 0 else int(shot.get("seed", SEED)))
+	# Mascotas 3D horneadas (ADR 0012), como en la intro de la TV.
+	var scale: Variant = game.get_script().get_script_constant_map().get("MASCOT_SCALE", 0.8)
+	MascotAtlas.prewarm_game(game.players, float(scale))
+	await _atlas_idle()
 	var steps := roundi(float(shot.sec) / STEP)
 	var max_steps := steps + roundi(15.0 / STEP)  # Tope de la espera (`ball_in`, `wait`).
 	var i := 0
@@ -161,6 +172,7 @@ func _make(info: Dictionary) -> void:
 	var hud: Variant = game.get("_hud")
 	if hud is CanvasItem:
 		(hud as CanvasItem).visible = false  # La foto va sin marcador.
+	await _atlas_idle()  # Poses que se pidieron recién al dibujar.
 	game.queue_redraw()
 	await process_frame
 	await RenderingServer.frame_post_draw

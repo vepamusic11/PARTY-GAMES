@@ -175,6 +175,7 @@ func _play_next() -> void:
 	server.set_layout(info.layout, info.layout_data)
 	Music.play(Music.track_for_game(id))
 	_intro.show_intro(info, tournament.round_number(), tournament.total_rounds(), players)
+	_prewarm_mascots(id, players)
 
 
 ## Termina la intro y arranca el minijuego en curso. Recién desde acá el
@@ -445,7 +446,25 @@ func _toggle_motion() -> void:
 
 
 func _refresh_lobby() -> void:
-	_lobby.refresh(server.get_players())
+	var players := server.get_players()
+	_lobby.refresh(players)
+	# Mascotas 3D (ADR 0012): hornea a los que llegan o cambian de look y
+	# suelta a los que se fueron.
+	var looks := players.map(MascotAtlas.look_of)
+	looks.append({"color": Protocol.player_color(0), "style": 0})  # Mascota anfitriona del lobby.
+	MascotAtlas.keep_only("tv", looks)
+	MascotAtlas.prewarm_screens(players)
+
+
+## Mientras se lee la intro "¿Cómo se juega?", hornea las mascotas al
+## tamaño del juego (su MASCOT_SCALE, si lo declara) y verifica las de
+## pantalla: al arrancar el juego ya están.
+func _prewarm_mascots(game_id: String, players: Array[Dictionary]) -> void:
+	var u := 0.8
+	for script in MiniGameRegistry.GAMES:
+		if script.call("get_info").id == game_id:
+			u = float(script.get_script_constant_map().get("MASCOT_SCALE", u))
+	MascotAtlas.prewarm_game(players, u)
 
 
 # --- UI ---------------------------------------------------------------------------

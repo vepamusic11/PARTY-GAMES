@@ -784,6 +784,7 @@ static func make_portrait(parent: Node, col: Color, style: int) -> Texture2D:
 		PlayerAvatar.draw_mascot(drawer, feet, PORTRAIT_SCALE * k, col, style))
 	vp.add_child(drawer)
 	parent.add_child(vp)
+	MascotAtlas.redraw_on_bake(drawer, vp)  # Mascota 3D horneada apenas esté (ADR 0012).
 	return vp.get_texture()
 
 

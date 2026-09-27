@@ -57,6 +57,9 @@ func _init() -> void:
 	_mascot_rect.modulate = Color(1, 1, 1, UiTheme.PHONE_WATERMARK_ALPHA)
 	_mascot_rect.visible = false
 	add_child(_mascot_rect)
+	# La marca de agua se prepara una vez: si después se hornea la mascota 3D
+	# (MascotAtlas), se vuelve a preparar con ella.
+	MascotAtlas.redraw_on_bake(_mascot, _mascot_vp)
 
 
 func _notification(what: int) -> void:
