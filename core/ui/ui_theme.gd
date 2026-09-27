@@ -1450,3 +1450,138 @@ static func draw_gear(ci: CanvasItem, c: Vector2, s: float, color: Color, hole: 
 	batch.circle(c, r, color)
 	batch.circle(c, s * 0.14, hole)
 	batch.flush(ci)
+
+
+# --- Pantallas (agente) ---
+# Tokens y dibujos de la intro "¿Cómo se juega?", el menú de pausa, los avisos
+# de la TV (PlayerToasts), el selector TV/celular y la presentación IO-GAMES.
+#
+# Concepto: *reducir movimiento*. Pauta de accesibilidad: a algunas personas
+# los rebotes, deslizamientos y destellos las marean o distraen. Con
+# `reduce_motion` las pantallas solo hacen fundidos cortos (sin rebote, sin
+# partículas, sin brillos que recorren). Ejemplo: la intro aparece entera con
+# un fundido en vez de que cada tarjeta entre saltando.
+
+## Reducir movimiento: usa `reduce_motion` de la sección "Efectos" (una sola
+## preferencia para juegos y pantallas; la guardan load/save_effects_prefs).
+
+## Título "de logo" (intro): relleno amarillo con brillo arriba, contorno de
+## tinta, borde blanco por fuera y sombra dura, como el logo de PARTY-GAME.
+const TITLE_FILL := Color("#FFC83D")
+const TITLE_FILL_TOP := Color("#FFF1A8")   ## Mitad de arriba del relleno (brillo).
+const TITLE_FILL_BOTTOM := Color("#FFA52E") ## Parte de abajo del relleno (naranja, como el logo).
+const TITLE_RIM := Color("#FFFFFF")         ## Borde blanco exterior.
+const TITLE_SHADOW := Color("#1D214099")    ## Sombra dura debajo (tinta al 60 %).
+const TITLE_OUTLINE_RATIO := 0.16           ## Contorno de tinta respecto del tamaño de letra.
+const TITLE_RIM_RATIO := 0.3                ## Borde blanco (incluye el contorno).
+
+## Intro "¿Cómo se juega?".
+const INTRO_TITLE_SIZE := 104
+const INTRO_STEP_FONT := 36
+const INTRO_STEP_ICON := 76.0
+const INTRO_CARD_SIZE := Vector2(196, 214)  ## Tarjeta de cada jugador (mascota + 1P + nombre + estado).
+const INTRO_READY_TEXT := Color("#1C8A52")  ## "¡Listo!" en texto: 4,6:1 sobre blanco (SUCCESS da 2,7:1).
+const INTRO_WAIT_TEXT := Color("#565C85")   ## "Tocá tu celular" (= INK_SOFT).
+const INTRO_ENTER_DELAY := 0.16             ## Espera a que el barrido destape la pantalla.
+const INTRO_ENTER_STAGGER := 0.07           ## Retraso entre tarjetas que entran en cadena.
+const INTRO_ENTER_DUR := 0.32
+const INTRO_SLIDE := 70.0                   ## Cuánto se deslizan los paneles al entrar.
+
+## Avisos de la TV (se conectó / se fue / volvió).
+const TOAST_TOP := 110.0         ## Debajo del marcador de los juegos (HUD_TOP + HUD_PILL.y + 26).
+const TOAST_HEIGHT := 92.0
+const TOAST_GAP := 12.0
+const TOAST_FONT := 32
+const TOAST_COMPACT_FONT := 28
+const TOAST_SHOW_SEC := 3.2      ## Cuánto se ve un aviso común.
+const TOAST_EXPAND_SEC := 4.0    ## "Se desconectó" se ve grande este tiempo y después se achica.
+const TOAST_MAX := 3
+const TOAST_BG := Color("#FFFFFF")
+const TOAST_ALERT := Color("#F28C28")  ## Borde de "se desconectó" (= WARNING).
+
+## Menú de pausa.
+const PAUSE_SHADE := Color("#1D214099")  ## Velo sobre el juego congelado (tinta al 60 %).
+const PAUSE_WIDTH := 760.0
+const PAUSE_BUTTON_H := 96.0
+const PAUSE_DANGER := Color("#E5484D")   ## Botón "Sí, terminar" (= DANGER).
+
+## Selector TV / celular.
+const DEVICE_CARD_SIZE := Vector2(600, 520)
+
+## Presentación IO-GAMES: colores del neón del logo.
+const STUDIO_CYAN := Color("#2FD6FF")
+const STUDIO_MAGENTA := Color("#C04BFF")
+const STUDIO_GLOW := Color("#2F7BFF59")  ## Resplandor detrás del logo (35 %).
+const SPLASH_TOTAL := 2.3   ## Segundos de la presentación completa (tope 2,5).
+
+
+## Texto "de logo" centrado en `center`: sombra, borde blanco, contorno de
+## tinta y relleno. `fill` y el tamaño los elige quien llama.
+static func draw_logo_text(ci: CanvasItem, text: String, center: Vector2, size: int,
+		fill: Color = TITLE_FILL) -> void:
+	var font := FONT_BOLD
+	var w := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
+	var pos := Vector2(center.x - w / 2.0, center.y + (font.get_ascent(size) - font.get_descent(size)) / 2.0)
+	var ink := maxi(6, int(size * TITLE_OUTLINE_RATIO))
+	var rim := maxi(ink + 6, int(size * TITLE_RIM_RATIO))
+	ci.draw_string_outline(font, pos + Vector2(0, size * 0.09), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, rim, TITLE_SHADOW)
+	ci.draw_string_outline(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, rim, TITLE_RIM)
+	ci.draw_string_outline(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, ink, INK)
+	ci.draw_string(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, fill)
+
+
+## Íconos de las pantallas (además de draw_glyph y draw_phone_glyph):
+##   trophy · clock · eye · skip · flag · motion · question · check · star
+## Otro nombre pasa a draw_phone_glyph (y de ahí a draw_glyph).
+static func draw_screen_glyph(ci: CanvasItem, glyph: String, c: Vector2, s: float, color: Color = INK) -> void:
+	var w := maxf(3.0, s * 0.12)
+	match glyph:
+		"trophy":
+			var cup := PackedVector2Array([c + Vector2(-s * 0.36, -s * 0.4), c + Vector2(s * 0.36, -s * 0.4),
+				c + Vector2(s * 0.28, -s * 0.02), c + Vector2(0, s * 0.12), c + Vector2(-s * 0.28, -s * 0.02)])
+			ci.draw_colored_polygon(cup, color)
+			# Asas: medio aro a cada lado.
+			ci.draw_arc(c + Vector2(s * 0.34, -s * 0.24), s * 0.14, -PI / 2.0, PI / 2.0, 10, color, w, true)
+			ci.draw_arc(c + Vector2(-s * 0.34, -s * 0.24), s * 0.14, PI / 2.0, PI * 1.5, 10, color, w, true)
+			ci.draw_rect(Rect2(c + Vector2(-s * 0.06, s * 0.1), Vector2(s * 0.12, s * 0.18)), color)
+			draw_round_rect(ci, Rect2(c + Vector2(-s * 0.26, s * 0.26), Vector2(s * 0.52, s * 0.16)), color, s * 0.05)
+		"clock":
+			ci.draw_arc(c, s * 0.4, 0.0, TAU, 32, color, w * 1.1, true)
+			ci.draw_line(c, c + Vector2(0, -s * 0.26), color, w, true)
+			ci.draw_line(c, c + Vector2(s * 0.2, s * 0.06), color, w, true)
+			ci.draw_circle(c, w * 0.7, color)
+		"eye":
+			var pts := PackedVector2Array()
+			for i in 17:
+				var t := float(i) / 16.0
+				pts.append(c + Vector2(lerpf(-s * 0.46, s * 0.46, t), -sin(t * PI) * s * 0.3))
+			for i in range(15, 0, -1):
+				var t := float(i) / 16.0
+				pts.append(c + Vector2(lerpf(-s * 0.46, s * 0.46, t), sin(t * PI) * s * 0.3))
+			ci.draw_colored_polygon(pts, color)
+			ci.draw_circle(c, s * 0.19, color.lerp(INK, 0.75))
+			ci.draw_circle(c + Vector2(-s * 0.06, -s * 0.06), s * 0.06, PAPER)
+		"skip":
+			draw_arrow(ci, c + Vector2(-s * 0.16, 0), s * 0.62, Vector2.RIGHT, color)
+			draw_arrow(ci, c + Vector2(s * 0.16, 0), s * 0.62, Vector2.RIGHT, color)
+			ci.draw_rect(Rect2(c + Vector2(s * 0.36, -s * 0.34), Vector2(w, s * 0.68)), color)
+		"flag":
+			ci.draw_line(c + Vector2(-s * 0.3, -s * 0.44), c + Vector2(-s * 0.3, s * 0.46), color, w, true)
+			ci.draw_colored_polygon(PackedVector2Array([c + Vector2(-s * 0.3, -s * 0.42), c + Vector2(s * 0.4, -s * 0.26),
+				c + Vector2(-s * 0.3, -s * 0.06)]), color)
+		"motion":
+			for k in 3:
+				var y := c.y + (k - 1) * s * 0.28
+				var pts := PackedVector2Array()
+				for i in 9:
+					var t := float(i) / 8.0
+					pts.append(Vector2(c.x + lerpf(-s * 0.42, s * 0.42, t), y + sin(t * TAU) * s * 0.08))
+				ci.draw_polyline(pts, color, w * 0.9, true)
+		"question":
+			draw_text(ci, "?", c + Vector2(0, s * 0.04), int(s * 1.05), color)
+		"check":
+			draw_check(ci, c, s * 0.8, color, w * 1.3)
+		"star":
+			ci.draw_colored_polygon(star_points(c, s * 0.48, 0.5), color)
+		_:
+			draw_phone_glyph(ci, glyph, c, s, color)

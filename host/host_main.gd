@@ -53,6 +53,7 @@ var _final: FinalScreen
 var _intro: GameIntroScreen
 var _pause: PauseMenu
 var _transition: Transition
+var _toasts: TvToasts  ## Avisos "se sumó / se desconectó / volvió".
 ## Último "standing" enviado a cada jugador (player_id -> payload), para
 ## reenviarlo si el celular se reconecta durante el resumen o el podio.
 var _standings_sent: Dictionary = {}
@@ -367,8 +368,11 @@ func _quit_tournament() -> void:
 
 # --- Red --------------------------------------------------------------------------
 
-## Durante la intro todavía no hay juego: el input se descarta.
+## Durante la intro todavía no hay juego: el input se descarta (solo marca
+## "¡Listo!" en la intro).
 func _on_input(player_id: int, input: Dictionary) -> void:
+	if _intro.visible and not _pause.visible:
+		_intro.on_player_input(player_id, input)
 	if phase == Protocol.PHASE_PLAYING and is_instance_valid(_game) and not _pause.visible and not _intro.visible:
 		_game.on_input(player_id, input)
 
@@ -483,6 +487,10 @@ func _build_ui() -> void:
 	_pause.set_sound_on(not Sfx.muted)
 	_pause.set_motion_reduced(UiTheme.reduce_motion)
 	get_viewport().gui_focus_changed.connect(_on_focus_changed)
+
+	_toasts = TvToasts.new()
+	add_child(_toasts)
+	_toasts.watch(server)
 
 	_transition = Transition.new()
 	_transition.duration = transition_seconds

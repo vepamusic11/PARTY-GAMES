@@ -137,6 +137,9 @@ func _run() -> void:
 		# Antes de cada juego, la intro "¿Cómo se juega?" (se captura la primera).
 		_expect(host._intro.visible and host._game == null, "se muestra la intro de %s" % game_id)
 		if round_index == 0:
+			# Dos tocan su celular: sus tarjetas muestran "¡Listo!" (ready check).
+			_clients[0].send_input(Vector2.ZERO, Protocol.BTN_A)
+			_clients[2].send_input(Vector2.ZERO, Protocol.BTN_A)
 			await _seconds(1.2)
 			await _shot(root, "game_intro")
 		host.skip_intro()
@@ -179,6 +182,34 @@ func _run() -> void:
 	await _seconds(2.0)
 	await _shot(root, "pingpong")
 
+	# Aviso de desconexión (con el marcador de Ping Pong detrás): Sofi pierde
+	# la conexión; su control se congela hasta la captura para que no vuelva antes.
+	_clients[1]._ws.close()
+	await _until(func() -> bool: return host._toasts.active_count() > 0 and host._toasts.texts()[0].contains("desconectó"))
+	_clients[1].process_mode = Node.PROCESS_MODE_DISABLED
+	await _seconds(0.5)
+	_expect(host._toasts.active_count() > 0, "la TV avisa que Sofi se desconectó")
+	await _shot(root, "toast")
+	_clients[1].process_mode = Node.PROCESS_MODE_INHERIT
+	# Menú de pausa y la confirmación de "Salir de la competencia".
+	var cancel := InputEventAction.new()
+	cancel.action = "ui_cancel"
+	cancel.pressed = true
+	host._unhandled_input(cancel)
+	await _seconds(0.5)
+	_expect(host._pause.visible, "Atrás abre la pausa")
+	await _shot(root, "pause")
+	host._pause._quit.pressed.emit()
+	await _seconds(0.5)
+	_expect(host._pause.is_confirming(), "Salir pide confirmación")
+	await _shot(root, "pause_confirm")
+	# Cierra la confirmación y la pausa; Sofi vuelve a conectarse sola.
+	host._pause._confirm_no.pressed.emit()
+	host._unhandled_input(cancel)
+	await _until(func() -> bool:
+		return host.server.get_players().all(func(p: Dictionary) -> bool: return bool(p.get("connected", true))))
+	_expect(not host._pause.visible, "Atrás cierra la pausa")
+
 	# Bots (ADR 0010): Pablo solo + 3 bots (fácil, normal, difícil). Lobby
 	# con bots, su menú, un juego con la placa BOT en el marcador y el resumen.
 	host._back_to_lobby()
@@ -205,6 +236,14 @@ func _run() -> void:
 	await _seconds(4.5)
 	_expect(host._summary.visible, "resumen con bots")
 	await _shot(root, "round_summary_bots")
+
+	# Selector TV / celular (app/boot.gd, sin argumentos).
+	host.queue_free()
+	await _frames(2)
+	var boot: Control = load("res://app/boot.gd").new()
+	root.add_child(boot)
+	await _seconds(1.0)
+	await _shot(root, "selector")
 
 	print("Capturas guardadas en ", ProjectSettings.globalize_path(_out_dir))
 	quit(0)

@@ -1581,7 +1581,7 @@ func test_game_intro() -> void:
 	var intro := host._intro
 	check(intro.visible and host._game == null and host.phase == Protocol.PHASE_PLAYING, "la intro va antes del primer juego")
 	check(intro._round.text == "Ronda 1/3", "muestra la ronda (%s)" % intro._round.text)
-	check(intro._title.text == "Carrera de toques" and intro._description.text == MiniGameRegistry.info("tap_race").description,
+	check(intro._title.text == "Carrera de toques" and " ".join(intro.steps_text()).begins_with(MiniGameRegistry.info("tap_race").description),
 		"título y descripción del juego")
 	check(intro._art.layout == Protocol.LAYOUT_ONE_BUTTON, "ilustra el control del juego")
 	check(intro._players_row.get_child_count() == 2 and intro._players_label.text == "2 jugadores", "muestra quiénes juegan")
@@ -3878,4 +3878,162 @@ func test_controller_has_no_music() -> void:
 		has_sfx = has_sfx or child is Sfx
 	check(has_sfx and not has_music, "el celular tiene efectos pero no música")
 	ctrl.queue_free()
+# --- Pantallas: intro, pausa, avisos, selector (agente) -----------------------------
+
+## Intro: pasos con ícono (uno por oración) y ready check: tocar el celular
+## marca "¡Listo!" y, con todos listos, la cuenta regresiva se acorta (pero
+## la intro no se saltea sola: lo decide la TV).
+func test_intro_steps_and_ready() -> void:
+	check(GameIntroScreen.split_sentences("Tocá el botón. ¡Primero gana! Fin") == ["Tocá el botón.", "¡Primero gana!", "Fin"],
+		"la descripción se parte en oraciones")
+	check(GameIntroScreen.step_glyph(0, "Mové") == "control" and GameIntroScreen.step_glyph(1, "Gana el primero") == "trophy",
+		"el primer paso es el control; el que dice quién gana, trofeo")
+	var intro := GameIntroScreen.new()
+	root.add_child(intro)
+	var players: Array[Dictionary] = [
+		{"id": 1, "slot": 0, "name": "Pablo", "color": Protocol.player_color(0), "connected": true},
+		{"id": 2, "slot": 1, "name": "Sofi", "color": Protocol.player_color(1), "connected": true},
+	]
+	intro.show_intro(MiniGameRegistry.info("arena"), 1, 3, players)
+	check(intro.steps_text().size() >= 2 and intro.steps_text()[0] == MiniGameRegistry.info("arena").description,
+		"pasos de la arena (%s)" % [intro.steps_text()])
+	check(intro._continue.has_focus(), "foco inicial en ¡A jugar!")
+	var done := [false]
+	intro.continue_requested.connect(func() -> void: done[0] = true)
+	intro.on_player_input(1, {"axis": Vector2.ZERO, "btn": 0})
+	check(intro.ready_count() == 0, "el keepalive del celular (sin tocar) no cuenta")
+	intro.on_player_input(1, {"axis": Vector2(0.8, 0.0), "btn": 0})
+	check(intro.ready_count() == 1 and intro._time_left > GameIntroScreen.ALL_READY_SEC, "mover el joystick = ¡Listo!")
+	check((intro._players_row.get_child(0) as TvReadyCard).status_text() == "¡Listo!", "la tarjeta dice ¡Listo!")
+	intro.on_player_input(2, {"axis": "basura", "btn": Protocol.BTN_A})
+	check(intro.ready_count() == 2 and intro._time_left <= GameIntroScreen.ALL_READY_SEC, "con todos listos la cuenta se acorta")
+	check(intro.is_active() and not done[0], "pero la intro no se saltea sola")
+	intro._process(GameIntroScreen.ALL_READY_SEC + 0.1)
+	check(done[0], "arranca al terminar la cuenta corta")
+
+	# Reducir movimiento: la entrada es un fundido y todo queda visible.
+	var before := UiTheme.reduce_motion
+	UiTheme.reduce_motion = true
+	intro.show_intro(MiniGameRegistry.info("tap_race"), 2, 3, players)
+	await create_timer(0.6).timeout
+	check(intro._title.modulate.a > 0.99 and intro._title.scale == Vector2.ONE and intro._players_row.get_child(0).modulate.a > 0.99,
+		"con reducir movimiento todo aparece sin rebote")
+	UiTheme.reduce_motion = before
+	intro.queue_free()
+	await process_frame
+
+
+## Pausa: "Salir de la competencia" siempre pregunta, con el foco en "No";
+## Atrás con la pregunta abierta vuelve a la lista. Además, tocar el celular
+## en la intro marca "¡Listo!" en la TV.
+func test_pause_confirms_quit() -> void:
+	var port := TEST_PORT + 73
+	var host := HostMain.new()
+	host.server_port = port
+	host.announce = false
+	host.transition_seconds = 0.0
+	root.add_child(host)
+	await process_frame
+	_client().join("127.0.0.1", port, host.server.room_code, "Pablo")
+	await _until(func() -> bool: return host.server.get_players().size() == 1)
+	_client().join("127.0.0.1", port, host.server.room_code, "Sofi")
+	await _until(func() -> bool: return host.server.get_players().size() == 2)
+	if not check_that(host.start_tournament(["tap_race", "arena"] as Array[String]), "arranca la competencia"):
+		host.queue_free()
+		await _free_clients()
+		return
+	var pid := int(host.server.get_players()[0].id)
+	host._on_input(pid, {"seq": 5, "axis": Vector2.ZERO, "btn": Protocol.BTN_A})
+	check(host._intro.ready_count() == 1 and host._game == null, "tocar el celular en la intro marca ¡Listo! (sin arrancar)")
+	host.skip_intro()
+	host._game.finish({"winners": [pid], "scores": {pid: 30}})
+	host._summary._on_continue()
+	host.skip_intro()
+	check(host._game != null, "segundo juego en curso")
+
+	var cancel := InputEventAction.new()
+	cancel.action = "ui_cancel"
+	cancel.pressed = true
+	host._unhandled_input(cancel)
+	var pause := host._pause
+	check(pause.visible and pause._resume.has_focus(), "la pausa abre con el foco en Seguir jugando")
+	pause._quit.pressed.emit()
+	check(pause.is_confirming() and pause._confirm_no.has_focus(), "Salir pide confirmación, con el foco en No")
+	check(host._game != null and not host._final.visible, "todavía no se cortó nada")
+	pause._unhandled_input(cancel)
+	check(pause.visible and not pause.is_confirming() and pause._quit.has_focus(), "Atrás vuelve a la lista sin salir")
+	pause._quit.pressed.emit()
+	pause._confirm_no.pressed.emit()
+	check(pause.visible and not pause.is_confirming() and host._game != null, "No, seguir: no sale")
+	var motion := UiTheme.reduce_motion
+	pause._motion.pressed.emit()
+	check(UiTheme.reduce_motion != motion and pause._motion.text.contains("Reducido" if UiTheme.reduce_motion else "Normal"),
+		"Movimiento alterna reducir movimiento")
+	pause._motion.pressed.emit()
+	check(UiTheme.reduce_motion == motion, "y vuelve")
+	pause._quit.pressed.emit()
+	pause._confirm_yes.pressed.emit()
+	check(host._final.visible and not pause.visible, "Sí, salir: podio con los puntos hasta ahora")
+	host.queue_free()
+	await _free_clients()
+
+
+## Avisos de la TV: se sumó, se desconectó (con cuenta regresiva), volvió y
+## se fue. Aparecen debajo del marcador y se van solos.
+func test_player_toasts() -> void:
+	var port := TEST_PORT + 74
+	var host := HostMain.new()
+	host.server_port = port
+	host.announce = false
+	host.transition_seconds = 0.0
+	root.add_child(host)
+	await process_frame
+	var toasts := host._toasts
+	var c1 := _client()
+	c1.join("127.0.0.1", port, host.server.room_code, "Pablo")
+	await _until(func() -> bool: return toasts.active_count() == 1)
+	check(toasts.texts() == ["Se sumó Pablo"], "se sumó (%s)" % [toasts.texts()])
+	await create_timer(0.4).timeout  # Termina de entrar (se desliza desde arriba).
+	check(toasts.get_child(0).position.y >= UiTheme.TOAST_TOP, "va debajo del marcador de los juegos")
+	toasts.advance(UiTheme.TOAST_SHOW_SEC + 0.1)
+	check(toasts.active_count() == 0, "se va solo")
+
+	c1._ws.close()
+	await _until(func() -> bool: return toasts.active_count() == 1 and toasts.texts()[0].contains("desconectó"))
+	check(toasts.texts() == ["Pablo se desconectó — esperando que vuelva (30 s)"], "se desconectó (%s)" % [toasts.texts()])
+	await _until(func() -> bool: return toasts.texts() == ["Pablo volvió"], 5000)
+	check(toasts.texts() == ["Pablo volvió"], "al volver reemplaza el aviso (%s)" % [toasts.texts()])
+
+	var p := host.server.get_players()[0]
+	toasts.show_toast(p, TvToasts.Kind.LOST)
+	toasts.advance(UiTheme.TOAST_EXPAND_SEC + 0.5)
+	check(toasts.active_count() == 1 and not toasts.texts()[0].contains("Pablo") and toasts.texts()[0].ends_with(" s"),
+		"a los pocos segundos se achica a la cuenta regresiva (%s)" % [toasts.texts()])
+	toasts.show_toast(p, TvToasts.Kind.LEFT)
+	check(toasts.texts() == ["Pablo se fue"], "si no vuelve: se fue")
+	for i in 5:
+		toasts.show_toast({"id": 10 + i, "slot": i % 4, "name": "N%d" % i, "color": Protocol.player_color(i % 4)}, TvToasts.Kind.JOINED)
+	check(toasts.active_count() == UiTheme.TOAST_MAX, "como mucho %d avisos a la vez" % UiTheme.TOAST_MAX)
+	toasts.show_toast({}, TvToasts.Kind.JOINED)
+	check(toasts.active_count() == UiTheme.TOAST_MAX, "datos vacíos: sin aviso ni error")
+	host.queue_free()
+	await _free_clients()
+
+
+## Selector TV/celular: dos tarjetas, foco inicial en la TV y ◀ ▶ entre
+## ellas. La presentación IO-GAMES dura como mucho 2,5 s.
+func test_boot_selector() -> void:
+	check(UiTheme.SPLASH_TOTAL <= 2.5, "la presentación dura ≤ 2,5 s")
+	var boot: Control = load("res://app/boot.gd").new()
+	root.add_child(boot)
+	await process_frame
+	var tv: TvDeviceCard = boot.get("_tv_card")
+	var phone: TvDeviceCard = boot.get("_phone_card")
+	if not check_that(tv != null and phone != null, "el selector muestra las dos tarjetas"):
+		boot.queue_free()
+		return
+	check(tv.has_focus(), "foco inicial en la TV")
+	check(tv.get_node(tv.focus_neighbor_right) == phone and phone.get_node(phone.focus_neighbor_left) == tv,
+		"◀ ▶ pasan de una tarjeta a la otra")
+	boot.queue_free()
 	await process_frame
