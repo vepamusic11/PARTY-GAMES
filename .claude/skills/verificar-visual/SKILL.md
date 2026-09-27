@@ -24,6 +24,7 @@ xvfb-run -a -s "-screen 0 1920x1080x24" godot --path . --rendering-driver opengl
 - Con `--headless` Godot **no dibuja**: hace falta `xvfb-run` (pantalla virtual).
 - Sale con código 1 si algún paso del recorrido falla (ej. el resumen no aparece).
 - En CI el job `capturas` hace lo mismo y sube las imágenes como artefacto del PR.
+- `--style=pixel|neon|paper|flat` aplica un post-proceso de exploración de estilo (TV y celular); ver `docs/ESTILOS.md`. Nunca usarlo para actualizar `docs/img`.
 
 ## Qué revisar en cada captura
 

@@ -5,6 +5,9 @@ extends SceneTree
 ##
 ##   xvfb-run -a -s "-screen 0 1920x1080x24" godot --path . -s res://tools/capture_screens.gd
 ##   … -- --out=/tmp/capturas/      (otra carpeta, para revisar sin pisar docs/)
+##   … -- --out=/tmp/estilos/pixel --style=pixel
+##        (exploración de estilos: post-proceso sobre la TV y el celular; ver
+##        docs/ESTILOS.md. Sin --style las capturas quedan como siempre.)
 ##
 ## Necesita una pantalla (real o virtual con xvfb): con --headless Godot no
 ## dibuja nada. También sirve como prueba de humo visual: si una pantalla
@@ -14,6 +17,7 @@ const PORT := 47995
 const OUT_DIR := "res://docs/img/"
 const OUT_WIDTH := 960
 const PHONE := Vector2i(2340, 1080)  ## Celular apaisado típico (19.5:9).
+const StyleLayer := preload("res://tools/styles/style_layer.gd")
 
 ## Segundos de juego antes de capturar (default 2,5): algunos juegos se ven
 ## mejor más avanzados (ej. el reloj ya corriendo o bloques cayendo).
@@ -29,6 +33,8 @@ const CONTROL_SHOTS := {
 var host: HostMain
 var _out_dir := OUT_DIR
 var _lobby_only := false  ## `--lobby-only`: corta tras el lobby (iterar diseño rápido).
+var _style := ""  ## Post-proceso de estilo (--style=pixel|neon|paper|flat); vacío = el actual.
+var _style_params := {}
 var _clients: Array[ControllerClient] = []
 
 
@@ -43,6 +49,16 @@ func _run() -> void:
 			DirAccess.make_dir_recursive_absolute(_out_dir)
 		elif arg == "--lobby-only":
 			_lobby_only = true
+		elif arg.begins_with("--style="):
+			_style = arg.trim_prefix("--style=")
+	_style_params = StyleLayer.params_from_args(OS.get_cmdline_user_args())
+	if _style != "" and _out_dir == OUT_DIR:
+		printerr("--style necesita --out=<carpeta>: las capturas con estilo no van a docs/img.")
+		quit(1)
+		return
+	if _style != "" and StyleLayer.attach(root, _style, _style_params) == null:
+		quit(1)
+		return
 	# Presentación de la marca (sola, antes de la TV).
 	var splash := SplashScreen.new()
 	root.add_child(splash)
@@ -72,6 +88,8 @@ func _run() -> void:
 	root.add_child(phone)
 	var ctrl := ControllerMain.new()
 	phone.add_child(ctrl)
+	if _style != "":
+		StyleLayer.attach(phone, _style, _style_params)
 	await _frames(5)
 	ctrl._selected_host = {"ip": "127.0.0.1", "port": PORT}  # Como si la eligiera de la lista.
 	ctrl._ip_edit.text = "127.0.0.1"
