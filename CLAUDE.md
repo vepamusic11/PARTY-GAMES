@@ -57,4 +57,4 @@ Análisis de qué skills conviene usar (y cuáles no): `docs/SKILLS.md`.
 
 ## Estado y próximos pasos
 
-Ver `docs/PLAN.md` (definición de "terminado", presupuestos de rendimiento y fases) y `docs/ROADMAP.md`. Limitación importante: Godot no exporta a tvOS (ver `docs/adr/0001-motor-godot.md`).
+Ver `docs/PLAN.md` (definición de "terminado", presupuestos de rendimiento y fases) y `docs/ROADMAP.md`. **Para retomar el trabajo: `docs/PENDIENTES.md`** (qué falta, agentes en curso y qué depende del dueño). Limitación importante: Godot no exporta a tvOS (ver `docs/adr/0001-motor-godot.md`).

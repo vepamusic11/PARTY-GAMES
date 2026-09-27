@@ -126,6 +126,10 @@ func _build() -> void:
 	_games = UiTheme.label("", 28, UiTheme.INK, true)
 	_games.add_theme_constant_override("outline_size", 8)
 	_games.add_theme_color_override("font_outline_color", UiTheme.PAPER)
+	# Con muchos juegos la línea era más ancha que la TV: ensanchaba la columna
+	# y el podio quedaba corrido a la derecha (el 3.° se cortaba). Ahora ocupa
+	# el ancho de la pantalla y, si no entra, termina en "…".
+	_games.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	col.add_child(_games)
 	var buttons := HBoxContainer.new()
 	buttons.alignment = BoxContainer.ALIGNMENT_CENTER

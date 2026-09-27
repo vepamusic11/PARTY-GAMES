@@ -81,6 +81,7 @@ godot --headless --path . -s res://tests/run_tests.gd    # 0 = todo OK
 | [docs/JUEGOS.md](docs/JUEGOS.md) | Catálogo de juegos actuales y propuestos (carreras, pool, equipos) |
 | [docs/SECURITY.md](docs/SECURITY.md) | Modelo de amenazas y controles |
 | [docs/BUILD.md](docs/BUILD.md) | Exportar a Android, Google TV e iOS |
+| [docs/PENDIENTES.md](docs/PENDIENTES.md) | Qué falta y cómo retomar |
 | [docs/PERFORMANCE.md](docs/PERFORMANCE.md) | Benchmark, presupuestos de rendimiento y optimizaciones |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Qué sigue |
 | [docs/PLAN.md](docs/PLAN.md) | Plan de calidad: definición de "terminado", presupuestos medibles y fases |
