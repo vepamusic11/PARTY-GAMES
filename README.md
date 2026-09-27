@@ -75,6 +75,7 @@ godot --headless --path . -s res://tests/run_tests.gd    # 0 = todo OK
 | [docs/PERFORMANCE.md](docs/PERFORMANCE.md) | Benchmark, presupuestos de rendimiento y optimizaciones |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Qué sigue |
 | [docs/PLAN.md](docs/PLAN.md) | Plan de calidad: definición de "terminado", presupuestos medibles y fases |
+| [docs/CALIDAD.md](docs/CALIDAD.md) | Auditoría de calidad de producto y backlog priorizado: diseño, UX, audio, contenido, tienda y proceso |
 | [docs/PRODUCCION.md](docs/PRODUCCION.md) | Dónde vive el proyecto en producción, requisitos de tiendas, bots y redes neuronales |
 | [docs/RECURSOS.md](docs/RECURSOS.md) | Addons, assets y proyectos open source reutilizables, con sus licencias |
 | [docs/adr/](docs/adr/) | Decisiones de arquitectura registradas |

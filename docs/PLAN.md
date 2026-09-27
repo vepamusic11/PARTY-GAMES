@@ -2,6 +2,8 @@
 
 Cómo seguimos desde v0.2 hasta un juego publicable en tiendas, con criterios medibles para saber cuándo algo está "terminado de verdad". El estado día a día se ve en el tablero de avances; los ítems cerrados se tildan en [ROADMAP.md](ROADMAP.md).
 
+Auditoría de calidad de producto (diseño, UX, audio, contenido, técnica, tienda y proceso) con backlog priorizado: [CALIDAD.md](CALIDAD.md).
+
 ## Dónde estamos
 
 | Área | Estado |
