@@ -37,11 +37,11 @@ Juegos cortos para **1 a 4 jugadores en el sillón**: la **TV es la pantalla** y
 - Sistema visual propio: tipografía Fredoka, mascotas por jugador (distinguibles también sin color), marcadores hexagonales, fondos animados. Todo dibujado por código.
 - Toda la TV se maneja con el control remoto (D-pad), con menú de pausa en "Atrás". Antes de cada juego, una intro "¿Cómo se juega?" y transiciones animadas entre pantallas.
 - Música chiptune CC0 por pantalla con fundido y *ducking*, efectos sintetizados, logos sonoros propios y vibración ([CREDITS.md](CREDITS.md)); mascotas animadas (caminan, miran, parpadean, festejan).
-- 575 verificaciones automáticas (unitarias + integración real de red + flujo completo de la TV), compilación de todos los scripts y prueba de humo visual en CI.
+- Más de 1800 verificaciones automáticas (unitarias + integración real de red + flujo completo de la TV), compilación de todos los scripts y prueba de humo visual en CI.
 
 ## Probarlo en 2 minutos (en tu PC)
 
-1. Instalá [Godot 4.4](https://godotengine.org/download) (versión estándar, no .NET).
+1. Instalá [Godot 4.4.1](https://godotengine.org/download/archive/4.4.1-stable/) (versión estándar, no .NET). La primera vez que abrís el proyecto, Godot importa los recursos (tarda unos segundos).
 2. Cloná el repo y abrí `project.godot` con Godot.
 3. Abrí dos ventanas del juego:
    - **Depurar → Personalizar instancias de ejecución** → 2 instancias. Argumentos: `-- --host` en una y `-- --controller` en la otra.
@@ -52,6 +52,7 @@ Juegos cortos para **1 a 4 jugadores en el sillón**: la **TV es la pantalla** y
      ```
 4. En la ventana del control: elegí la TV de la lista (o escribí `127.0.0.1`), poné un apodo y el código que muestra la TV.
 5. En la TV elegí cuántos juegan (◀ ▶ sobre el selector), marcá los juegos con Enter y apretá **¡A jugar!**. Con el mouse arrastrás como si fuera el dedo. Escape = botón "Atrás" (menú de pausa).
+6. **Solo, sin segundo control:** en el lobby, pará sobre un lugar libre y apretá Enter → "Sumar bot" (Fácil, Normal o Difícil). Así probás cualquier juego con 1 persona + bots.
 
 Para probar con celulares reales ver [docs/BUILD.md](docs/BUILD.md).
 
