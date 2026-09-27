@@ -977,3 +977,120 @@ static func draw_phone_glyph(ci: CanvasItem, glyph: String, c: Vector2, s: float
 			draw_glyph(ci, glyph, c, s, color)
 	if off:
 		ci.draw_line(c + Vector2(-s, -s) * 0.45, c + Vector2(s, s) * 0.45, DANGER, w * 1.2, true)
+
+
+# --- Lobby (agente) ---------------------------------------------------------------
+# Relieve "de juguete brillante" del lobby (fichas del código, botones, flechas
+# del selector): contorno de tinta, labio oscuro abajo (sombra), cuerpo, luz
+# arriba en degradé y un brillo chico. Todo dibujado, sin texturas.
+#
+# Concepto: *bisel*. Un botón plano parece una etiqueta; con luz arriba y
+# sombra abajo el ojo lo lee como una pieza que sobresale y se puede apretar.
+# Ejemplo: la ficha "K" del código es un bloque de juguete, no un recuadro.
+
+const BEVEL_DEPTH := 8.0                  ## Alto del labio inferior (relieve).
+const BEVEL_OUTLINE := 4.0                ## Contorno de tinta alrededor.
+const BEVEL_SHADE := 0.3                  ## Cuánto se oscurece el labio.
+const GLOSS_TOP := Color(1, 1, 1, 0.55)   ## Luz arriba del degradé del cuerpo.
+const GLOSS_BOTTOM := Color(1, 1, 1, 0.0)
+const SPECULAR := Color(1, 1, 1, 0.8)     ## Brillo chico arriba a la izquierda.
+const SPARKLE := Color("#FF9F2E")         ## Rayitas del botón principal con foco.
+const GLASS := Color(1, 1, 1, 0.4)        ## Tarjeta translúcida (lugar libre).
+const GLASS_EDGE := Color(1, 1, 1, 0.9)
+const HALO := Color(1, 1, 1, 0.2)         ## Resplandor detrás de la mascota.
+const KEY_CAP := Color("#232846")         ## Teclas de las pistas del control remoto.
+
+
+## Rectángulo redondeado con degradé vertical (`top` arriba, `bottom` abajo).
+## Un solo polígono: un comando de dibujo.
+static func draw_gradient_round_rect(ci: CanvasItem, rect: Rect2, top: Color, bottom: Color,
+		radius: float = RADIUS) -> void:
+	if rect.size.x <= 0.0 or rect.size.y <= 0.0:
+		return
+	var pts := round_rect_points(rect, radius, 6)
+	var cols := PackedColorArray()
+	cols.resize(pts.size())
+	for i in pts.size():
+		cols[i] = top.lerp(bottom, clampf((pts[i].y - rect.position.y) / rect.size.y, 0.0, 1.0))
+	ci.draw_polygon(pts, cols)
+
+
+## Pieza con bisel brillante. `rect` es el cuerpo sin apretar; el labio ocupa
+## `depth` px más abajo. Apretada, el cuerpo baja y el labio casi no se ve.
+static func draw_bevel(ci: CanvasItem, rect: Rect2, base: Color, radius: float,
+		pressed: bool = false, outline_color: Color = INK, depth: float = BEVEL_DEPTH,
+		outline: float = BEVEL_OUTLINE) -> void:
+	var body := Rect2(rect.position + Vector2(0, depth * 0.7 if pressed else 0.0), rect.size)
+	var whole := Rect2(rect.position, rect.size + Vector2(0, depth))
+	draw_round_rect(ci, whole.grow(outline), outline_color, radius + outline, 0, INK, not pressed)
+	draw_round_rect(ci, Rect2(rect.position + Vector2(0, depth), rect.size), base.darkened(BEVEL_SHADE), radius)
+	draw_round_rect(ci, body, base, radius)
+	var gloss := Rect2(body.position + Vector2(3, 3), Vector2(body.size.x - 6, body.size.y * 0.6))
+	draw_gradient_round_rect(ci, gloss, Color(GLOSS_TOP, GLOSS_TOP.a * base.a), GLOSS_BOTTOM,
+		minf(radius - 3.0, gloss.size.y / 2.0))
+	var spec_h := maxf(5.0, body.size.y * 0.1)
+	var spec := Rect2(body.position + Vector2(minf(radius * 0.7, body.size.x * 0.2), body.size.y * 0.1),
+		Vector2(minf(body.size.x * 0.22, 110.0), spec_h))
+	draw_round_rect(ci, spec, Color(SPECULAR, SPECULAR.a * base.a), spec_h / 2.0)
+
+
+## Círculo con bisel (flechas del selector, numeritos): contorno, labio y brillo.
+static func draw_bevel_circle(ci: CanvasItem, center: Vector2, r: float, base: Color,
+		outline_color: Color = INK) -> void:
+	var batch := ShapeBatch.new()
+	var lip := maxf(3.0, r * 0.14)
+	batch.circle(center + Vector2(0, lip * 0.5), r + BEVEL_OUTLINE, outline_color)
+	batch.circle(center + Vector2(0, lip * 0.5), r, base.darkened(BEVEL_SHADE))
+	batch.circle(center - Vector2(0, lip * 0.5), r, base)
+	batch.ellipse(center - Vector2(r * 0.1, r * 0.5), r * 0.5, r * 0.2, Color(1, 1, 1, 0.45 * base.a))
+	batch.flush(ci)
+
+
+## Destellos del botón principal con foco: dos abanicos de rayitas a los
+## costados de `rect` (uno hacia la izquierda y otro arriba a la derecha),
+## cada uno con una estrellita. Van a los costados (no abajo) para no tapar
+## las pistas del pie. Devuelve [origen, dirección, estrella] de cada abanico.
+static func sparkle_fans(rect: Rect2) -> Array:
+	var corner := rect.size.y * 0.15
+	return [
+		[Vector2(rect.position.x, rect.get_center().y), Vector2.LEFT,
+			Vector2(rect.position.x - 46, rect.position.y + 2)],
+		[Vector2(rect.end.x - corner, rect.position.y + corner), Vector2(1, -1).normalized(),
+			Vector2(rect.end.x + 2, rect.end.y - 16)],
+	]
+
+
+## Un abanico de 3 rayitas (trazo que se afina hacia adentro, punta redonda,
+## contorno de tinta) y su estrellita. Se dibuja una sola vez: la animación
+## ("late") se hace escalando el nodo desde `origin`, sin redibujar.
+## Un solo lote: un comando de dibujo.
+static func draw_sparkle_fan(ci: CanvasItem, origin: Vector2, dir: Vector2, star: Vector2,
+		color: Color = SPARKLE) -> void:
+	var batch := ShapeBatch.new()
+	for pass_i in 2:
+		var col := INK if pass_i == 0 else color
+		var w := 14.0 if pass_i == 0 else 8.0
+		for k in 3:
+			var d := dir.rotated((k - 1) * 0.62)
+			var a := origin + d * 18.0
+			var b := a + d * (32.0 if k == 1 else 24.0)
+			var n := Vector2(-d.y, d.x) * (w / 2.0)
+			batch.polygon(PackedVector2Array([a - n * 0.55, b - n, b + n, a + n * 0.55]), col)
+			batch.circle(b, w / 2.0, col)
+			batch.circle(a, w * 0.28, col)
+	batch.star(star_points(star, 16.0, 0.45), star, INK)
+	batch.star(star_points(star, 12.0, 0.45), star, GOLD)
+	batch.flush(ci)
+
+
+## Píldora (contador "6 de 7 elegidos", teclas): fondo, contorno claro y sombra.
+static func chip_style(bg: Color, pad_h: int = 22, pad_v: int = 8,
+		border: Color = GLASS_EDGE) -> StyleBoxFlat:
+	var s := panel_style(bg, 999, pad_v)
+	s.content_margin_left = pad_h
+	s.content_margin_right = pad_h
+	s.set_border_width_all(3)
+	s.border_color = border
+	s.shadow_size = 8
+	s.shadow_offset = Vector2(0, 4)
+	return s
