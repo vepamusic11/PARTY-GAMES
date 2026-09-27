@@ -46,8 +46,22 @@ No es una skill, pero resuelve el problema más práctico: en Claude Code en la 
 | **Design** (Anthropic) | ✅ Instalar ahora | Revisión de accesibilidad, crítica de diseño y textos de interfaz |
 | **Marketing** (Anthropic) | ⏳ En la Fase D del [plan](PLAN.md) | Fichas de tienda, lanzamiento y comunicación |
 | Axe, Snagly y otros de QA web | ❌ No | Auditan sitios web con navegador; no aplican a una app de Godot |
+| **SpriteCook** (comunidad) | 🔍 Evaluar con una prueba chica | Genera sprites, kits de UI, texturas y animaciones cortas por IA, con una skill para usarlos en Godot. Sirve para llegar al acabado de las maquetas sin ilustrador. **Antes de usarlo:** revisar la licencia de uso comercial del arte generado, el costo por imagen y que los 7 estilos salgan consistentes |
+| **Meshy** (partner) | 🔍 Evaluar | Genera modelos 3D con esqueleto y animación por IA. Encaja con el camino "mascotas 3D" (ver [ARTE.md](ARTE.md) cuando esté). Mismas precauciones de licencia, costo y consistencia |
+| **image-generation** (comunidad) | ✅ Útil y sin costo | Guía para escribir buenos pedidos (prompts) a generadores de imágenes: maquetas, fondos, fichas de tienda |
+| **Unity** (partner) | ❌ No | Es para proyectos Unity; este juego usa Godot |
 
-No hay skills ni plugins específicos de Godot en el catálogo: el conocimiento del motor queda en las skills propias de arriba.
+**Concepto, arte generado por IA:** un servicio crea la imagen o el modelo a partir de una descripción.
+*Ejemplo:* "mascota conejo de juguete brillante, rosa, vista de frente, fondo transparente" devuelve un sprite listo para usar.
+- **Ventaja:** rapidez.
+- **Riesgos:**
+  - que cada estilo salga un poco distinto, lo que rompe la identidad;
+  - términos de licencia que no permitan uso comercial;
+  - que no se pueda registrar como marca propia.
+
+**Recomendación:** usarlo para explorar y hacer maquetas. Para el arte final, que quede en manos de una persona o se genere con un proceso controlado (ver el prototipo 3D en Godot).
+
+Relevado el 27/09/2026: no hay plugins específicos de Godot en el catálogo, fuera de la skill de SpriteCook para usar sus assets en Godot. El conocimiento del motor queda en las skills propias de arriba.
 
 ## Cuándo crear una skill nueva
 
