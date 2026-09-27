@@ -145,6 +145,43 @@ func test_parse_standing() -> void:
 	check(r.place == 0 and r.players == 3, "place 0 = sin puesto; players nunca menor que rank")
 
 
+# --- Código de terceros (ver CREDITS.md) -------------------------------------------
+
+## QR para unirse (`addons/pmc_qr/`, MIT). Compara módulo por módulo con un QR
+## hecho por un codificador independiente (segno, en Python) con el mismo
+## texto, versión, corrección y máscara, guardado en tests/data/. Si una
+## actualización del addon rompe la codificación, falla acá y no en el
+## celular de alguien en el sillón. La referencia se regenera con
+## `segno.make(url, error="m", mode="byte", version=3, mask=2).matrix`
+## (una fila de 0/1 por línea).
+func test_join_qr() -> void:
+	var tool: Script = load("res://tools/make_join_qr.gd")
+	var url: String = tool.join_url("192.168.1.87", Protocol.WS_PORT, "AB23")
+	check(url == "partygame://join?ip=192.168.1.87&code=AB23", "enlace para unirse: %s" % url)
+	check((tool.join_url("10.0.0.2", 47800, "XY99") as String).ends_with("&port=47800"), "el puerto va solo si no es el de siempre")
+	var auto: PMCQrMatrix = tool.encode(url)
+	if not check_that(auto != null and auto.version == 3 and auto.size == 29, "el enlace típico entra en la versión 3 (29 × 29)"):
+		return
+	check((tool.encode(url) as PMCQrMatrix).modules == auto.modules, "determinista: mismo texto, mismo QR (se puede cachear)")
+	var golden := FileAccess.get_file_as_string("res://tests/data/qr_join_v3m_mask2.txt").strip_edges().split("\n")
+	var fixed := PMCQr.encode_advanced(url, PMCQr.ECC_M, 3, 3, 2, "byte")
+	if not check_that(golden.size() == 29 and fixed != null and fixed.size == 29, "referencia de 29 filas"):
+		return
+	var diff := 0
+	for y in 29:
+		for x in 29:
+			if (golden[y][x] == "1") != fixed.get_module(x, y):
+				diff += 1
+	check(diff == 0, "%d módulos distintos de la referencia independiente" % diff)
+	check(PMCQr.encode("x".repeat(3000), PMCQr.ECC_M) == null, "texto demasiado largo -> null, sin error")
+	# Imagen: margen de 4 módulos claro y patrón localizador oscuro, con colores de UiTheme.
+	var img: Image = tool.to_image(auto, 4)
+	check(img.get_width() == (29 + 8) * 4, "ancho con margen: %d" % img.get_width())
+	var paper := img.get_pixel(0, 0)
+	var ink := img.get_pixel(16, 16)
+	check(absf(paper.r - UiTheme.PAPER.r) < 0.01 and absf(ink.r - UiTheme.INK.r) < 0.01 and absf(ink.b - UiTheme.INK.b) < 0.01, "tinta sobre papel")
+
+
 # --- Minijuegos -----------------------------------------------------------------
 
 func test_registry_games_are_valid() -> void:

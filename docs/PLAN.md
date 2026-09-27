@@ -61,7 +61,7 @@ Requiere tu TV y tus celulares en la misma Wi-Fi: se hace con **Claude Code en l
 - Comparar los renderizadores `mobile` y `Compatibility` en una TV real.
 - Presets de exportación Android y Google TV (banner, íconos, permisos `Vibrate` y de red).
 - Medir latencia y batería en 3 redes distintas y ajustar la frecuencia de envío.
-- QR en la TV que abra la app con la IP y el código precargados, con [Kenyoni QR Code](https://github.com/kenyoni-software/godot-addons) (MIT). En iPhone evita depender del permiso de multicast de Apple.
+- QR en la TV que abra la app con la IP y el código precargados. El codificador ya está en `addons/pmc_qr/` (MIT, probado con `tools/make_join_qr.gd` y `test_join_qr`; por qué este y no Kenyoni: [RECURSOS.md](RECURSOS.md#qr-por-qué-pmcqr-y-no-kenyoni)). Falta ponerlo en el lobby y que el celular lea el enlace. En iPhone evita depender del permiso de multicast de Apple.
 - **Listo cuando:** una partida de 4 jugadores de 20 minutos sin cortes y con los presupuestos cumplidos.
 
 ### Fase C · Contenido: 10–12 juegos con variedad
