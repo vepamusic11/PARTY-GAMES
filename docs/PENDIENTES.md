@@ -27,7 +27,7 @@ No quedó ningún agente trabajando: todo lo del 29/09 está integrado en la ram
 
 **Para la próxima sesión (sugerido, en este orden):**
 1. **Empujones en 2.5D** (receta `sumo` con sala y agua; la isla proyectada en 2D) y **Desenfunde** con fachadas 3D del pueblo; con eso no queda ningún juego plano ([ADR 0019](adr/0019-tablero-25d-horneado.md)).
-2. **Ayuda de los eliminados** en Memoria de colores (pista) y ¡Que no te deje la cámara! (empujón); ajustar el costo con bots ([MODOS.md §11](MODOS.md#11-ayuda-de-los-eliminados-a-cambio-de-puntos), [ADR 0020](adr/0020-ayuda-de-eliminados.md)).
+2. **Ayuda de los eliminados** en Memoria de colores (pista) y ¡Que no te deje la cámara! (empujón); ajustar el costo con bots ([MODOS.md §11](MODOS.md#11-ayuda-de-los-eliminados-a-cambio-de-puntos), [ADR 0020](adr/0020-ayuda-de-los-eliminados.md)).
 3. **Siguiente juego nuevo:** *Bombas de mascotas* (tipo Bomberman, estrena el joystick + A/B, con ayuda de eliminados desde el principio).
 4. **Decisiones del dueño pendientes:** texto del botón de orden del lobby ("Orden: lista" vs. el largo) y si vale la pena cambiar el protocolo para mostrar las mascotas en el selector de ayuda del celular.
 
