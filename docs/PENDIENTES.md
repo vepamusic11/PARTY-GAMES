@@ -23,12 +23,13 @@ Estado al **29/09/2026** (rama `claude/laughing-ramanujan-tfi3ps`, [PR #1](https
 
 ## 2. Trabajo en curso
 
-Dos agentes quedaron trabajando el 29/09 en copias aisladas (`.claude/worktrees/`). Si al retomar ya no están (el contenedor se recicla), **se vuelven a lanzar con el mismo pedido**; lo integrado está a salvo en la rama.
+No quedó ningún agente trabajando: todo lo del 29/09 está integrado en la rama (vuelta 3 de dirección de arte y ayuda de los eliminados).
 
-| Agente | Qué hace | Dónde quedó |
-|---|---|---|
-| **Dirección de arte, vuelta 3** (con Fable) | Pasar a 2.5D / escenario 3D los juegos que siguen planos (Karts, Carrera de obstáculos, Desenfunde, Memoria, ¡Que no te deje la cámara!, Empujones, Carrera de toques, Reloj exacto, Ping Pong); Pool: bolas tapadas por la banda de adelante; Esquivar: bloques que no pasen detrás del marcador; mascotas con brazos más gruesos y ojos más grandes | Karts en 2.5D hecho (commit WIP en su worktree) |
-| **Ayuda de los eliminados** en Esquivar y Empujones ([MODOS.md §11](MODOS.md#11-ayuda-de-los-eliminados-a-cambio-de-puntos)) | `Tournament.spend`, `MiniGame.apply_help`, escudo y salvavidas, selector "Elegí a quién ayudar" en el celular, cartel en la TV, opción en el lobby, bots, tests, ADR | Base hecha (puntos, regla y ambos juegos); faltaban lobby, celular, efectos, bots, tests y docs |
+**Para la próxima sesión (sugerido, en este orden):**
+1. **Empujones en 2.5D** (receta `sumo` con sala y agua; la isla proyectada en 2D) y **Desenfunde** con fachadas 3D del pueblo; con eso no queda ningún juego plano ([ADR 0019](adr/0019-tablero-25d-horneado.md)).
+2. **Ayuda de los eliminados** en Memoria de colores (pista) y ¡Que no te deje la cámara! (empujón); ajustar el costo con bots ([MODOS.md §11](MODOS.md#11-ayuda-de-los-eliminados-a-cambio-de-puntos), [ADR 0020](adr/0020-ayuda-de-eliminados.md)).
+3. **Siguiente juego nuevo:** *Bombas de mascotas* (tipo Bomberman, estrena el joystick + A/B, con ayuda de eliminados desde el principio).
+4. **Decisiones del dueño pendientes:** texto del botón de orden del lobby ("Orden: lista" vs. el largo) y si vale la pena cambiar el protocolo para mostrar las mascotas en el selector de ayuda del celular.
 
 ## 3. Diseño (pedido: "3D como la maqueta o mejor")
 
