@@ -53,7 +53,10 @@ Dos agentes quedaron trabajando el 29/09 en copias aisladas (`.claude/worktrees/
 
 - **Siguiente:** *Bombas de mascotas* (tipo Bomberman; estrena el joystick + A/B), *Tanquecitos* (tipo Battle City, 2 contra 2 cuidando la base), *Víboras*, *Come-come*.
 - Regla nueva: no todos los juegos necesitan la mascota entera; alcanza el color del jugador **con** etiqueta 1P–4P y patrón propio ("Cómo se ve cada jugador" en JUEGOS.md).
-- **Idea del dueño (29/09): ayuda de los eliminados.** En los juegos con eliminación, el que ya perdió puede ayudar a uno que sigue jugando, sacrificando puntos de su total ([MODOS.md §11](MODOS.md#11-ayuda-de-los-eliminados-a-cambio-de-puntos)). Empezar por Esquivar (escudo) y Empujones (salvavidas).
+- [x] **Ayuda de los eliminados** (idea del dueño, 29/09) en Esquivar (escudo burbuja) y Empujones (salvavidas): el eliminado elige con el joystick a quién ayudar y paga 10 puntos (20 si ayuda al primero); lobby "Ayudas: Sí/No"; cartel en la TV y línea en el resumen; bots que ayudan al último ([MODOS.md §11](MODOS.md#11-ayuda-de-los-eliminados-a-cambio-de-puntos), [ADR 0020](adr/0020-ayuda-de-los-eliminados.md)).
+- [ ] Ayuda de los eliminados en Memoria de colores (pista) y ¡Que no te deje la cámara! (empujón); medir el balance del costo con bots y en partidas reales; si Empujones pasa a 2.5D, que `help_anchor` use la proyección.
+- [ ] Ayuda de los eliminados, rendimiento: con una ayuda activa **todo el tiempo** (peor caso, benchmark con el 4P ayudando sin parar) Scripts p95 sube a ~6,7 ms en Esquivar y ~7,9 ms en Empujones (sin ayuda: 2,4 / 3,3 ms; máquina compartida, números ruidosos). Dentro de los 8 ms pero justo en Empujones: medir en la TV real; si hace falta, cachear la mascota traslúcida y la burbuja/salvavidas en una textura.
+- [ ] Ayuda de los eliminados, celular: muestra el hint "Elegí a quién ayudar: 1P · 2P" y A/B, pero no la mascota de cada candidato (pediría un campo nuevo en `layout`, cambio de protocolo); la mascota y la ficha del elegido se ven en la TV.
 - Máximo de jugadores: **4** (confirmado). Juegos por competencia: **sin límite** (confirmado).
 
 ## 4b. Música (ver [ADR 0017](adr/0017-estilos-de-musica.md))

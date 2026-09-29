@@ -1241,6 +1241,356 @@ func test_tournament_survives_bad_results() -> void:
 	check(Tournament.new([] as Array[String], players).advance(2) == "", "sin juegos no hay rondas")
 
 
+# --- Ayuda de los eliminados (MODOS.md §11, ADR 0020) -------------------------------
+
+## Tournament: costo (doble al que va primero), puntos insuficientes,
+## spend nunca baja de 0 y la ayuda queda en el resumen de la ronda.
+func test_help_tournament_spend() -> void:
+	var players := _fake_players(3)
+	var t := Tournament.new(["dodge", "sumo"] as Array[String], players)
+	check(not t.is_leader(1) and t.help_cost(1) == Tournament.HELP_BASE_COST, "todos en 0: nadie va primero, costo base")
+	check(not t.can_afford(1, 10) and t.can_afford(1, 0), "con 0 puntos no alcanza para ayudar")
+	t.advance(3)
+	t.record({"winners": [1], "scores": {1: 30, 2: 20, 3: 10}}, players)  # 100 / 70 / 50
+	check(t.is_leader(1) and not t.is_leader(2), "Pablo va primero")
+	check(t.help_cost(1) == 20 and t.help_cost(2) == 10 and t.help_cost(3, 15) == 15, "doble si va primero; base del juego")
+	check(t.help_cost(2, -5) == 0, "costo negativo del juego se recorta a 0")
+	t.advance(3)
+	check(t.spend(3, 10, "ayudó a Sofi", 2) == 10 and t.totals[3] == 40, "Tomi paga 10 (%s)" % t.totals)
+	check(t.spend(3, 100, "ayudó a Sofi", 2) == 40 and t.totals[3] == 0, "nunca baja de 0: paga lo que tiene")
+	check(t.spend(3, 10, "x") == 0 and t.spend(99, 10, "x") == 0 and t.spend(2, -3, "x") == 0, "sin puntos, desconocido o negativo: nada")
+	check(t.pending_helps.size() == 2 and t.pending_helps[0].helper_name == "Tomi" and t.pending_helps[0].target_name == "Sofi",
+		"se registra quién ayudó a quién")
+	var s := t.record({"winners": [2], "scores": {1: 1, 2: 3, 3: 2}}, players)
+	check((s.helps as Array).size() == 2 and t.pending_helps.is_empty(), "las ayudas pasan al resumen de la ronda (history)")
+	check(t.history[1].helps[0].points == 10 and t.history.size() == 2, "history guarda la ayuda sin sumar rondas")
+	var row3: Dictionary = s.rows.filter(func(r: Dictionary) -> bool: return r.id == 3)[0]
+	check(row3.spent == 50 and row3.total_before == 0 and row3.total == 70, "fila de Tomi: gastó 50 y suma desde 0 (%s)" % row3)
+	check(RoundSummaryScreen.helps_line(s.helps) == "Ayudas: Tomi −10 por ayudar a Sofi · Tomi −40 por ayudar a Sofi",
+		"línea del resumen (%s)" % RoundSummaryScreen.helps_line(s.helps))
+	check(RoundSummaryScreen.helps_line([]) == "" and RoundSummaryScreen.helps_line("x") == "", "sin ayudas no hay línea")
+	# Saltear el juego devuelve lo gastado en él.
+	var t2 := Tournament.new(["dodge", "sumo"] as Array[String], players)
+	t2.totals[1] = 30
+	t2.advance(3)
+	t2.spend(1, 10, "ayudó a Sofi", 2)
+	t2.skip_current()
+	check(t2.totals[1] == 30 and t2.pending_helps.is_empty(), "juego salteado: se devuelven los puntos")
+
+
+## MiniGame.apply_help (con Esquivar): ayudante eliminado, objetivo vivo y
+## distinto, una ayuda activa por objetivo, 3 s de espera y tope de 2.
+func test_help_minigame_rules() -> void:
+	check(not MiniGameRegistry.info("dodge").get("help", {}).is_empty() and not MiniGameRegistry.info("sumo").get("help", {}).is_empty(),
+		"Esquivar y Empujones ofrecen ayuda")
+	var arena := MiniGameRegistry.create("arena")
+	arena.setup(_fake_players(3))
+	check(arena.help_info().is_empty() and not arena.apply_help(1, 2), "un juego sin HELP no cambia")
+	arena.free()
+	var game: Variant = MiniGameRegistry.create("dodge")
+	game.setup(_fake_players(4))
+	var h: Dictionary = game.help_info()
+	check(h.name == "Escudo burbuja" and int(h.cost) == 10 and float(h.duration) == 3.0, "HELP: nombre, costo y duración")
+	game._out_time[1] = 2.0
+	check(game.help_denial(1, 2) == "not_running" and not game.apply_help(1, 2), "en la cuenta regresiva no se ayuda")
+	game._countdown = -1.0
+	check(game.help_denial(2, 3) == "helper_alive", "el ayudante tiene que estar eliminado")
+	check(game.help_denial(1, 1) == "bad_target", "no se ayuda a sí mismo")
+	game._out_time[4] = 3.0
+	check(game.help_denial(1, 4) == "bad_target", "el objetivo tiene que seguir vivo")
+	check(game.help_denial(1, 99) == "unknown_player" and game.help_denial(-5, 2) == "unknown_player", "jugadores desconocidos")
+	check(game.help_candidates(1) == ([2, 3] as Array[int]), "candidatos: los vivos, sin él (%s)" % [game.help_candidates(1)])
+	check(game.apply_help(1, 2) and game.help_for(2).helper == 1, "Pablo ayuda a Sofi")
+	check(game.help_denial(4, 2) == "target_busy", "una ayuda activa por objetivo")
+	check(game.help_denial(1, 3) == "cooldown" and game.help_wait_left(1) > 2.9, "3 s de espera entre ayudas")
+	check(game.apply_help(4, 3), "otro eliminado sí puede ayudar a otro")
+	game.help_tick(MiniGame.HELP_COOLDOWN_SEC + 0.1)
+	check(game.help_active.is_empty(), "la ayuda se vence sola a los 3 s")
+	check(game.apply_help(1, 3) and game.help_remaining(1) == 0, "segunda ayuda: ya no le quedan")
+	game.help_tick(MiniGame.HELP_COOLDOWN_SEC + 0.1)
+	check(game.help_denial(1, 2) == "no_helps_left" and not game.apply_help(1, 2), "tope: 2 ayudas por eliminado")
+	game.free()
+
+
+## Esquivar: la burbuja aguanta UN bloque (aunque siga apoyado) y el
+## siguiente sí elimina.
+func test_help_dodge_shield() -> void:
+	var game: Variant = MiniGameRegistry.create("dodge")
+	root.add_child(game)
+	game.set_physics_process(false)
+	game.setup(_fake_players(3))
+	game._countdown = -1.0
+	game._spawn_timer = 1000.0  # Sin bloques al azar.
+	game._out_time[1] = 1.0
+	check(game.apply_help(1, 2), "Pablo le da la burbuja a Sofi")
+	game._spawn_block(game._pos[2], 120.0, 0.0)
+	for i in 20:
+		game.simulate_frame(1.0 / 60.0)
+	check(not game._out_time.has(2), "la burbuja aguantó el bloque")
+	check(game.help_for(2).is_empty(), "y se gastó")
+	for i in 60:
+		game.simulate_frame(1.0 / 60.0)
+	game._spawn_block(game._pos[2], 120.0, 0.0)
+	for i in 10:
+		game.simulate_frame(1.0 / 60.0)
+	check(game._out_time.has(2), "sin burbuja, el siguiente bloque la elimina")
+	game.queue_free()
+	await process_frame
+
+
+## Empujones: con salvavidas, la caída rebota de vuelta a la isla una vez.
+func test_help_sumo_lifebuoy() -> void:
+	var sumo: Script = preload("res://host/minigames/sumo/sumo.gd")
+	var game: Variant = sumo.new()
+	game.setup(_fake_players(4))  # Con 3, al caer Sofi terminaría el juego.
+	game._countdown = -1.0
+	game._out_time[1] = 1.0
+	game._fall_t[1] = 10.0
+	check(game.help_anchor(1) == game._seat_feet(0, 0), "el eliminado mira desde su asiento de la tribuna")
+	check(game.apply_help(1, 2), "Pablo le tira el salvavidas a Sofi")
+	var center: Vector2 = sumo.CENTER
+	game._pos[2] = center + Vector2(game._radius + 10.0, 0)
+	game._vel[2] = Vector2(300, 0)
+	game.step(1.0 / 60.0)
+	check(not game._out_time.has(2), "no se cae: rebota")
+	check((game._pos[2] as Vector2).distance_to(center) < game._radius * 0.7, "vuelve a la isla (%.0f)" % (game._pos[2] as Vector2).distance_to(center))
+	check((game._vel[2] as Vector2).x < 0.0, "yendo hacia el centro")
+	check(game.help_for(2).is_empty(), "una sola vez")
+	game._pos[2] = center + Vector2(game._radius + 10.0, 0)
+	game.step(1.0 / 60.0)
+	check(game._out_time.has(2), "la segunda caída ya cuenta")
+	# Se vence sin usarse.
+	game.help_tick(MiniGame.HELP_COOLDOWN_SEC)
+	check(game.apply_help(1, 3), "segunda ayuda (a Tomi)")
+	for i in 200:
+		game.step(1.0 / 60.0)
+	check(game.help_for(3).is_empty(), "el salvavidas dura 3 s")
+	game.free()
+
+
+## HelpSession sin red: elegir con el joystick (dirección y rotar), costo
+## doble al primero, puntos insuficientes y cobro.
+func test_help_session_rules() -> void:
+	var players := _fake_players(4)
+	var t := Tournament.new(["dodge"] as Array[String], players)
+	t.totals = {1: 60, 2: 100, 3: 5, 4: 30}
+	t.advance(4)
+	var game: Variant = MiniGameRegistry.create("dodge")
+	game.setup(players)
+	game._countdown = -1.0
+	var s := HelpSession.new()
+	s.auto_poll = false
+	var denied: Array = []
+	var given: Array = []
+	var layouts: Array = []
+	s.help_denied.connect(func(_h: Dictionary, reason: String, _c: int) -> void: denied.append(reason))
+	s.help_given.connect(func(_h: Dictionary, target: Dictionary, cost: int) -> void: given.append([target.id, cost]))
+	s.layout_needed.connect(func(pid: int) -> void: layouts.append(pid))
+	HelpSession.enabled = false
+	s.start(game, t)
+	check(not s.is_active(), "con Ayudas: No no se activa")
+	HelpSession.enabled = true
+	s.start(game, t)
+	check(s.is_active(), "se activa en un juego con ayuda")
+	s.poll()
+	check(s.helpers.is_empty(), "nadie eliminado, nadie ayuda")
+	# Pablo (1P) queda afuera a la izquierda; Sofi a la derecha, Tomi arriba y Juli abajo.
+	game._pos = {1: Vector2(500, 500), 2: Vector2(1300, 500), 3: Vector2(500, 300), 4: Vector2(500, 900)}
+	game._out_time[1] = 1.0
+	s.poll()
+	check(s.handles(1) and layouts == [1], "Pablo pasa a ayudante y se le manda su control")
+	var l := s.layout_for(1)
+	check(l[0] == Protocol.LAYOUT_JOYSTICK_AB and l[1].hint == "Elegí a quién ayudar: 2P · 3P · 4P" and l[1].a == "Ayudar",
+		"joystick_ab con el hint y los candidatos (%s)" % [l])
+	check(str(l[1].hint).length() <= 48, "el hint entra en 48 caracteres")
+	check(s.selected(1) == 3, "arranca eligiendo al que va último (Tomi)")
+	s.on_input(1, {"axis": Vector2(1, 0), "btn": 0})
+	check(s.selected(1) == 2, "joystick a la derecha: Sofi (%d)" % s.selected(1))
+	s.on_input(1, {"axis": Vector2(1, 0.1), "btn": 0})
+	check(s.selected(1) == 2, "mantener empujado no vuelve a elegir")
+	s.on_input(1, {"axis": Vector2.ZERO, "btn": 0})
+	s.on_input(1, {"axis": Vector2(0, 1), "btn": 0})
+	check(s.selected(1) == 4, "abajo: Juli")
+	s.on_input(1, {"axis": Vector2.ZERO, "btn": Protocol.BTN_B})
+	check(s.selected(1) == 2, "B rota al siguiente (Juli → Sofi)")
+	s.on_input(1, {"axis": Vector2(NAN, 3.0), "btn": 99})
+	check(s.selected(1) in [2, 3, 4], "entradas raras no rompen")
+	s.on_input(1, {"axis": Vector2.ZERO, "btn": 0})
+	s.helpers[1].sel = 2
+	check(s.cost_for(2) == 20 and s.cost_for(3) == 10, "Sofi va primera: cuesta el doble")
+	s.on_input(1, {"axis": Vector2.ZERO, "btn": Protocol.BTN_A})
+	check(given == [[2, 20]] and t.totals[1] == 40 and game.help_for(2).helper == 1, "ayuda a Sofi por 20 (%s)" % [t.totals])
+	s.on_input(1, {"axis": Vector2.ZERO, "btn": Protocol.BTN_A})
+	check(given.size() == 1, "mantener A apretado no ayuda de nuevo")
+	s.on_input(1, {"axis": Vector2.ZERO, "btn": 0})
+	s.helpers[1].sel = 3
+	s.on_input(1, {"axis": Vector2.ZERO, "btn": Protocol.BTN_A})
+	check(denied.back() == "cooldown" and given.size() == 1, "espera de 3 s")
+	# Tomi (5 puntos) queda afuera: no le alcanza.
+	game._out_time[3] = 2.0
+	s.poll()
+	check(s.selected(1) in [2, 4], "Tomi ya no es candidato de Pablo")
+	s.helpers[3].sel = 4
+	check(s.try_help(3) == "no_points" and denied.back() == "no_points" and t.totals[3] == 5, "sin puntos: no ayuda ni cobra")
+	check(s.try_help(2) == "not_helper", "un vivo no es ayudante")
+	s.on_input(99, {"axis": Vector2.ONE, "btn": 1})
+	check(t.pending_helps.size() == 1, "un jugador desconocido no hace nada")
+	s.stop()
+	check(not s.handles(1), "al terminar el juego se apaga")
+	s.free()
+	game.free()
+
+
+## Opción del lobby "Ayudas: Sí/No": por defecto Sí, se navega con el D-pad y
+## se guarda en los ajustes de la TV.
+func test_help_lobby_option() -> void:
+	var path := "user://test_help_settings.cfg"
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	HelpSession.enabled = true
+	HelpSession.load_prefs(path)
+	check(HelpSession.enabled, "sin ajustes guardados: Ayudas: Sí")
+	var lobby := LobbyScreen.new()
+	root.add_child(lobby)
+	var got: Array = []
+	lobby.helps_toggled.connect(func(on: bool) -> void: got.append(on))
+	check(lobby._helps_btn.button_pressed and lobby._helps_btn.text == "Ayudas: Sí", "el botón arranca en Sí")
+	check(lobby._helps_btn.focus_mode == Control.FOCUS_ALL, "se elige con el D-pad")
+	lobby._helps_btn.button_pressed = false
+	check(got == [false] and lobby._helps_btn.text == "Ayudas: No", "OK lo cambia a No")
+	HelpSession.enabled = false
+	HelpSession.save_prefs(path)
+	HelpSession.enabled = true
+	HelpSession.load_prefs(path)
+	check(not HelpSession.enabled, "se guarda en los ajustes de la TV")
+	HelpSession.enabled = true
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	lobby.queue_free()
+	await process_frame
+
+
+## Flujo real con red: Pablo queda afuera en Esquivar, su celular recibe el
+## control de ayudar, elige a Sofi con el joystick y ayuda con A; la TV
+## cobra, muestra el cartel y el resumen tiene la línea de ayudas. Tomi,
+## sin puntos, recibe "lose".
+func test_host_help_flow() -> void:
+	var port := TEST_PORT + 70
+	HelpSession.enabled = true
+	var host := HostMain.new()
+	host.server_port = port
+	host.announce = false
+	host.transition_seconds = 0.0
+	root.add_child(host)
+	await process_frame
+	host._lobby._stepper.set_value(3)
+	var clients: Array[ControllerClient] = []
+	var layouts: Array = []
+	var feedback: Array = []
+	for n in ["Pablo", "Sofi", "Tomi"]:
+		var c := _client()
+		clients.append(c)
+		c.join("127.0.0.1", port, host.server.room_code, n)
+		await _until(func() -> bool: return host.server.get_players().size() == clients.size())
+	clients[0].layout_changed.connect(func(l: String, d: Dictionary) -> void: layouts.append([l, d]))
+	clients[2].feedback_received.connect(func(k: String) -> void: feedback.append(k))
+	if not check_that(host.start_tournament(["dodge"] as Array[String]), "arranca Esquivar"):
+		host.queue_free()
+		await _free_clients()
+		return
+	host.tournament.totals = {1: 50, 2: 20, 3: 0}  # Como si vinieran de otras rondas.
+	host.skip_intro()
+	var game: Variant = host._game
+	game._countdown = -1.0
+	game._spawn_timer = 1000.0
+	if not check_that(game._pos.size() == 3, "3 jugadores en Esquivar"):
+		host.queue_free()
+		await _free_clients()
+		return
+	game._pos[1] = Vector2(500, 600)
+	game._pos[2] = Vector2(1400, 600)
+	game._pos[3] = Vector2(900, 300)
+	game._spawn_block(game._pos[1], 120.0, 0.0)
+	await _until(func() -> bool: return layouts.any(func(e: Array) -> bool: return e[0] == Protocol.LAYOUT_JOYSTICK_AB))
+	var got: Array = layouts.filter(func(e: Array) -> bool: return e[0] == Protocol.LAYOUT_JOYSTICK_AB)
+	check(not got.is_empty() and str(got[0][1].get("hint", "")).begins_with("Elegí a quién ayudar"),
+		"el eliminado recibe el joystick con \"Elegí a quién ayudar\" (%s)" % [layouts])
+	check(host.server.current_layout == Protocol.LAYOUT_JOYSTICK, "los demás siguen con el control del juego")
+	# Elige a Sofi (a la derecha de su mascota) y ayuda con A, como un celular.
+	clients[0].send_input(Vector2.ZERO, 0)
+	await _until(func() -> bool: return host.help.selected(1) != -1)
+	clients[0].send_input(Vector2(1, 0), 0)
+	await _until(func() -> bool: return host.help.selected(1) == 2)
+	check(host.help.selected(1) == 2, "el joystick eligió a Sofi")
+	clients[0].send_input(Vector2.ZERO, Protocol.BTN_A)
+	await _until(func() -> bool: return not game.help_for(2).is_empty())
+	check(game.help_for(2).get("helper", -1) == 1, "Sofi tiene la burbuja de Pablo")
+	check(host.tournament.totals[1] == 40, "a Pablo le costó 10 (%s)" % host.tournament.totals)
+	check(host._help_overlay._banners.size() == 1 and str(host._help_overlay._banners[0].text) == "Pablo ayudó a Sofi"
+		and host._help_overlay._banners[0].cost == 10, "cartel \"Pablo ayudó a Sofi · −10\"")
+	# Tomi (0 puntos) queda afuera e intenta ayudar: no le alcanza.
+	game._spawn_block(game._pos[3], 120.0, 0.0)
+	await _until(func() -> bool: return host.help.handles(3))
+	clients[2].send_input(Vector2.ZERO, 0)
+	await create_timer(0.2).timeout  # Después del "hit" (la TV deja 80 ms entre avisos).
+	clients[2].send_input(Vector2.ZERO, Protocol.BTN_A)
+	await _until(func() -> bool: return "lose" in feedback)
+	check("lose" in feedback and host.tournament.totals[3] == 0, "sin puntos: su celular vibra \"lose\" y no paga")
+	# Termina (Sofi última en pie) y el resumen muestra la ayuda.
+	await _until(func() -> bool: return host._summary.visible, 8000)
+	check(host._summary.visible and host._summary._helps.visible
+		and host._summary._helps.text == "Ayudas: Pablo −10 por ayudar a Sofi", "línea de ayudas en el resumen (%s)" % host._summary._helps.text)
+	check(not host.help.is_active(), "sin juego no hay ayudas")
+	host.queue_free()
+	await _free_clients()
+
+
+## Bots: el eliminado ayuda UNA vez al que va último si le alcanzan los
+## puntos, solo con entradas (la TV valida y cobra); sin puntos no ayuda.
+func test_help_bots() -> void:
+	var players := _fake_players(4)
+	for p in players:
+		p["bot"] = true
+	var t := Tournament.new(["dodge"] as Array[String], players)
+	t.totals = {1: 80, 2: 100, 3: 70, 4: 5}
+	t.advance(4)
+	var game: Variant = MiniGameRegistry.create("dodge")
+	root.add_child(game)
+	game.set_physics_process(false)
+	game.setup(players)
+	game._countdown = -1.0
+	game._spawn_timer = 1000.0
+	var s := HelpSession.new()
+	s.auto_poll = false
+	root.add_child(s)
+	HelpSession.enabled = true
+	s.start(game, t)
+	var driver := BotDriver.new()
+	driver.auto_step = false
+	driver.seed_value = 7
+	root.add_child(driver)
+	driver.help = s
+	driver.input_sink = func(pid: int, input: Dictionary) -> void:
+		s.poll()
+		if s.handles(pid):
+			s.on_input(pid, input)
+		else:
+			game.on_input(pid, input)
+	driver.start(game, players)
+	game._out_time[1] = 1.0  # El bot de Pablo queda afuera: Juli va última.
+	game._out_time[4] = 1.0  # Juli también (5 puntos: no le alcanza para ayudar).
+	for i in 60 * 6:
+		driver.step(1.0 / 60.0)
+		game.help_tick(1.0 / 60.0)
+	check(t.pending_helps.size() == 1, "un bot ayuda una sola vez (%d)" % t.pending_helps.size())
+	if t.pending_helps.size() >= 1:
+		check(t.pending_helps[0].helper == 1 and t.pending_helps[0].target == 3, "Pablo ayuda a Tomi, el último vivo (%s)" % [t.pending_helps[0]])
+	check(t.totals[1] == 70 and t.totals[4] == 5, "cobró la TV; Juli sin puntos no ayudó (%s)" % t.totals)
+	check(driver.invalid_outputs == 0, "entradas válidas como las de un celular")
+	driver.queue_free()
+	s.queue_free()
+	game.queue_free()
+	await process_frame
+
+
 # --- Lobby ------------------------------------------------------------------------
 
 func test_lobby_screen() -> void:

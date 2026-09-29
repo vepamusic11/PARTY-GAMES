@@ -270,6 +270,16 @@ MiniGame ◄── setup(players) — cada jugador puede traer: team, assist, bo
 
 **Esfuerzo:** M (base + Esquivar y Empujones) y S por cada juego más. **Riesgo:** medio: balance del costo (medirlo con `tools/simulate.gd` y bots) y que la ayuda no tape el juego en la TV.
 
+**Estado (29/09, [ADR 0020](adr/0020-ayuda-de-los-eliminados.md)):**
+- [x] `Tournament.spend` / `help_cost` (10, doble al que va primero; nunca baja de 0; en el resumen de la ronda; se devuelve si el juego se saltea).
+- [x] `MiniGame`: `"help"` en `get_info()`, `apply_help` con tope 2, espera 3 s y una ayuda activa por objetivo.
+- [x] Esquivar (escudo burbuja) y Empujones (salvavidas), con su dibujo aislado (`_draw_help_fx`, `HelpFx`).
+- [x] TV: `HelpSession` (elegir con el joystick hacia la mascota o rotar; A ayuda, B cambia), ficha 1P–4P del ayudante sobre el elegido, mascota traslúcida del ayudante y cartel "Tomi ayudó a Sofi · −10" abajo al centro; línea de ayudas en el resumen.
+- [x] Lobby "Ayudas: Sí/No" (guardado en la TV). Celular: `joystick_ab` con hint "Elegí a quién ayudar: 2P · 3P" (sin cambios de protocolo; la mascota de cada candidato se ve en la TV, no en el celular).
+- [x] Bots: el eliminado ayuda una vez por juego al que va último si le alcanzan los puntos.
+- [ ] Memoria de colores (pista), ¡Que no te deje la cámara! (empujón) y Bombas de mascotas.
+- [ ] Balance del costo con bots (`tools/simulate.gd`) y partidas reales.
+
 ## Resumen de impacto en la arquitectura
 
 | Modo | `GameMode` | MiniGame | Protocolo | Pantallas nuevas | Esfuerzo | Riesgo |

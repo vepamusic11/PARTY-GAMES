@@ -201,6 +201,21 @@ Con bots, una persona sola puede jugar tu juego (ADR 0010). Sin hacer nada, el j
 
 Para ver si el juego está balanceado: `godot --headless --path . -s res://tools/simulate.gd -- --n=50 --games=<id>` (duración, puntajes y ventaja por lugar de salida).
 
+## Ayuda de los eliminados (opcional, ADR 0020)
+
+Si en tu juego se queda afuera a mitad de partida, el eliminado puede ayudar a alguien que sigue a cambio de puntos de la competencia ([MODOS.md §11](MODOS.md#11-ayuda-de-los-eliminados-a-cambio-de-puntos)). La TV (`HelpSession`) ya hace todo lo común: le manda al eliminado el joystick con "Elegí a quién ayudar", elige con el eje, cobra con `Tournament.spend` (10, el doble si el ayudado va primero), muestra el cartel "Tomi ayudó a Sofi · −10" y la línea del resumen; los bots eliminados ayudan solos. Tu juego solo:
+
+1. Declara la ayuda en `get_info()`: `"help": {"name": "Escudo burbuja", "cost": 10, "duration": 3.0}` (convención: una constante `HELP`).
+2. Sobrescribe:
+   - `help_is_out(pid)`: ¿ya quedó afuera?
+   - `help_is_running()`: ¿se puede ayudar ahora? (no en la cuenta regresiva ni en el final; llamá a `super`).
+   - `help_anchor(pid)` / `help_scale(pid)`: dónde (en pantalla) y a qué escala dibujás su mascota. Usá la misma cuenta que el dibujo (en 2.5D, la proyección de `BoardView25D`): con eso se elige por dirección y se ubica la mascota traslúcida del ayudante.
+   - `_start_help(helper, target, duration) -> bool`: sonido y efecto al recibirla (true = aplicada).
+3. Llama `help_tick(delta)` en cada paso de juego (después de `hit_stopped`) y usa `help_for(pid)` / `consume_help(pid)` donde el efecto actúa (ej. antes de eliminar a alguien).
+4. Dibuja el efecto en una función nueva `_draw_help_fx()` llamada con **una línea** desde `_draw` (arte común en `HelpFx`; colores `UiTheme.HELP_*`).
+
+La base (`MiniGame.help_denial`/`apply_help`) ya valida: ayudante eliminado, objetivo vivo y distinto, tope de 2 por eliminado, 3 s de espera y una ayuda activa por objetivo. El juego **nunca** toca los puntos. *Ejemplo:* Esquivar marca el bloque que revienta la burbuja (`spared`) para que no lo elimine en el cuadro siguiente; Empujones devuelve al que se cae a la isla desde `_check_falls`.
+
 ## 4. Correr los tests
 
 ```bash

@@ -37,6 +37,12 @@ var raw_log: Array = []
 var seed_value := 0
 ## Si es false, no se mueve solo en _physics_process (lo avanza quien llama a step()).
 var auto_step := true
+## Ayuda de los eliminados (ADR 0020): con una sesión activa, el bot que ya
+## quedó afuera recibe HelpSession.bot_view() en vez del juego y su entrada
+## va a `input_sink` (HostMain la manda a la sesión o al juego, igual que la
+## de un celular). Sin sesión, todo sigue como siempre.
+var help: HelpSession
+var input_sink: Callable
 
 
 func _init() -> void:
@@ -86,13 +92,20 @@ func step(delta: float) -> void:
 	if bots.is_empty() or not is_instance_valid(game) or game.is_finished():
 		return
 	var view := game.bot_view()
+	var helping := help != null and help.is_active()
+	if helping:
+		help.poll()
 	for bot in bots:
-		var out := bot.tick(view, delta)
+		var out := bot.tick({"help": help.bot_view(bot.player_id)} if helping and help.handles(bot.player_id) else view, delta)
 		if not Bot.is_valid_output(out):
 			invalid_outputs += 1
 		if record:
 			raw_log.append([bot.player_id, out.get("axis"), out.get("btn")])
 		var axis: Vector2 = out.axis if out.get("axis") is Vector2 else Vector2.ZERO
 		var input := Protocol.parse_input({"seq": bot.next_seq(), "axis": [axis.x, axis.y], "btn": out.get("btn", 0)})
-		if not input.is_empty():
+		if input.is_empty():
+			continue
+		if input_sink.is_valid():
+			input_sink.call(bot.player_id, input)
+		else:
 			game.on_input(bot.player_id, input)

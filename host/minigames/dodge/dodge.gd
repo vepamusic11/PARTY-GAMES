@@ -60,6 +60,9 @@ const AIM_CHANCE := 0.35          ## Algunos bloques apuntan (con error) a un ju
 const AIM_JITTER := 90.0
 
 const OUT_ALPHA := 0.45           ## Transparencia de los eliminados.
+## Ayuda de los eliminados (MODOS.md §11, ADR 0020): un escudo burbuja que
+## aguanta un bloque durante `duration` segundos.
+const HELP := {"name": "Escudo burbuja", "cost": 10, "duration": 3.0}
 
 var _pos: Dictionary = {}         # player_id -> Vector2 (pies, en el piso)
 var _axis: Dictionary = {}        # player_id -> Vector2
@@ -94,6 +97,7 @@ static func get_info() -> Dictionary:
 		"layout_data": {},
 		"accent": UiTheme.BRICKS[0],
 		"score_label": "segundos",
+		"help": HELP,
 	}
 
 
@@ -167,6 +171,7 @@ func _physics_process(delta: float) -> void:
 		_redraw()
 		return
 	_anim += delta
+	help_tick(delta)
 	if _countdown > -GO_SEC:
 		var before := _countdown
 		_countdown -= delta
@@ -245,6 +250,8 @@ func _check_hits() -> void:
 			var feet: Vector2 = _pos[pid]
 			var closest := Vector2(clampf(feet.x, r.position.x, r.end.x), clampf(feet.y, r.position.y, r.end.y))
 			if feet.distance_to(closest) < HIT_RADIUS:
+				if _shield_blocks(pid, b):
+					continue
 				_out_time[pid] = snappedf(_elapsed, 0.1)
 				_axis[pid] = Vector2.ZERO
 				play_sfx("hit")
@@ -351,6 +358,7 @@ func _draw() -> void:
 	# completa: la mascota va translúcida (capa _ghosts), pero quién es tiene
 	# que seguir leyéndose.
 	draw_player_tags(players.map(func(p: Dictionary) -> Array: return [p, _pos[p.id], MASCOT_SCALE, NAME_OFFSET]))
+	_draw_help_fx()
 	draw_hud(_live_scores(), clock_text(DURATION_SEC - _elapsed), "clock")
 	draw_countdown(_countdown, GO_SEC)
 
@@ -394,6 +402,7 @@ func _draw_25d() -> void:
 	draw_player_tags(players.map(func(p: Dictionary) -> Array:
 		var dp := _depth(_pos[p.id])
 		return [p, _screen(_pos[p.id]), MASCOT_SCALE * dp, NAME_OFFSET * dp]))
+	_draw_help_fx()
 	draw_hud(_live_scores(), clock_text(DURATION_SEC - _elapsed), "clock")
 	draw_countdown(_countdown, GO_SEC)
 
@@ -521,3 +530,62 @@ func _depth(p: Vector2) -> float:
 	if not _v25:
 		return 1.0
 	return clampf(board_view().scale_at(p), UiTheme.BOARD25D_SCALE_MIN, UiTheme.BOARD25D_SCALE_MAX)
+
+
+# --- Ayuda de los eliminados (MODOS.md §11, ADR 0020) ------------------------
+#
+# Escudo burbuja: el eliminado le regala a otro una burbuja que aguanta UN
+# bloque durante HELP.duration segundos. El bloque que la revienta ya no
+# lastima a ese jugador aunque siga apoyado (b.spared). Las reglas comunes
+# (tope, espera, una a la vez) están en MiniGame; el cobro, en la TV.
+
+func help_is_out(player_id: int) -> bool:
+	return _out_time.has(player_id)
+
+
+func help_is_running() -> bool:
+	return _countdown <= 0.0 and super.help_is_running()
+
+
+func help_anchor(player_id: int) -> Vector2:
+	return _screen(_pos.get(player_id, FIELD.get_center()))
+
+
+func help_scale(player_id: int) -> float:
+	return MASCOT_SCALE * _depth(_pos.get(player_id, FIELD.get_center()))
+
+
+func _start_help(_helper_id: int, target_id: int, _duration: float) -> bool:
+	play_sfx("power")
+	notify_player(target_id, "point")
+	if is_inside_tree():
+		juice().sparkles(help_anchor(target_id) + Vector2(0, -60) * _depth(_pos[target_id]), UiTheme.HELP_BUBBLE_RIM, 8, 260.0)
+	return true
+
+
+## ¿La burbuja de este jugador aguanta el bloque `b`? La primera vez la
+## revienta (se gasta); después ese bloque ya no lo lastima.
+func _shield_blocks(player_id: int, b: Dictionary) -> bool:
+	var spared: Array = b.get("spared", [])
+	if player_id in spared:
+		return true
+	if help_for(player_id).is_empty():
+		return false
+	consume_help(player_id)
+	spared.append(player_id)
+	b["spared"] = spared
+	play_sfx("pop", 0.8)
+	if is_inside_tree():
+		var at := help_anchor(player_id) + Vector2(0, -60) * _depth(_pos[player_id])
+		juice().sparkles(at, UiTheme.HELP_BUBBLE_RIM, 14, 420.0)
+		juice().shake(0.4)
+	return true
+
+
+## Burbuja sobre cada jugador con escudo (se achica al vencerse). Una
+## línea desde _draw: dibujo aislado para no tocar el del juego.
+func _draw_help_fx() -> void:
+	for target: int in help_active:
+		var h: Dictionary = help_active[target]
+		var u := help_scale(target)
+		HelpFx.draw_bubble(self, help_anchor(target), u, float(h.left) / maxf(float(h.total), 0.01), anim_time)

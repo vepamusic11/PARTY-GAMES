@@ -23,6 +23,8 @@ xvfb-run -a -s "-screen 0 1920x1080x24" godot --path . --rendering-driver opengl
 
 Por defecto el benchmark agrega `Sfx` y `Music` como la TV: cada escena cambia de pista (fundido cruzado durante el calentamiento) y un `go` por segundo dispara el *ducking*. El presupuesto del audio es **≤ 0,3 ms de p95 de Scripts** frente a `--no-audio` ([ADR 0015](adr/0015-musica-y-mezcla.md)); el OGG se decodifica en el hilo de audio y no cuenta en Scripts.
 
+**Ayuda de los eliminados** (ADR 0020): sin ayudas en curso no cuesta nada (la capa `TvHelpOverlay` no dibuja ni redibuja). Peor caso medido (el 4P ayudando sin parar, 400 frames, xvfb): Esquivar p95 de Scripts 2,4 → 6,7 ms y 33 → 48 draw calls; Empujones 3,3 → 7,9 ms y 90 → 101 draw calls (burbuja y salvavidas en un `ShapeBatch`: un draw call cada uno). En una partida real las ayudas son pocas (2 por eliminado, 3 s cada una).
+
 Escenas: `lobby` (4 jugadores), `game_intro` ("¿Cómo se juega?"), `round_summary`, `final` (podio con confeti), **cada juego del registry** con su máximo de jugadores (hasta 4) e inputs que cambian todo el tiempo (si un juego termina antes de juntar los frames, se reinicia), y el celular a 2340×1080: `ctrl_join`, `ctrl_wait` y `ctrl_joy`. Un juego nuevo en el registry entra solo. Los juegos que cambian mucho con el tiempo se miden además adelantados (`LATE_SCENES` en el script): `sumo_tarde` es Empujones a los 20 s, con la isla achicándose (con `--only=sumo` se miden las dos).
 
 El benchmark corre con tope de 60 fps y sin vsync (como la TV): cada frame tiene un paso de física, igual que en el aparato. Usa los puertos de red solo el celular (descubrimiento UDP); si corrés varias instancias de Godot en paralelo, serializalas (ej. `flock /tmp/party-games-godot.lock …`).

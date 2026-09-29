@@ -65,6 +65,8 @@ var _wobble := Vector2.ZERO
 var _think_timer := 0.0
 var _seq := 0
 var _press_timer := 0.0         # fallback: botón apretado
+var _help_timer := 0.0          # ayuda: pulso del joystick o del botón
+var _help_wait := -1.0          # ayuda: segundos "pensando" antes de ayudar (-1 = sin empezar)
 
 
 ## seed_value: 0 = al azar (partidas reales); otro = reproducible (tests).
@@ -113,7 +115,8 @@ func tick(view: Dictionary, delta: float) -> Dictionary:
 	if _aim_timer <= 0.0:
 		_aim_timer = rng.randf_range(AIM_CHANGE_SEC.x, AIM_CHANGE_SEC.y)
 		_aim_offset = Vector2.from_angle(rng.randf() * TAU) * aim_error * sqrt(rng.randf())
-	var wanted := decide(view, delta)
+	# Eliminado y con ayudas (HelpSession): elige y ayuda en vez de jugar.
+	var wanted := decide_help(view.help, delta) if view.has("help") else decide(view, delta)
 	var axis: Vector2 = wanted.get("axis", Vector2.ZERO)
 	var btn: int = int(wanted.get("btn", 0)) & Protocol.BTN_MASK
 	if axis.length() > 0.05 and noise > 0.0:
@@ -160,6 +163,33 @@ func decide(_view: Dictionary, delta: float) -> Dictionary:
 				_press_timer = 0.12
 			return {"axis": Vector2.ZERO, "btn": Protocol.BTN_A if _press_timer > 0.0 else 0}
 	return {"axis": Vector2.ZERO, "btn": 0}
+
+
+## Ayuda de los eliminados (MODOS.md §11, ADR 0020): el bot eliminado ayuda
+## UNA vez por juego al que va último en la competencia, si le alcanzan los
+## puntos. Como una persona: piensa un momento, empuja el joystick hacia la
+## mascota de ese jugador hasta que la TV lo marca y aprieta A. Nunca decide
+## nada: la TV valida, cobra y aplica. `view`: HelpSession.bot_view().
+func decide_help(view: Dictionary, delta: float) -> Dictionary:
+	var last := int(view.get("last", -1))
+	if last == -1 or int(view.get("used", 0)) >= 1 or not bool(view.get("can_afford", false)) \
+			or bool(view.get("busy", false)) or float(view.get("wait", 0.0)) > 0.0:
+		return idle()
+	if _help_wait < 0.0:
+		_help_wait = lerpf(1.6, 0.6, skill) + rng.randf() * 0.8
+	_help_wait -= delta
+	if _help_wait > 0.0:
+		return idle()
+	# Pulsos: 0,15 s apretado y 0,15 s suelto (la TV cuenta cada empujón una vez).
+	_help_timer += delta
+	var on := fmod(_help_timer, 0.3) < 0.15
+	if int(view.get("selected", -1)) != last:
+		var anchors: Dictionary = view.get("candidates", {})
+		var to: Vector2 = anchors.get(last, Vector2.ZERO) - (view.get("from", Vector2.ZERO) as Vector2)
+		if not on or to.length() < 1.0:
+			return idle()
+		return {"axis": to.normalized(), "btn": 0}
+	return {"axis": Vector2.ZERO, "btn": Protocol.BTN_A if on else 0}
 
 
 # --- Utilidades para los bots de cada juego -----------------------------------------

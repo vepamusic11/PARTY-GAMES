@@ -154,6 +154,14 @@ La TV lo manda **a cada jugador por separado**, justo después de `phase: result
 - **Compatible:** es un tipo nuevo que los controles viejos ignoran, por eso no subió `VERSION` (se sumó en la 1).
 - El celular lo muestra junto a "¡Mirá la TV!" y lo borra al volver al lobby o cuando empieza otro juego.
 
+### Ayuda de los eliminados (sin cambios de protocolo)
+
+La ayuda de los eliminados ([MODOS.md §11](MODOS.md#11-ayuda-de-los-eliminados-a-cambio-de-puntos), [ADR 0020](adr/0020-ayuda-de-los-eliminados.md)) **no agrega mensajes ni campos**: cuando un jugador queda afuera en un juego con ayuda, la TV le manda **solo a él** un `layout` ya existente:
+```json
+{"v":2,"type":"layout","layout":"joystick_ab","data":{"hint":"Elegí a quién ayudar: 2P · 3P","a":"Ayudar","b":"Cambiar"}}
+```
+El `hint` lleva los 1P–4P de los candidatos (entra en 48 caracteres). El celular manda `axis` (elegir: hacia la mascota de un jugador vivo, o izquierda/derecha para rotar) y `btn` (A ayuda, B rota). La TV decide todo: quién es candidato, el costo, si le alcanzan los puntos y el efecto; si no alcanzan, manda `feedback` `lose`. Al no quedarle ayudas, recibe `wait`. Si se reconecta mientras ayuda, recibe este `layout` de nuevo. Los demás jugadores siguen con el control del juego.
+
 ## Apariencia (color y estilo)
 
 Cada jugador elige desde el celular el color y el estilo de su mascota (ver [ADR 0007](adr/0007-apariencia-del-jugador.md)). Por la red viajan **índices**, nunca colores libres:

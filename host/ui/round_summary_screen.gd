@@ -28,6 +28,7 @@ var paused := false  ## Con el menú de pausa abierto no corre la cuenta regresi
 var _bar: ScoreBar
 var _title: TvLogoTitle
 var _subtitle: Label
+var _helps: Label  ## "Ayudas: Tomi −10 por ayudar a Sofi" (ADR 0020); oculta si no hubo.
 var _columns: HBoxContainer
 var _next: Label
 var _continue: Button
@@ -62,6 +63,8 @@ func show_summary(summary: Dictionary, standings: Array[Dictionary], next_title:
 
 	_title.text = str(summary.get("title", ""))
 	_subtitle.text = "Resultados de la ronda %d" % summary.round
+	_helps.text = helps_line(summary.get("helps", []))
+	_helps.visible = not _helps.text.is_empty()
 	if next_title.is_empty():
 		_next.text = "¡Fue la última ronda!"
 		_continue_text = "Ver el podio"
@@ -188,6 +191,19 @@ func _make_column(row: Dictionary, unit: String, count: int, last_place: int) ->
 	return {"place": row.place, "delta": delta, "avatar": avatar, "pedestal": pedestal}
 
 
+## Línea de ayudas del resumen: "Ayudas: Tomi −10 por ayudar a Sofi · …".
+## Nada secreto: cada ayuda con quién, a quién y cuánto costó. "" si no hubo.
+static func helps_line(helps: Variant) -> String:
+	if not helps is Array:
+		return ""
+	var parts: Array[String] = []
+	for h: Variant in helps:
+		if h is Dictionary:
+			parts.append("%s −%d por ayudar a %s" % [str(h.get("helper_name", "")), int(h.get("points", 0)),
+				str(h.get("target_name", ""))])
+	return "" if parts.is_empty() else "Ayudas: " + " · ".join(parts)
+
+
 static func _format_score(score: Variant) -> String:
 	var f := float(score)
 	return str(int(f)) if is_equal_approx(f, roundf(f)) else "%.1f" % f
@@ -216,6 +232,12 @@ func _build() -> void:
 	_subtitle.add_theme_constant_override("outline_size", 8)
 	_subtitle.add_theme_color_override("font_outline_color", UiTheme.PAPER)
 	col.add_child(_subtitle)
+	_helps = UiTheme.label("", UiTheme.HELP_SUMMARY_FONT, UiTheme.HELP_BANNER_COST, true)
+	_helps.add_theme_constant_override("outline_size", 8)
+	_helps.add_theme_color_override("font_outline_color", UiTheme.PAPER)
+	_helps.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	_helps.visible = false
+	col.add_child(_helps)
 
 	_columns = HBoxContainer.new()
 	_columns.alignment = BoxContainer.ALIGNMENT_CENTER

@@ -20,6 +20,10 @@ var totals: Dictionary = {}           # player_id -> int
 var history: Array[Dictionary] = []   # resumen de cada ronda jugada
 var skipped: Array[String] = []       # juegos salteados (sin puntos)
 var current_game_id := ""
+## Ayudas de los eliminados de la ronda en curso (ver "Ayuda de los
+## eliminados" más abajo). record() las pasa al resumen de la ronda
+## (`history[i].helps`); saltear el juego las devuelve.
+var pending_helps: Array[Dictionary] = []
 
 var _roster: Dictionary = {}          # player_id -> {id, slot, name, color}
 var _cursor := 0
@@ -67,6 +71,7 @@ func skip_current() -> void:
 	if not current_game_id.is_empty():
 		skipped.append(current_game_id)
 		current_game_id = ""
+	_refund_pending_helps()
 
 
 func is_over() -> bool:
@@ -88,8 +93,11 @@ func round_number() -> int:
 ## Registra el resultado de un minijuego (ver MiniGame.finished) y devuelve
 ## el resumen de la ronda:
 ##   { round, total_rounds, game_id, title, score_label,
-##     rows: [{id, slot, name, color, style, bot, score, place, points, total_before, total}] }
-## `players` son los que jugaron esa ronda (MiniGame.players).
+##     rows: [{id, slot, name, color, style, bot, score, place, points, spent, total_before, total}],
+##     helps: [{helper, target, points, reason, helper_name, target_name, …}] }
+## `players` son los que jugaron esa ronda (MiniGame.players). `spent`: lo
+## que ese jugador gastó ayudando en esta ronda (ya descontado de
+## total_before, así la tabla sube desde lo que le quedó).
 func record(result: Dictionary, players: Array[Dictionary]) -> Dictionary:
 	var scores: Variant = result.get("scores", {})
 	var winners: Variant = result.get("winners", [])
@@ -113,7 +121,8 @@ func record(result: Dictionary, players: Array[Dictionary]) -> Dictionary:
 		var points := points_for_place(place)
 		totals[pid] = before + points
 		var row := (_roster[pid] as Dictionary).duplicate()
-		row.merge({"score": e.score, "place": place, "points": points, "total_before": before, "total": before + points})
+		row.merge({"score": e.score, "place": place, "points": points, "spent": _spent_this_round(pid),
+			"total_before": before, "total": before + points})
 		rows.append(row)
 	rows.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a.slot < b.slot)
 
@@ -125,7 +134,9 @@ func record(result: Dictionary, players: Array[Dictionary]) -> Dictionary:
 		"title": info.get("title", ""),
 		"score_label": info.get("score_label", "puntos"),
 		"rows": rows,
+		"helps": pending_helps.duplicate(),
 	}
+	pending_helps.clear()
 	history.append(summary)
 	current_game_id = ""
 	return summary
@@ -167,6 +178,87 @@ static func rank(entries: Array[Dictionary]) -> Dictionary:
 
 static func points_for_place(place: int) -> int:
 	return PLACE_POINTS[clampi(place - 1, 0, PLACE_POINTS.size() - 1)]
+
+
+# --- Ayuda de los eliminados (docs/MODOS.md §11, ADR 0020) ---------------------
+#
+# El que ya quedó afuera en un juego puede ayudar a otro que sigue, pero le
+# cuesta puntos de su total. Acá solo vive la cuenta (lógica pura): quién
+# puede pagar, cuánto cuesta y el registro. El juego decide si la ayuda
+# vale (MiniGame.apply_help) y la TV (HelpSession) junta las dos cosas.
+#
+# Ejemplo: Tomi (40 puntos) ayuda a Sofi (70) → cuesta 10, le quedan 30.
+# Si ayudara a Pablo, que va primero con 170, costaría 20 (contra el
+# "hacedor de reyes": ayudar sirve más para emparejar que para decidir).
+
+## Costo base de una ayuda (≈ ⅓ de un 4.° puesto). Cada juego puede pedir
+## otro en su HELP.cost.
+const HELP_BASE_COST := 10
+## Ayudar al que va primero cuesta este múltiplo.
+const HELP_LEADER_FACTOR := 2
+
+
+## ¿Va primero en la competencia? Primero (solo o empatado) y con más puntos
+## que alguien: al empezar, con todos en 0, nadie "va primero".
+func is_leader(player_id: int) -> bool:
+	if not totals.has(player_id) or totals.size() < 2:
+		return false
+	var top := -1
+	var low := -1
+	for pid: int in totals:
+		var v := int(totals[pid])
+		top = v if top < 0 else maxi(top, v)
+		low = v if low < 0 else mini(low, v)
+	return int(totals[player_id]) == top and top > low
+
+
+## Cuánto cuesta ayudar a `target_id`: `base` (HELP.cost del juego), el doble
+## si va primero. Nunca negativo.
+func help_cost(target_id: int, base: int = HELP_BASE_COST) -> int:
+	return maxi(base, 0) * (HELP_LEADER_FACTOR if is_leader(target_id) else 1)
+
+
+## ¿Le alcanzan los puntos? (si el total no alcanza, no se puede ayudar).
+func can_afford(player_id: int, points: int) -> bool:
+	return totals.has(player_id) and points >= 0 and int(totals[player_id]) >= points
+
+
+## Descuenta `points` del total de `helper_id` (nunca por debajo de 0) y lo
+## registra en la ronda en curso (pasa a history con record()). Devuelve lo
+## que se descontó de verdad. `reason`: texto para el resumen ("ayudó a
+## Sofi"); `target_id`: a quién ayudó (-1 si no aplica).
+func spend(helper_id: int, points: int, reason: String, target_id: int = -1) -> int:
+	if not totals.has(helper_id) or points <= 0:
+		return 0
+	var paid := mini(points, int(totals[helper_id]))
+	if paid <= 0:
+		return 0
+	totals[helper_id] = int(totals[helper_id]) - paid
+	pending_helps.append({
+		"helper": helper_id, "target": target_id, "points": paid, "reason": reason,
+		"game_id": current_game_id, "round": round_number(),
+		"helper_name": str((_roster.get(helper_id, {}) as Dictionary).get("name", "")),
+		"target_name": str((_roster.get(target_id, {}) as Dictionary).get("name", "")),
+	})
+	return paid
+
+
+## Juego salteado desde la pausa: sus resultados no cuentan, y las ayudas
+## que se pagaron en él tampoco (se devuelven los puntos).
+func _refund_pending_helps() -> void:
+	for h in pending_helps:
+		var pid: int = h.helper
+		if totals.has(pid):
+			totals[pid] = int(totals[pid]) + int(h.points)
+	pending_helps.clear()
+
+
+func _spent_this_round(player_id: int) -> int:
+	var sum := 0
+	for h in pending_helps:
+		if int(h.helper) == player_id:
+			sum += int(h.points)
+	return sum
 
 
 func _playable(id: String, player_count: int) -> bool:

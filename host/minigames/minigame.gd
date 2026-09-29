@@ -80,6 +80,147 @@ func bot_view() -> Dictionary:
 	return {}
 
 
+# --- Ayuda de los eliminados (docs/MODOS.md §11, ADR 0020) ----------------------
+#
+# En los juegos donde se queda afuera a mitad de partida, el eliminado puede
+# ayudar a alguien que sigue (a cambio de puntos de la competencia). Un juego
+# la ofrece declarando en get_info():
+#   "help": {"name": "Escudo burbuja", "cost": 10, "duration": 3.0}
+# y sobrescribiendo help_is_out(), help_is_running(), help_anchor() y
+# _start_help(). La base valida las reglas comunes (ayudante eliminado,
+# objetivo vivo y distinto, tope, espera, una ayuda activa por objetivo) y
+# lleva la cuenta del tiempo. La TV (HelpSession) cobra los puntos: el juego
+# nunca toca la competencia. Guía: docs/ADDING_A_MINIGAME.md, "Ayuda de los
+# eliminados". Los juegos sin "help" no cambian nada.
+
+## Como mucho estas ayudas por eliminado en cada juego.
+const HELP_MAX_PER_HELPER := 2
+## Segundos de espera entre dos ayudas del mismo eliminado.
+const HELP_COOLDOWN_SEC := 3.0
+
+var _help_clock := 0.0         # segundos de juego (lo avanza help_tick)
+var _help_used: Dictionary = {}     # helper_id -> ayudas dadas
+var _help_ready_at: Dictionary = {} # helper_id -> _help_clock desde el que puede volver a ayudar
+## Ayudas en curso: target_id -> {helper, left, total}. Solo lectura afuera.
+var help_active: Dictionary = {}
+
+
+## La ayuda que ofrece el juego ({name, cost, duration}) o {} si no tiene.
+func help_info() -> Dictionary:
+	var script: Script = get_script()
+	var info: Variant = script.call("get_info") if script != null else {}
+	var h: Variant = (info as Dictionary).get("help", {}) if info is Dictionary else {}
+	return h if h is Dictionary else {}
+
+
+## ¿Este jugador ya quedó afuera en este juego? Sobrescribir.
+func help_is_out(_player_id: int) -> bool:
+	return false
+
+
+## ¿Se puede ayudar ahora? (el juego corre: no en la cuenta regresiva ni en
+## el festejo final). Sobrescribir si hace falta.
+func help_is_running() -> bool:
+	return not is_finished() and not in_finale()
+
+
+## Dónde está (en pantalla) la mascota de un jugador: para elegir a quién
+## ayudar con el joystick y para dibujar la ayuda. Sobrescribir con la misma
+## cuenta que usa el juego para dibujarla (en 2.5D, proyectada).
+func help_anchor(_player_id: int) -> Vector2:
+	return SCREEN / 2.0
+
+
+## Escala a la que se dibuja la mascota de ese jugador (en 2.5D, con la profundidad).
+func help_scale(_player_id: int) -> float:
+	return 0.8
+
+
+## A quién puede ayudar `helper_id` ahora (vivos, sin él), en orden de lugar.
+func help_candidates(helper_id: int) -> Array[int]:
+	var out: Array[int] = []
+	for p in players:
+		if int(p.id) != helper_id and not help_is_out(int(p.id)):
+			out.append(int(p.id))
+	return out
+
+
+## Ayudas que le quedan a un eliminado en este juego.
+func help_remaining(helper_id: int) -> int:
+	return maxi(HELP_MAX_PER_HELPER - int(_help_used.get(helper_id, 0)), 0)
+
+
+## Segundos que le faltan para poder volver a ayudar (0 = ya puede).
+func help_wait_left(helper_id: int) -> float:
+	return maxf(float(_help_ready_at.get(helper_id, 0.0)) - _help_clock, 0.0)
+
+
+## Motivo por el que `helper_id` NO puede ayudar a `target_id` ahora, o ""
+## si puede. No cobra nada ni cambia el juego (lo usa la TV antes de cobrar).
+func help_denial(helper_id: int, target_id: int) -> String:
+	if help_info().is_empty():
+		return "no_help"
+	if not help_is_running():
+		return "not_running"
+	if player_by_id(helper_id).is_empty() or player_by_id(target_id).is_empty():
+		return "unknown_player"
+	if not help_is_out(helper_id):
+		return "helper_alive"
+	if helper_id == target_id or help_is_out(target_id):
+		return "bad_target"
+	if help_remaining(helper_id) <= 0:
+		return "no_helps_left"
+	if help_wait_left(helper_id) > 0.0:
+		return "cooldown"
+	if help_active.has(target_id):
+		return "target_busy"
+	return ""
+
+
+## Aplica la ayuda si las reglas lo permiten (ver help_denial). Devuelve
+## true si se aplicó. No cobra puntos: eso lo hace la TV con Tournament.
+func apply_help(helper_id: int, target_id: int) -> bool:
+	if not help_denial(helper_id, target_id).is_empty():
+		return false
+	var duration := maxf(float(help_info().get("duration", 3.0)), 0.1)
+	if not _start_help(helper_id, target_id, duration):
+		return false
+	_help_used[helper_id] = int(_help_used.get(helper_id, 0)) + 1
+	_help_ready_at[helper_id] = _help_clock + HELP_COOLDOWN_SEC
+	help_active[target_id] = {"helper": helper_id, "left": duration, "total": duration}
+	return true
+
+
+## La ayuda de este objetivo, si tiene una en curso ({helper, left, total}) o {}.
+func help_for(target_id: int) -> Dictionary:
+	return help_active.get(target_id, {})
+
+
+## El juego usó la ayuda (el escudo aguantó el bloque, el salvavidas lo
+## salvó): se termina y devuelve cuál era ({} si no tenía).
+func consume_help(target_id: int) -> Dictionary:
+	var h: Dictionary = help_active.get(target_id, {})
+	help_active.erase(target_id)
+	return h
+
+
+## Avanza el reloj de las ayudas: llamarlo en cada paso del juego (después
+## de hit_stopped). Las que se vencen sin usarse terminan solas.
+func help_tick(delta: float) -> void:
+	_help_clock += delta
+	for target: int in help_active.keys():
+		var h: Dictionary = help_active[target]
+		h.left = float(h.left) - delta
+		if float(h.left) <= 0.0 or help_is_out(target):
+			help_active.erase(target)
+
+
+## El juego arranca el efecto de la ayuda (sobrescribir). `duration` en
+## segundos. Devolver false si no se pudo (no se cuenta ni se cobra).
+func _start_help(_helper_id: int, _target_id: int, _duration: float) -> bool:
+	return true
+
+
 func finish(result: Dictionary) -> void:
 	if _finished:
 		return

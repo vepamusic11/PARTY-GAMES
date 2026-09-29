@@ -63,6 +63,15 @@ const STAND_TOP := 300.0
 const STAND_H := 600.0
 const STAND_SCALE := 0.8
 
+# --- Ayuda de los eliminados (MODOS.md §11, ADR 0020) ------------------------
+## Salvavidas: si el ayudado se cae en los próximos `duration` segundos,
+## rebota de vuelta a la isla (una vez).
+const HELP := {"name": "Salvavidas", "cost": 10, "duration": 3.0}
+## Adónde vuelve el salvado (fracción del radio de la isla) y con qué
+## velocidad hacia el centro (fracción de MAX_SPEED).
+const HELP_RETURN_RING := 0.6
+const HELP_RETURN_SPEED := 0.6
+
 var _pos: Dictionary = {}         # player_id -> Vector2 (centro físico)
 var _vel: Dictionary = {}         # player_id -> Vector2
 var _axis: Dictionary = {}        # player_id -> Vector2
@@ -92,6 +101,7 @@ static func get_info() -> Dictionary:
 		"layout_data": {},
 		"accent": UiTheme.BRICKS[3],   # Verde: cada juego tiene su color (ver test_registry_optional_defaults).
 		"score_label": "puntos",
+		"help": HELP,
 	}
 
 
@@ -148,6 +158,7 @@ func step(delta: float) -> void:
 		_countdown -= delta
 	if _countdown > 0.0:
 		return  # Nadie se mueve hasta el "¡YA!".
+	help_tick(delta)
 	_warn_beeps(_elapsed, minf(_elapsed + delta, DURATION_SEC))
 	_elapsed = minf(_elapsed + delta, DURATION_SEC)
 	_radius = platform_radius(_elapsed)
@@ -261,6 +272,8 @@ func _collide_players() -> void:
 func _check_falls() -> void:
 	for pid in _alive_ids():
 		if not is_off_platform(_pos[pid], CENTER, _radius):
+			continue
+		if _lifebuoy_saves(pid):
 			continue
 		_out_time[pid] = snappedf(_elapsed, 0.1)
 		_fall_t[pid] = 0.0
@@ -392,6 +405,7 @@ func _draw() -> void:
 	for p in order:
 		if not _out_time.has(p.id):
 			_draw_kos(self, p, (_pos[p.id] as Vector2) + shake + Vector2(0, FEET_OFFSET + NAME_OFFSET), p.name)
+	_draw_help_fx()
 	_draw_stands()
 	draw_hud(_live_scores(), clock_text(DURATION_SEC - _elapsed))
 	draw_countdown(_countdown, GO_SEC)
@@ -703,3 +717,69 @@ func _player_in_seat(seat: int) -> Dictionary:
 		if p.slot % 4 == seat and _fall_t.has(p.id) and float(_fall_t[p.id]) >= FALL_SEC:
 			return p
 	return {}
+
+
+# --- Ayuda de los eliminados (MODOS.md §11, ADR 0020) ------------------------
+#
+# Salvavidas: el eliminado (desde la tribuna) le tira un salvavidas a otro.
+# Si ese jugador se cae en los próximos HELP.duration segundos, en vez de
+# caer al agua rebota de vuelta a la isla, una sola vez. Las reglas comunes
+# (tope, espera, una a la vez) están en MiniGame; el cobro, en la TV.
+
+func help_is_out(player_id: int) -> bool:
+	return _out_time.has(player_id)
+
+
+func help_is_running() -> bool:
+	return _countdown <= 0.0 and not _ending and super.help_is_running()
+
+
+## Pies de la mascota: en la isla, o en su asiento de la tribuna si ya cayó.
+func help_anchor(player_id: int) -> Vector2:
+	var p := player_by_id(player_id)
+	if not p.is_empty() and _fall_t.has(player_id) and float(_fall_t[player_id]) >= FALL_SEC:
+		var seat := int(p.slot) % 4
+		return _seat_feet(seat % 2, seat / 2)
+	return (_pos.get(player_id, CENTER) as Vector2) + Vector2(0, FEET_OFFSET)
+
+
+func help_scale(player_id: int) -> float:
+	return STAND_SCALE if _fall_t.has(player_id) else MASCOT_SCALE
+
+
+func _start_help(_helper_id: int, target_id: int, _duration: float) -> bool:
+	play_sfx("power")
+	notify_player(target_id, "point")
+	if is_inside_tree():
+		juice().sparkles(help_anchor(target_id) + Vector2(0, -50), UiTheme.HELP_BUOY_RED, 8, 260.0)
+	return true
+
+
+## ¿El salvavidas lo salva de esta caída? Lo gasta y lo devuelve a la isla
+## (HELP_RETURN_RING del radio, yendo hacia el centro).
+func _lifebuoy_saves(player_id: int) -> bool:
+	if help_for(player_id).is_empty():
+		return false
+	consume_help(player_id)
+	var out := (_pos[player_id] as Vector2) - CENTER
+	var dir := out / out.length() if out.length() > 0.001 else Vector2.UP
+	if is_inside_tree():
+		juice().splash(_pos[player_id])
+		play_sfx("splash")
+		play_sfx("power", 1.3)
+	_pos[player_id] = CENTER + dir * _radius * HELP_RETURN_RING
+	_vel[player_id] = -dir * MAX_SPEED * HELP_RETURN_SPEED
+	_last_hit.erase(player_id)
+	if is_inside_tree():
+		juice().sparkles(help_anchor(player_id) + Vector2(0, -50), UiTheme.HELP_BUOY_RED, 12, 380.0)
+	return true
+
+
+## Salvavidas puesto sobre cada jugador con ayuda (titila al vencerse). Una
+## línea desde _draw: dibujo aislado para no tocar el del juego.
+func _draw_help_fx() -> void:
+	for target: int in help_active:
+		if _out_time.has(target):
+			continue
+		var h: Dictionary = help_active[target]
+		HelpFx.draw_lifebuoy(self, help_anchor(target), help_scale(target), float(h.left) / maxf(float(h.total), 0.01), anim_time)

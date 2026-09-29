@@ -1909,3 +1909,41 @@ const BOARD25D_POOL_SHADE_W := 22.0
 ## Pool: cuánto se aclara el paño 3D (la luz de arriba del plástico lo
 ## oscurece; así queda del tono del paño plano, POOL_FELT).
 const BOARD25D_POOL_FELT_LIFT := 0.12
+
+# --- Ayuda de eliminados (agente) ---
+# Ayuda de los eliminados (docs/MODOS.md §11, ADR 0020): burbuja de Esquivar,
+# salvavidas de Empujones, mascota traslúcida del ayudante, marcador de "a
+# quién ayudo" y el cartel "Tomi ayudó a Sofi · −10" (HelpFx, TvHelpOverlay).
+## Burbuja (Esquivar): relleno celeste translúcido, borde claro y brillo.
+const HELP_BUBBLE_FILL := Color(0.62, 0.9, 1.0, 0.32)
+const HELP_BUBBLE_RIM := Color("#BFF3FF")
+const HELP_BUBBLE_SHINE := Color(1, 1, 1, 0.75)
+## Radio y centro de la burbuja (× u de la mascota; el centro, sobre los pies).
+const HELP_BUBBLE_R := 118.0
+const HELP_BUBBLE_LIFT := 92.0
+## Salvavidas (Empujones): gajos rojos y blancos, a la altura de la panza.
+const HELP_BUOY_RED := Color("#F0524F")
+const HELP_BUOY_WHITE := Color("#FFFFFF")
+const HELP_BUOY_R := 64.0
+const HELP_BUOY_W := 20.0
+const HELP_BUOY_LIFT := 44.0
+const HELP_BUOY_FLAT := 0.42            ## Achatado (visto desde arriba en diagonal).
+## Últimos segundos de la ayuda: titila (fracción de la duración).
+const HELP_BLINK_FROM := 0.25
+## Mascota traslúcida del ayudante al lado del ayudado.
+const HELP_GHOST_ALPHA := 0.55
+const HELP_GHOST_SCALE := 0.9           ## Respecto de la mascota del ayudado.
+const HELP_GHOST_SIDE := 118.0          ## Cuánto al costado (× u).
+## Marcador "a quién ayudo" sobre el candidato elegido (ficha con 1P–4P del ayudante).
+const HELP_MARKER_LIFT := 262.0         ## Sobre los pies (× u): arriba del globito 1P–4P.
+const HELP_MARKER_SIZE := Vector2(92, 52)
+const HELP_MARKER_FONT := 28
+## Cartel "Tomi ayudó a Sofi · −10": ficha de juguete abajo al centro.
+const HELP_BANNER_FONT := 30
+const HELP_BANNER_H := 64.0
+const HELP_BANNER_BOTTOM := 18.0        ## Del borde de abajo de la pantalla.
+const HELP_BANNER_SEC := 2.8
+const HELP_BANNER_TAG := Vector2(62, 42)
+const HELP_BANNER_COST := Color("#E5484D")   ## "−10" (lo que costó).
+## Resumen de la ronda: línea "Tomi −10 por ayudar a Sofi".
+const HELP_SUMMARY_FONT := 28

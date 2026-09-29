@@ -9,7 +9,7 @@ extends Control
 ##   │ ① Abrí…      │ [Arena ✓] [Ping Pong 🔒] [Carrera ✓] [Reloj ✓] │
 ##   │ ② Elegí…     │ [Esquivar ✓] [Pintar ✓] [Empujones ✓]          │
 ##   │ ③ Escribí…   │                                                │
-##   │ [K][7][Q][X] │ [⇅ Orden: como en la lista]     [▶ ¡A jugar!]  │
+##   │ [K][7][Q][X] │ [⇅ Orden: lista] [Ayudas: Sí]    [▶ ¡A jugar!]  │
 ##   │ Wi-Fi: IP    │ ◀▶ Moverse   OK Elegir   ◀▶ Cambiar cantidad    │
 ##   │  (mascota)   │                                                │
 ##   └──────────────┴──────────────────────────────────────────────┘
@@ -30,6 +30,9 @@ signal capacity_changed(count: int)
 signal bot_add_requested(slot: int, difficulty: int)
 signal bot_remove_requested(player_id: int)
 signal bot_difficulty_requested(player_id: int, difficulty: int)
+## "Ayudas: Sí/No" (ayuda de los eliminados, ADR 0020). HostMain la guarda
+## en los ajustes de la TV.
+signal helps_toggled(on: bool)
 
 const DEFAULT_PLAYERS := 2
 const JOIN_WIDTH := 508          ## Columna "¡Sumate!" (entran los pasos en letra grande).
@@ -38,7 +41,10 @@ const CODE_TILE := UiTheme.CODE_TILE_SIZE
 const CODE_GAP := UiTheme.CODE_TILE_GAP
 const STEP_FONT := 26
 const START_SIZE := UiTheme.START_SIZE
-const SHUFFLE_SIZE := Vector2(420, 88)
+## "Orden" y "Ayudas" comparten la fila con "¡A jugar!" (START_SIZE): entre
+## los tres llenan la columna, por eso los textos son cortos.
+const SHUFFLE_SIZE := Vector2(300, 88)
+const HELPS_SIZE := Vector2(250, 88)
 
 var player_count := DEFAULT_PLAYERS
 var shuffle := false
@@ -49,6 +55,7 @@ var _seats: Array[SeatCard] = []
 var _stepper: Stepper
 var _start: Button
 var _shuffle_btn: Button
+var _helps_btn: Button
 var _code_box: HBoxContainer
 var _address: Label
 var _status: Label
@@ -395,9 +402,21 @@ func _build_setup_column() -> Control:
 	_shuffle_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_shuffle_btn.toggled.connect(func(on: bool) -> void:
 		shuffle = on
-		_shuffle_btn.text = "Orden: al azar" if on else "Orden: como en la lista")
-	_shuffle_btn.text = "Orden: como en la lista"
+		_shuffle_btn.text = "Orden: al azar" if on else "Orden: lista")
+	_shuffle_btn.text = "Orden: lista"
 	actions.add_child(_shuffle_btn)
+	# Ayuda de los eliminados (MODOS.md §11): prendida por defecto; el valor
+	# guardado en la TV lo trae HelpSession.enabled.
+	_helps_btn = _BrightButton.new(UiTheme.PAPER, 30, "people")
+	_helps_btn.toggle_mode = true
+	_helps_btn.custom_minimum_size = HELPS_SIZE
+	_helps_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_helps_btn.button_pressed = HelpSession.enabled
+	_helps_btn.text = helps_text(HelpSession.enabled)
+	_helps_btn.toggled.connect(func(on: bool) -> void:
+		_helps_btn.text = helps_text(on)
+		helps_toggled.emit(on))
+	actions.add_child(_helps_btn)
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	actions.add_child(spacer)
@@ -412,6 +431,10 @@ func _build_setup_column() -> Control:
 		.add_hint(["left", "right"], "Cambiar cantidad")
 	col.add_child(hints)
 	return col
+
+
+static func helps_text(on: bool) -> String:
+	return "Ayudas: Sí" if on else "Ayudas: No"
 
 
 func _section_title(text: String, size: int = 50) -> Label:

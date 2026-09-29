@@ -16,7 +16,8 @@ Maqueta aprobada (26/09/2026) y cómo se tradujo al lobby dibujado por código.
 | "¿A qué jugamos?" + "6 de 7 elegidos" | Título de 50 px con contorno (`UiTheme.headline`), joystick en círculo con bisel y el contador en una píldora oscura con borde claro (`UiTheme.chip_style`) |
 | Tarjetas de juego con ilustración y ✓ | `GameCard`: cielo en degradé, piso en perspectiva, ícono del control; candado si no se puede jugar |
 | "¡A jugar!" | `_BrightButton`: píldora amarilla de 580×104 px con bisel brillante e ícono play. Con foco: anillo blanco y destellos (rayitas) que laten a los costados (`UiTheme.draw_sparkle_fan`: se dibujan una vez y laten escalando el nodo, sin redibujar; solo corren con foco) |
-| "Orden: como en la lista" | `_BrightButton` blanco tipo píldora, ícono de orden |
+| "Orden: lista" / "Orden: al azar" | `_BrightButton` blanco tipo píldora, ícono de orden |
+| "Ayudas: Sí" / "Ayudas: No" | `_BrightButton` blanco, ícono de personas: ayuda de los eliminados ([ADR 0020](../adr/0020-ayuda-de-los-eliminados.md)); se guarda en la TV |
 | Pistas del control remoto | `KeyHint`: teclas en píldora oscura con labio y brillo (`UiTheme.KEY_CAP`), texto de 28 px |
 | Mascota que saluda abajo a la izquierda | `PlayerAvatar` feliz de ~260 px, asomándose desde afuera de la pantalla, detrás de los paneles (nunca tapa información) |
 

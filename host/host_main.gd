@@ -41,6 +41,9 @@ const PORT_ATTEMPTS := 5
 var server := HostServer.new()
 var beacon := DiscoveryBeacon.new()
 var bots := BotDriver.new()
+## Ayuda de los eliminados (MODOS.md §11, ADR 0020): el que quedó afuera
+## elige a quién ayudar y paga con puntos de la competencia.
+var help := HelpSession.new()
 var phase := Protocol.PHASE_LOBBY
 var tournament: Tournament
 
@@ -54,6 +57,7 @@ var _intro: GameIntroScreen
 var _pause: PauseMenu
 var _transition: Transition
 var _toasts: TvToasts  ## Avisos "se sumó / se desconectó / volvió".
+var _help_overlay: TvHelpOverlay  ## A quién ayuda cada eliminado y el cartel "Tomi ayudó a Sofi · −10".
 ## Último "standing" enviado a cada jugador (player_id -> payload), para
 ## reenviarlo si el celular se reconecta durante el resumen o el podio.
 var _standings_sent: Dictionary = {}
@@ -67,12 +71,18 @@ func _ready() -> void:
 	UiTheme.load_effects_prefs(SETTINGS_PATH)
 	AudioMix.load_prefs(SETTINGS_PATH)
 	MusicStyles.load_prefs(SETTINGS_PATH)
+	HelpSession.load_prefs(SETTINGS_PATH)
 	add_child(Sfx.new())
 	add_child(Music.new())
 	Music.sync_mute()
 	add_child(server)
 	add_child(beacon)
 	add_child(bots)
+	add_child(help)
+	bots.help = help
+	bots.input_sink = _route_game_input
+	help.layout_needed.connect(_send_help_layout)
+	help.feedback.connect(_on_game_feedback)
 	server.player_joined.connect(func(_p: Dictionary) -> void:
 		Sfx.play("join")
 		_refresh_lobby())
@@ -199,6 +209,8 @@ func _start_game() -> void:
 	_game_layer.add_child(game)
 	game.setup(server.get_players())
 	bots.start(game, game.players)
+	help.start(game, tournament)
+	_help_overlay.refresh()
 	_background.visible = false  # El juego dibuja su propio fondo.
 
 
@@ -263,6 +275,8 @@ func _enter_results() -> void:
 
 func _end_game() -> void:
 	bots.stop()
+	help.stop()
+	_help_overlay.clear()
 	_pause.close()
 	_intro.hide_intro()
 	if is_instance_valid(_game):
@@ -395,13 +409,34 @@ func _on_input(player_id: int, input: Dictionary) -> void:
 	if _intro.visible and not _pause.visible:
 		_intro.on_player_input(player_id, input)
 	if phase == Protocol.PHASE_PLAYING and is_instance_valid(_game) and not _pause.visible and not _intro.visible:
+		_route_game_input(player_id, input)
+
+
+## Entrada de un jugador durante el juego (celular o bot): si ya quedó afuera
+## y tiene ayudas, va a la sesión de ayudas; si no, al juego.
+func _route_game_input(player_id: int, input: Dictionary) -> void:
+	if not is_instance_valid(_game):
+		return
+	help.poll()
+	if help.handles(player_id):
+		help.on_input(player_id, input)
+	else:
 		_game.on_input(player_id, input)
+
+
+## Control del eliminado que ayuda (joystick_ab con el hint "Elegí a quién
+## ayudar"), solo a su celular. Sin cambios de protocolo.
+func _send_help_layout(player_id: int) -> void:
+	var l := help.layout_for(player_id)
+	server.send_to(player_id, Protocol.T_LAYOUT, {"layout": l[0], "data": l[1]})
 
 
 ## Si vuelve durante el resumen o el podio, recupera su resultado.
 func _on_player_reconnected(player: Dictionary) -> void:
 	if phase == Protocol.PHASE_RESULTS and _standings_sent.has(player.id):
 		server.send_to(player.id, Protocol.T_STANDING, _standings_sent[player.id])
+	if help.handles(player.id):
+		_send_help_layout(player.id)  # Volvió siendo ayudante: su control, no el del juego.
 	_refresh_lobby()
 
 
@@ -500,7 +535,14 @@ func _build_ui() -> void:
 	_lobby.bot_add_requested.connect(func(slot: int, difficulty: int) -> void: add_bot(difficulty, slot))
 	_lobby.bot_remove_requested.connect(remove_bot)
 	_lobby.bot_difficulty_requested.connect(set_bot_difficulty)
+	_lobby.helps_toggled.connect(func(on: bool) -> void:
+		HelpSession.enabled = on
+		HelpSession.save_prefs(SETTINGS_PATH))
 	add_child(_lobby)
+
+	_help_overlay = TvHelpOverlay.new()
+	add_child(_help_overlay)
+	_help_overlay.watch(help)
 
 	_intro = GameIntroScreen.new()
 	_intro.continue_requested.connect(_go.bind(_start_game))
