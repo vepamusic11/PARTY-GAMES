@@ -34,10 +34,10 @@ signal bot_difficulty_requested(player_id: int, difficulty: int)
 const DEFAULT_PLAYERS := 2
 const JOIN_WIDTH := 508          ## Columna "¡Sumate!" (entran los pasos en letra grande).
 const COLUMN_GAP := 30
-const CODE_TILE := Vector2(100, 128)
-const CODE_GAP := 14
+const CODE_TILE := UiTheme.CODE_TILE_SIZE
+const CODE_GAP := UiTheme.CODE_TILE_GAP
 const STEP_FONT := 26
-const START_SIZE := Vector2(580, 104)
+const START_SIZE := UiTheme.START_SIZE
 const SHUFFLE_SIZE := Vector2(420, 88)
 
 var player_count := DEFAULT_PLAYERS
@@ -55,6 +55,7 @@ var _status: Label
 var _selection: Label
 var _bot_menu: BotMenu
 var _menu_slot := -1  # lugar cuyo menú de bot está abierto
+var _music: MusicStyleStepper  # Estilo de música (ADR 0017), junto al título de los juegos.
 
 
 func _ready() -> void:
@@ -71,7 +72,7 @@ func set_room(code: String, address: String) -> void:
 	for i in code.length():
 		var tile := _CodeTile.new()
 		tile.letter = code[i]
-		tile.color = UiTheme.BRICKS[(i * 2 + 1) % UiTheme.BRICKS.size()]
+		tile.color = UiTheme.code_tile_color(i)  # Naranja, verde, azul, rosa (como el celular).
 		tile.custom_minimum_size = CODE_TILE
 		_code_box.add_child(tile)
 	_address.text = address
@@ -348,6 +349,13 @@ func _build_setup_column() -> Control:
 	var games_title := _section_title("¿A qué jugamos?")
 	games_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	games_header.add_child(games_title)
+	# Estilo de música (ADR 0017): ◀ ▶ lo cambian y suena en el momento; ▲ ▼
+	# siguen navegando (entre los lugares y los juegos).
+	_music = MusicStyleStepper.new()
+	_music.lobby = true
+	_music.custom_minimum_size = UiTheme.MUSIC_PILL_SIZE
+	_music.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	games_header.add_child(_music)
 	var pill := PanelContainer.new()
 	pill.add_theme_stylebox_override("panel", UiTheme.chip_style(UiTheme.CHIP_DARK, 24, 6))
 	pill.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -393,7 +401,7 @@ func _build_setup_column() -> Control:
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	actions.add_child(spacer)
-	_start = _BrightButton.new(UiTheme.ACCENT, 38, "play", true)
+	_start = _BrightButton.new(UiTheme.ACCENT, UiTheme.START_FONT, "play", true)
 	_start.custom_minimum_size = START_SIZE
 	_start.pressed.connect(_on_start_pressed)
 	actions.add_child(_start)
@@ -412,8 +420,9 @@ func _section_title(text: String, size: int = 50) -> Label:
 	return l
 
 
-## Ficha del código de sala: bloque de juguete con bisel (luz arriba, labio
-## oscuro abajo, contorno) y la letra blanca con contorno, como el logo.
+## Ficha del código de sala: bloque de juguete como los de la maqueta
+## (cuerpo en degradé, canto oscuro abajo, brillo, sin contorno de tinta) y
+## la letra blanca con contorno, como el logo.
 class _CodeTile:
 	extends Control
 	var letter := ""
@@ -423,23 +432,23 @@ class _CodeTile:
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 	func _draw() -> void:
-		var o := UiTheme.BEVEL_OUTLINE
-		var body := Rect2(Vector2(o, o), size - Vector2(o * 2.0, o * 2.0 + UiTheme.BEVEL_DEPTH))
-		UiTheme.draw_bevel(self, body, color, 22.0)
+		var body := UiTheme.draw_toy_tile(self, Rect2(Vector2(3, 2), size - Vector2(6, 6)), color)
 		var c := body.get_center() + Vector2(0, 2)
-		var font_size := int(body.size.y * 0.72)
-		UiTheme.draw_text(self, letter, c + Vector2(0, 5), font_size, UiTheme.INK, 10, UiTheme.INK)
-		UiTheme.draw_text(self, letter, c, font_size, UiTheme.PAPER, 10, UiTheme.INK)
+		var font_size := int(body.size.y * 0.7)
+		var o := UiTheme.CODE_LETTER_OUTLINE
+		UiTheme.draw_text(self, letter, c + Vector2(0, 5), font_size, UiTheme.INK, o, UiTheme.INK)
+		UiTheme.draw_text(self, letter, c, font_size, UiTheme.PAPER, o, UiTheme.INK)
 
 
-## Botón del lobby dibujado a mano: píldora con bisel brillante, ícono y
-## texto. El principal (¡A jugar!) es amarillo y, con foco, tira destellos
-## animados alrededor. El texto se dibuja acá (la fuente del tema queda
-## transparente) para que vaya encima del bisel.
+## Botón del lobby dibujado a mano: pieza de juguete (UiTheme.draw_toy_block)
+## con ícono y texto. El principal (¡A jugar!) es amarillo con bisel fuerte,
+## ▶ grande y destellos a los costados (como la maqueta); con foco, los
+## destellos laten. El texto se dibuja acá (la fuente del tema queda
+## transparente) para que vaya encima de la pieza.
 ##
 ## Rendimiento: el botón se dibuja solo cuando cambia (texto, foco, apretado).
-## Los destellos van en una capa aparte (`_Sparkles`) que no se redibuja al
-## animarse, y solo corre mientras el botón tiene el foco.
+## Los destellos van en una capa aparte (`_Sparkles`) que se dibuja una vez;
+## solo corre (late) mientras el botón tiene el foco.
 class _BrightButton:
 	extends Button
 	var base := UiTheme.PAPER
@@ -472,36 +481,46 @@ class _BrightButton:
 	func _notification(what: int) -> void:
 		# `disabled` cambia sin señal: se revisa al redibujar el botón.
 		if what == NOTIFICATION_DRAW and _sparkles != null:
-			_sparkles.set_running.call_deferred(has_focus() and not disabled)
+			_sparkles.set_state.call_deferred(not disabled, has_focus() and not disabled and not UiTheme.reduce_motion)
 
 	func _on_state_changed() -> void:
 		queue_redraw()
 
-	## Cuerpo del botón (sin labio) dentro de su rectángulo.
+	## Rectángulo de la pieza (cuerpo + canto) dentro del botón.
+	func block_rect() -> Rect2:
+		return Rect2(Vector2(4, 4), size - Vector2(8, 8))
+
+	## Cuerpo del botón (sin el canto) dentro de su rectángulo.
 	func body_rect() -> Rect2:
-		var o := UiTheme.BEVEL_OUTLINE
-		return Rect2(Vector2(o + 2.0, o + 2.0), size - Vector2(o * 2.0 + 4.0, o * 2.0 + 4.0 + UiTheme.BEVEL_DEPTH))
+		var r := block_rect()
+		return Rect2(r.position, r.size - Vector2(0, _depth()))
+
+	func _depth() -> float:
+		return UiTheme.START_DEPTH if base == UiTheme.ACCENT else UiTheme.TOY_DEPTH
 
 	func _draw() -> void:
-		var depth := UiTheme.BEVEL_DEPTH
-		var o := UiTheme.BEVEL_OUTLINE
-		var r := body_rect()
-		var radius := r.size.y / 2.0
+		var r := block_rect()
+		var radius := (r.size.y - _depth()) / 2.0
 		var pressed := get_draw_mode() == DRAW_PRESSED or get_draw_mode() == DRAW_HOVER_PRESSED
 		if has_focus():
-			var ring := Rect2(r.position, r.size + Vector2(0, depth)).grow(o + 10.0)
+			var ring := r.grow(10.0)
 			var ring_col := UiTheme.PAPER if base == UiTheme.ACCENT else UiTheme.ACCENT
 			UiTheme.draw_round_rect(self, ring.grow(3), Color(UiTheme.INK, 0.55), ring.size.y / 2.0 + 3.0)
 			UiTheme.draw_round_rect(self, ring, ring_col, ring.size.y / 2.0)
-		var fill := base
 		var ink := UiTheme.INK
+		var body: Rect2
 		if disabled:
-			fill = UiTheme.PAPER_DIM
 			ink = UiTheme.MUTED
-		UiTheme.draw_bevel(self, r, fill, radius, pressed, UiTheme.INK if not disabled else Color(UiTheme.INK, 0.35))
-		var body := Rect2(r.position + Vector2(0, depth * 0.7 if pressed else 0.0), r.size)
-		var icon_size := body.size.y * 0.5
-		var icon_c := Vector2(body.position.x + radius + 4.0, body.get_center().y)
+			body = UiTheme.draw_toy_block(self, r, UiTheme.PAPER_DIM, UiTheme.PAPER_DIM, UiTheme.BUTTON_LIGHT_LIP, radius)
+		elif base == UiTheme.ACCENT:
+			# Principal: amarillo con bisel fuerte (canto naranja), como la maqueta.
+			body = UiTheme.draw_toy_block(self, r, UiTheme.START_TOP, UiTheme.START_BOTTOM, UiTheme.START_LIP, radius,
+				_depth(), 1.0 if pressed else 0.0)
+		else:
+			body = UiTheme.draw_toy_block(self, r, base, base.lerp(UiTheme.PAPER_DIM, 0.8), UiTheme.BUTTON_LIGHT_LIP, radius,
+				_depth(), 1.0 if pressed else 0.0)
+		var icon_size := body.size.y * (0.62 if base == UiTheme.ACCENT else 0.5)
+		var icon_c := Vector2(body.position.x + radius + 10.0, body.get_center().y)
 		if not glyph.is_empty():
 			UiTheme.draw_glyph(self, glyph, icon_c, icon_size, ink)
 		var left := icon_c.x + icon_size * 0.6 if not glyph.is_empty() else body.position.x
@@ -514,10 +533,11 @@ class _BrightButton:
 		UiTheme.draw_text(self, text, text_c, px, ink)
 
 
-## Capa de destellos del botón principal: solo existe a la vista con el
-## foco puesto. Cada abanico es un Node2D que se dibuja una vez (con el
-## origen en su posición); para que "laten" solo se cambia su escala, a 30
-## cuadros por segundo (cambiar la escala no redibuja nada).
+## Capa de destellos del botón principal: se ve con el botón habilitado.
+## Cada abanico es un Node2D que se dibuja una vez (con el origen en su
+## posición); con el foco puesto "laten": solo se cambia su escala, a 30
+## cuadros por segundo (cambiar la escala no redibuja nada). Con
+## "Movimiento: Reducido" no laten.
 class _Sparkles:
 	extends Control
 	const PULSE_SPEED := 6.0
@@ -541,22 +561,24 @@ class _Sparkles:
 			_fans[i].position = _fan_data(i)[0]
 			_fans[i].queue_redraw()
 
-	func set_running(on: bool) -> void:
-		if on == visible:
-			return
-		visible = on
-		set_process(on)
-		if on:
-			_refresh_fans()
+	## `show`: se ven (botón habilitado); `animate`: laten (botón con foco).
+	func set_state(show: bool, animate: bool) -> void:
+		if show != visible:
+			visible = show
+			if show:
+				_refresh_fans()
+		if animate != is_processing():
+			set_process(animate)
+			if not animate:
+				for fan in _fans:
+					fan.scale = Vector2.ONE
 
 	func _ready() -> void:
-		set_process(visible)
+		set_process(false)
 
 	func _fan_data(i: int) -> Array:
 		var button := get_parent() as _BrightButton
-		var r := button.body_rect()
-		var whole := Rect2(r.position, r.size + Vector2(0, UiTheme.BEVEL_DEPTH))
-		return UiTheme.sparkle_fans(whole.grow(UiTheme.BEVEL_OUTLINE + 10.0))[i]
+		return UiTheme.sparkle_fans(button.block_rect().grow(12.0))[i]
 
 	func _draw_fan(fan: Node2D, i: int) -> void:
 		var data := _fan_data(i)

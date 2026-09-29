@@ -29,11 +29,19 @@ const SHOT_DELAY := {"stop_clock": 5.0, "dodge": 6.0, "paint": 8.0, "sumo": 4.5,
 ## mientras esperan la captura (ej. para que se vea el piso pintado).
 const WANDER := ["paint", "sumo"]
 ## Apariencia que piden los controles de prueba al unirse (ver Protocol.parse_look).
+## Las capturas principales usan el cuarteto de la maqueta
+## (docs/design/referencia_lobby.webp): la apariencia de cada lugar
+## (1P rojo antena, 2P azul oso, 3P amarillo gato y 4P verde brote, el
+## celular). Así se comparan parejo con la maqueta.
 const LOOKS := {
 	"Pablo": {},
-	"Sofi": {"color": 5, "style": 6},   # Rosa, conejo.
-	"Tomi": {"color": 7, "style": 4},   # Blanco, robot.
+	"Sofi": {},
+	"Tomi": {},
 }
+## Variedad de colores y estilos (blanco, negro, rosa) en una captura aparte
+## (`lobby_colores`): [control de prueba, color, estilo]. El celular (Juli)
+## pide negro + diablito desde su selector.
+const VARIETY := [["Sofi", 5, 6], ["Tomi", 7, 4]]  # Rosa conejo, blanco robot.
 ## Nombre de la captura del celular según el control que muestra.
 const CONTROL_SHOTS := {
 	Protocol.LAYOUT_JOYSTICK: "ctrl_joy", Protocol.LAYOUT_ONE_BUTTON: "ctrl_button", Protocol.LAYOUT_SLIDER_H: "ctrl_slider",
@@ -122,6 +130,10 @@ func _run() -> void:
 	_expect(host.server.get_players().size() == 4, "el celular se une desde su pantalla")
 	await _seconds(0.8)
 	await _shot(phone, "ctrl_wait")
+	# Con los cuatro listos, el foco en "¡A jugar!" (como tras bajar con el D-pad).
+	host._lobby._start.grab_focus()
+	await _seconds(0.3)
+	await _shot(root, "lobby_full")
 	# Selector de mascota: el celular pide negro + diablito (por la red, como
 	# al tocar el selector, pero sin guardar la preferencia en este equipo).
 	ctrl.client.send_look(9, PlayerAvatar.STYLE_HORNS)
@@ -129,10 +141,23 @@ func _run() -> void:
 	_expect(ctrl._look_picker.visible and ctrl._look_picker.color_index == 9, "el celular muestra el selector con el color elegido")
 	await _seconds(0.8)
 	await _shot(phone, "ctrl_look")
-	await _shot(root, "lobby_full")
+	# Variedad: blanco, negro y rosa en el lobby (captura aparte).
+	for v: Array in VARIETY:
+		_clients[LOOKS.keys().find(v[0])].send_look(v[1], v[2])
+	await _until(func() -> bool:
+		return host.server.get_players().filter(func(p: Dictionary) -> bool: return int(p.color_index) >= 4).size() == VARIETY.size() + 1)
+	await _seconds(1.0)
+	await _shot(root, "lobby_colores")
 	if _lobby_only:
 		quit(0)
 		return
+	# El resto de las capturas vuelve al cuarteto de la maqueta.
+	for i in _clients.size():
+		_clients[i].send_look(i, i)
+	ctrl.client.send_look(3, 3)
+	await _until(func() -> bool:
+		return host.server.get_players().all(func(p: Dictionary) -> bool: return int(p.get("color_index", -1)) == p.slot))
+	await _seconds(0.5)
 
 	# Competencia con todos los juegos que admiten 4: se recorre sin importar
 	# cuántos haya (un juego nuevo en el registry aparece solo en las capturas).

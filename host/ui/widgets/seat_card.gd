@@ -32,12 +32,13 @@ enum State { READY, RECONNECTING, OPEN, LOCKED }
 
 const OVERHANG := 44.0        ## Alto libre arriba de la tarjeta para la cabeza de la mascota.
 const TALL_HEIGHT := 268.0
-const LABELS_HEIGHT := 76.0   ## Nombre + estado, abajo de la tarjeta.
-const MASCOT_RISE := 14.0     ## Cuánto sube la mascota por encima del control.
+const LABELS_HEIGHT := 72.0   ## Nombre + estado, abajo de la tarjeta.
+const MASCOT_RISE := 22.0     ## Cuánto sube la mascota por encima del control.
+const MASCOT_GAP := 6.0       ## Aire entre los pies de la mascota y el nombre.
 const CARD_RADIUS := 30.0
 const NAME_FONT := 34
 const STATUS_FONT := 26
-const TAG_SIZE := Vector2(72, 42)
+const TAG_SIZE := UiTheme.SEAT_TAG_SIZE
 
 var slot := 0
 var state := State.OPEN
@@ -69,7 +70,7 @@ func _init(p_slot: int, p_compact: bool = false) -> void:
 	_avatar.color = Protocol.player_color(slot)
 	_avatar.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_avatar.offset_top = -MASCOT_RISE
-	_avatar.offset_bottom = -LABELS_HEIGHT - 4.0
+	_avatar.offset_bottom = -LABELS_HEIGHT - MASCOT_GAP
 	add_child(_avatar)
 	var box := VBoxContainer.new()
 	box.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
@@ -202,25 +203,21 @@ func _draw() -> void:
 		UiTheme.draw_round_rect(self, r.grow(12), Color(UiTheme.INK, 0.5), CARD_RADIUS + 12)
 		UiTheme.draw_round_rect(self, r.grow(9), UiTheme.ACCENT, CARD_RADIUS + 9)
 	if not filled:
-		# Lugar libre: tarjeta translúcida, "+" grande del color del lugar.
-		UiTheme.draw_round_rect(self, r, UiTheme.GLASS, CARD_RADIUS, 4, UiTheme.GLASS_EDGE)
+		# Lugar libre: tarjeta de vidrio con un "+" grande en un disco claro.
+		UiTheme.draw_glass_card(self, r, CARD_RADIUS)
 		if state == State.OPEN:
-			var plus := Vector2(r.get_center().x, r.position.y + (r.size.y - LABELS_HEIGHT) * 0.5 + 4.0)
-			UiTheme.draw_bevel_circle(self, plus, 40, UiTheme.PAPER, Color(UiTheme.INK_SOFT, 0.35))
-			UiTheme.draw_glyph(self, "plus", plus - Vector2(0, 2), 50, UiTheme.on_light(col))
+			var plus := Vector2(r.get_center().x, r.position.y + (r.size.y - LABELS_HEIGHT) * 0.5 + 6.0)
+			var batch := UiTheme.ShapeBatch.new()
+			batch.circle(plus, 46, UiTheme.SEAT_PLUS_DISC)
+			batch.flush(self)
+			UiTheme.draw_glyph(self, "plus", plus, 58, UiTheme.on_light(col))
 		return
-	# Tarjeta blanca con sombra, degradé del color del jugador y resplandor
-	# detrás de la mascota.
-	UiTheme.draw_round_rect(self, r, UiTheme.PAPER, CARD_RADIUS, 0, UiTheme.INK, true)
-	var inner := r.grow(-6)
-	UiTheme.draw_gradient_round_rect(self, inner, col.lerp(UiTheme.PAPER, 0.35),
-		col.lerp(UiTheme.PAPER, 0.9), CARD_RADIUS - 6)
-	var halo := Vector2(inner.get_center().x, inner.position.y + (inner.size.y - LABELS_HEIGHT) * 0.45)
-	var glow := UiTheme.ShapeBatch.new()
-	for k in 5:  # Anillos suaves apilados: resplandor sin textura.
-		glow.circle(halo, inner.size.x * (0.46 - 0.075 * k), UiTheme.HALO)
-	glow.flush(self)
+	# Tarjeta en degradé pastel del color del jugador, con marco claro y un
+	# resplandor detrás de la mascota (ver UiTheme.draw_seat_card).
+	var glow := Vector2(r.get_center().x, r.position.y + (r.size.y - LABELS_HEIGHT) * 0.42)
+	UiTheme.draw_seat_card(self, r, col, CARD_RADIUS, glow)
 	# Base clara para el nombre: se lee bien sobre cualquier color de jugador.
+	var inner := r.grow(-UiTheme.SEAT_RIM_W)
 	var base := Rect2(Vector2(inner.position.x, inner.end.y - LABELS_HEIGHT - 6), Vector2(inner.size.x, LABELS_HEIGHT + 6))
 	UiTheme.draw_gradient_round_rect(self, base, Color(UiTheme.PAPER, 0.0), Color(UiTheme.PAPER, 0.85), CARD_RADIUS - 6)
 
@@ -237,7 +234,7 @@ func _draw_tag() -> void:
 	UiTheme.draw_round_rect(_tag_layer, tag, fill, TAG_SIZE.y / 2.0, 3, UiTheme.INK)
 	UiTheme.draw_gradient_round_rect(_tag_layer, Rect2(tag.position + Vector2(8, 5), Vector2(tag.size.x - 16, tag.size.y * 0.4)),
 		UiTheme.GLOSS_TOP, UiTheme.GLOSS_BOTTOM, 8)
-	UiTheme.draw_text(_tag_layer, UiTheme.player_tag(slot), tag.get_center(), 26, text_col, 6 if present else 0, UiTheme.INK)
+	UiTheme.draw_text(_tag_layer, UiTheme.player_tag(slot), tag.get_center(), UiTheme.SEAT_TAG_FONT, text_col, 6 if present else 0, UiTheme.INK)
 	if is_bot and present:
 		UiTheme.draw_bot_badge(_tag_layer, Vector2(r.end.x - UiTheme.BOT_BADGE_SIZE.x / 2.0 - 2.0, tag.get_center().y + 2.0))
 

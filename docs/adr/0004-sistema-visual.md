@@ -63,3 +63,4 @@ Estrellas, bloques del marco y de los fondos, medallas, corona, trofeo, ficha de
 ## Consecuencias
 - Cuando haya arte definitivo, `PlayerAvatar.draw_mascot` y `PartyBackground` se reemplazan por sprites sin tocar pantallas ni juegos.
 - `tools/capture_screens.gd` + el job `capturas` de CI permiten revisar cada cambio visual en el PR.
+- **Lobby como la maqueta (29/09/2026):** tarjetas de jugador en degradé pastel de su color (`UiTheme.draw_seat_card`), piezas "de juguete" sin contorno de tinta para fichas y botones (`draw_toy_block`), amarillo dorado y verde pasto en la paleta y dioramas 3D de los juegos en las tarjetas ([ADR 0018](0018-dioramas-de-los-juegos.md)). Comparación: `docs/img/lobby_comparacion.png`.

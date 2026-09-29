@@ -279,6 +279,19 @@ Estrellas, bloques del marco y de los fondos, medallas, corona, trofeo, ficha de
 - **Con caché** (`user://props3d/atlas_<firma>.png`): leer el PNG, mipmaps y textura ≈ 36 ms, en `_ready` de la TV antes de armar el lobby.
 - **Memoria**: atlas 2048×644 RGBA8 con mipmaps = 7,0 MB en la GPU (5,3 MB sin mipmaps) + 0,6 MB de imágenes chicas en RAM (estrella y bloques, para componer el escenario de los juegos). Transitorio al hornear: render de 2048×2048 color + profundidad (~32 MB) y otro de 512×512, que se liberan al terminar.
 
+### Lobby como la maqueta (dioramas, tarjetas y piezas de juguete, ADR 0018)
+
+`tools/benchmark.gd -- --only=lobby`, intercalando la punta sin el cambio (`8a7ae11`, copiada aparte) y con el cambio, dos corridas de cada uno una detrás de la otra con el candado de Godot tomado (xvfb + llvmpipe):
+
+| Escena | Scripts prom. (ms) | Scripts p95 (ms) | Draw calls | Objetos | Render (ms) |
+|---|---:|---:|---:|---:|---:|
+| lobby | 0,75 → 0,76 | 1,01 → 1,04 | **467 → 405** | 2212 → 2211 | 50,9 → 50,7 |
+
+- **Draw calls −13 %** aunque se sumaron el selector de música y los destellos fijos del botón: cada tarjeta de jugador, ficha del código y botón es ahora **un lote** (`UiTheme.draw_seat_card`/`draw_toy_block`: sombra, borde, canto, degradé, brillo y el borde suavizado en un solo triangle array) en vez de 4–6 StyleBox y polígonos sueltos.
+- **Scripts igual** (±3 %, ruido): lo que cambia se sigue redibujando solo cuando cambia (foco, texto, jugador); los destellos se dibujan una vez y solo laten (escala) con el foco.
+- **Dioramas**: una textura por tarjeta, igual que la captura (648×240 WebP, ~20 KB; en la GPU ≈ 0,8 MB con mipmaps para los 13). No hay 3D en la TV: se renderizan con `tools/make_dioramas.gd` (~0,3 s por juego en llvmpipe).
+- **Fondo más lleno** (fila de torres del medio): se pinta una vez al preparar el escenario desenfocado, cero costo por frame.
+
 ## Qué se cambió y por qué
 
 ### 1. Capas estáticas que se dibujan una sola vez

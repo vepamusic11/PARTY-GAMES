@@ -1650,3 +1650,165 @@ static func music_style_color(style_id: String) -> Color:
 		"relajado": return BRICKS[4]
 		"retro": return BRICKS[6]
 	return MUTED
+
+
+# --- Lobby maqueta (agente) ---
+# Lobby más cerca de docs/design/referencia_lobby.webp: tarjetas de jugador
+# en degradé pastel del color del jugador, fichas del código y botón
+# "¡A jugar!" con más volumen, y dioramas 3D de los juegos (ADR 0018).
+
+const DIORAMA_HAZE := 0.16            ## Bruma sobre el fondo desenfocado de los dioramas.
+
+# Tarjeta del jugador (SeatCard alta): degradé pastel del color del jugador
+# con marco claro y un resplandor, como la maqueta.
+const SEAT_TINT_TOP := 0.38            ## Color del jugador → papel: arriba…
+const SEAT_TINT_BOTTOM := 0.86         ## …y abajo (degradé pastel).
+const SEAT_LIGHT_TINT := Color("#8CC8FF")  ## Base del degradé para colores muy claros (blanco): si no, la tarjeta sería blanca.
+const SEAT_RIM := Color(1, 1, 1, 0.92)     ## Marco claro de la tarjeta.
+const SEAT_RIM_W := 5.0
+const SEAT_GLOW := Color(1, 1, 1, 0.16)    ## Resplandor detrás de la mascota (se apila en anillos).
+const SEAT_SHADOW := Color(0.07, 0.1, 0.3, 0.22)
+const SEAT_SHADOW_Y := 8.0
+const SEAT_GLASS := Color(1, 1, 1, 0.34)   ## Lugar libre: tarjeta de vidrio.
+const SEAT_GLASS_TOP := Color(1, 1, 1, 0.5)
+const SEAT_PLUS_DISC := Color(1, 1, 1, 0.75)  ## Disco del "+" grande del lugar libre.
+const SEAT_TAG_SIZE := Vector2(80, 46)     ## Pastilla 1P–4P.
+const SEAT_TAG_FONT := 28
+
+# Piezas "de juguete" del lobby (fichas del código, botones): sin contorno de
+# tinta, con canto oscuro abajo, cuerpo en degradé, brillo arriba y un
+# borde apenas más oscuro, como los bloques de la maqueta.
+const TOY_DEPTH := 12.0                ## Alto del canto de abajo.
+const TOY_LIP_SHADE := 0.3             ## Canto: cuánto se oscurece el color.
+const TOY_TOP_LIGHT := 0.22            ## Cuerpo: arriba, el color aclarado…
+const TOY_BOTTOM_SHADE := 0.05         ## …abajo, apenas oscurecido.
+const TOY_EDGE_SHADE := 0.42           ## Borde fino alrededor de la pieza.
+const TOY_EDGE_W := 2.5
+const TOY_GLOSS := Color(1, 1, 1, 0.55)    ## Brillo de la mitad de arriba.
+const TOY_SPEC := Color(1, 1, 1, 0.85)     ## Reflejo chico arriba a la izquierda.
+const TOY_SHADOW := Color(0.07, 0.1, 0.3, 0.25)
+const CODE_TILE_SIZE := Vector2(108, 146)  ## Fichas del código de sala en la TV.
+const CODE_TILE_RADIUS := 24.0
+const CODE_TILE_GAP := 12
+const CODE_LETTER_OUTLINE := 12
+
+# Botón "¡A jugar!": amarillo con bisel fuerte, ▶ grande y destellos.
+const START_SIZE := Vector2(660, 118)
+const START_FONT := 44
+const START_TOP := Color("#FFDD55")
+const START_BOTTOM := Color("#FFB524")
+const START_LIP := Color("#E58B10")
+const START_DEPTH := 14.0
+const BUTTON_LIGHT_LIP := Color("#C3CCE3")   ## Canto de los botones blancos ("Orden").
+
+# Selector de música del lobby (MusicStyleStepper compacto, junto al título).
+const MUSIC_PILL_SIZE := Vector2(430, 68)
+const MUSIC_PILL_FONT := 28
+
+
+## Base del degradé de la tarjeta de un jugador de color `col`.
+static func seat_tint(col: Color) -> Color:
+	return col if col.get_luminance() < LIGHT_COLOR_LUMINANCE else SEAT_LIGHT_TINT
+
+
+## Rectángulo redondeado con degradé vertical dentro de un lote.
+static func batch_gradient_round_rect(batch: ShapeBatch, rect: Rect2, radius: float, top: Color,
+		bottom: Color, steps: int = 6) -> void:
+	if rect.size.x <= 0.0 or rect.size.y <= 0.0:
+		return
+	var pts := round_rect_points(rect, radius, steps)
+	var base := batch.points.size()
+	batch.points.append_array(pts)
+	for p in pts:
+		batch.colors.append(top.lerp(bottom, clampf((p.y - rect.position.y) / rect.size.y, 0.0, 1.0)))
+	for i in range(1, pts.size() - 1):
+		batch.indices.append_array([base, base + i, base + i + 1])
+
+
+## Borde suavizado (antialiasing) de un rectángulo redondeado dentro del lote:
+## una línea fina del color de la figura sobre su contorno.
+static func batch_round_rect_edge(batch: ShapeBatch, rect: Rect2, radius: float, color: Color,
+		width: float = 1.0, steps: int = 6) -> void:
+	var pts := round_rect_points(rect, radius, steps)
+	pts.append(pts[0])
+	batch.polyline(pts, color, width)
+
+
+## Tarjeta del jugador en el lobby: sombra, marco claro, degradé pastel de
+## su color y un resplandor detrás de la mascota (centro `glow`). Un lote.
+static func draw_seat_card(ci: CanvasItem, rect: Rect2, col: Color, radius: float, glow: Vector2) -> void:
+	var base := seat_tint(col)
+	var batch := ShapeBatch.new()
+	batch.polygon(round_rect_points(Rect2(rect.position + Vector2(0, SEAT_SHADOW_Y), rect.size).grow(2.0), radius + 2.0, 6),
+		SEAT_SHADOW)
+	batch.polygon(round_rect_points(rect, radius, 6), SEAT_RIM)
+	var inner := rect.grow(-SEAT_RIM_W)
+	batch_gradient_round_rect(batch, inner, radius - SEAT_RIM_W, base.lerp(PAPER, SEAT_TINT_TOP),
+		base.lerp(PAPER, SEAT_TINT_BOTTOM))
+	var rx := inner.size.x * 0.5
+	for k in 4:  # Anillos suaves apilados: resplandor sin textura.
+		batch.ellipse(glow, rx * (1.0 - 0.2 * k), rx * (0.9 - 0.18 * k), SEAT_GLOW)
+	batch_round_rect_edge(batch, rect, radius, SEAT_RIM)
+	batch.flush(ci)
+
+
+## Tarjeta de vidrio (lugar libre): translúcida con marco claro.
+static func draw_glass_card(ci: CanvasItem, rect: Rect2, radius: float) -> void:
+	var batch := ShapeBatch.new()
+	batch_gradient_round_rect(batch, rect, radius, SEAT_GLASS_TOP, SEAT_GLASS)
+	batch_round_rect_edge(batch, rect.grow(-1.5), radius - 1.5, SEAT_RIM, 3.0)
+	batch.flush(ci)
+
+
+## Pieza de juguete del lobby (ficha del código, botón) dentro de `rect`
+## (cuerpo + canto): sombra, borde fino, canto oscuro, cuerpo en degradé
+## `top` → `bottom`, brillo arriba y reflejo chico. Un lote (un draw call).
+## `press` 0..1 baja el cuerpo. Devuelve el rectángulo del cuerpo (para el
+## texto o el ícono).
+static func draw_toy_block(ci: CanvasItem, rect: Rect2, top: Color, bottom: Color, lip: Color,
+		radius: float, depth: float = TOY_DEPTH, press: float = 0.0) -> Rect2:
+	var sink := depth * 0.75 * clampf(press, 0.0, 1.0)
+	var body := Rect2(rect.position + Vector2(0, sink), rect.size - Vector2(0, depth))
+	var whole := rect  # Cuerpo + canto (dos rectángulos redondeados corridos = uno más alto).
+	var edge := lip.darkened(TOY_EDGE_SHADE)
+	var batch := ShapeBatch.new()
+	batch.polygon(round_rect_points(Rect2(whole.position + Vector2(0, depth * 0.6), whole.size).grow(1.0), radius + 1.0, 6),
+		TOY_SHADOW)
+	batch.polygon(round_rect_points(whole.grow(TOY_EDGE_W), radius + TOY_EDGE_W, 6), edge)
+	batch.polygon(round_rect_points(whole, radius, 6), lip)
+	batch.polygon(round_rect_points(body.grow(TOY_EDGE_W * 0.6), radius + TOY_EDGE_W * 0.6, 6), edge.lerp(lip, 0.5))
+	batch_gradient_round_rect(batch, body, radius, top, bottom)
+	var gloss := Rect2(body.position + Vector2(5, 4), Vector2(body.size.x - 10, body.size.y * 0.48))
+	batch_gradient_round_rect(batch, gloss, minf(radius - 4.0, gloss.size.y / 2.0), TOY_GLOSS, Color(TOY_GLOSS, 0.0))
+	var spec_h := clampf(body.size.y * 0.1, 5.0, 12.0)
+	var spec := Rect2(body.position + Vector2(minf(radius * 0.75, body.size.x * 0.2), body.size.y * 0.1),
+		Vector2(minf(body.size.x * 0.2, 90.0), spec_h))
+	batch.polygon(round_rect_points(spec, spec_h / 2.0, 4), TOY_SPEC)
+	batch_round_rect_edge(batch, whole.grow(TOY_EDGE_W), radius + TOY_EDGE_W, edge)
+	batch.flush(ci)
+	return body
+
+
+## Ficha de color `col` (código de sala): degradé del mismo color.
+static func draw_toy_tile(ci: CanvasItem, rect: Rect2, col: Color, radius: float = CODE_TILE_RADIUS,
+		depth: float = TOY_DEPTH) -> Rect2:
+	return draw_toy_block(ci, rect, col.lightened(TOY_TOP_LIGHT), col.darkened(TOY_BOTTOM_SHADE),
+		col.darkened(TOY_LIP_SHADE), radius, depth)
+
+
+## Nota musical (♪) en un lote: cabeza inclinada, plica y banderita.
+static func draw_music_note(ci: CanvasItem, c: Vector2, s: float, color: Color) -> void:
+	var batch := ShapeBatch.new()
+	var head := c + Vector2(-s * 0.14, s * 0.28)
+	batch.ellipse(head, s * 0.2, s * 0.14, color, -0.4)
+	var x := head.x + s * 0.17
+	batch.polygon(PackedVector2Array([Vector2(x - s * 0.07, head.y - s * 0.02), Vector2(x - s * 0.07, c.y - s * 0.44),
+		Vector2(x, c.y - s * 0.44), Vector2(x, head.y - s * 0.02)]), color)
+	batch.polygon(PackedVector2Array([Vector2(x - s * 0.02, c.y - s * 0.44), Vector2(x + s * 0.24, c.y - s * 0.24),
+		Vector2(x + s * 0.24, c.y - s * 0.08), Vector2(x - s * 0.02, c.y - s * 0.26)]), color)
+	batch.flush(ci)
+
+# Fondo del lobby más lleno y vivo (PartyBackground, como la maqueta).
+const BG_MID_TOWER_BLOCK := 50.0            ## Bloques de la fila de torres del medio.
+const BG_MID_TOWER_GAP := Vector2(0.045, 0.075)  ## Separación entre torres del medio (fracción del ancho).
+const BG_HAZE_FRONT := 0.0                  ## Torres de adelante: color puro (antes, BG_HAZE_NEAR).

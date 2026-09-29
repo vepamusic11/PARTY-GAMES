@@ -93,8 +93,8 @@ const BTN_MASK := BTN_A | BTN_B
 const PLAYER_COLORS: Array[Color] = [
 	Color("#E24B4A"), # rojo
 	Color("#378ADD"), # azul
-	Color("#EF9F27"), # amarillo
-	Color("#1D9E75"), # verde
+	Color("#F5B82C"), # amarillo dorado (maqueta)
+	Color("#45C35A"), # verde pasto (maqueta)
 ]
 
 ## Paleta de mascotas que se puede elegir desde el celular (índice = lo que
@@ -102,7 +102,7 @@ const PLAYER_COLORS: Array[Color] = [
 ## Blanco y negro se leen bien porque la mascota siempre lleva contorno de
 ## tinta y PlayerAvatar aclara las luces de los colores oscuros.
 const MASCOT_COLORS: Array[Color] = [
-	Color("#E24B4A"), Color("#378ADD"), Color("#EF9F27"), Color("#1D9E75"),
+	Color("#E24B4A"), Color("#378ADD"), Color("#F5B82C"), Color("#45C35A"),
 	Color("#8B5CF6"), Color("#FF6FB5"), Color("#2EC4D6"), Color("#F5F7FB"),
 	Color("#2B2D3A"), Color("#16171D"),
 ]

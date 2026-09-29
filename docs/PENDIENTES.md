@@ -29,8 +29,9 @@ No quedó ningún agente trabajando: todo lo del 27/09 está integrado en la ram
 
 - [x] Mascotas 3D horneadas en todo el juego (lobby, intro, 13 juegos, resumen, podio, celular) con respaldo 2D ([ADR 0012](adr/0012-mascotas-3d.md)).
 - [x] Podio centrado (la línea "Se jugó…" lo corría a la derecha y cortaba el 3.°).
-- [x] Calidad de las mascotas 3D al nivel de la maqueta: plástico, cara, contorno y los 9 ánimos ([comparación](img/mascotas_3d_comparacion.png)). Pendiente de decisión: el amarillo y el verde de la paleta tiran a naranja y turquesa respecto de la maqueta (`Protocol.MASCOT_COLORS`).
+- [x] Calidad de las mascotas 3D al nivel de la maqueta: plástico, cara, contorno y los 9 ánimos ([comparación](img/mascotas_3d_comparacion.png)). Paleta: amarillo dorado y verde pasto de la maqueta (29/09).
 - [x] Piezas del escenario en 3D: estrellas, bloques, medallas, corona y trofeos con el mismo plástico ([ADR 0016](adr/0016-piezas-3d-horneadas.md), hoja `docs/img/piezas_3d.png`). El celular sigue con piezas 2D.
+- [x] Lobby más cerca de la maqueta (29/09): tarjetas de jugador en degradé pastel, fichas del código y "¡A jugar!" de juguete, fondo más lleno y **dioramas 3D de los juegos** en las tarjetas ([ADR 0018](adr/0018-dioramas-de-los-juegos.md), [comparación](img/lobby_comparacion.png)). Pendiente: pose de saludo con los dos brazos bien arriba (hoy festeja con `wave`); dioramas con los looks elegidos no (usan el cuarteto).
 - [ ] Posible "escalón" de luz entre celdas del atlas de mascotas (la cámara del horneado está a 80 u; en las piezas se arregló alejándola a 100 000 u): revisar en `tools/mascot_atlas_check.gd`.
 - [ ] Capturas de Empujones y ¡Que no te deje la cámara!: muestran el resumen en vez del juego (el juego termina antes de la foto); ajustar `SHOT_DELAY` en `tools/capture_screens.gd`.
 - [ ] Revisar con la maqueta de Pintar el piso (`docs/design/referencia_juego_pintar.webp`) juego por juego una vez integrado todo.
@@ -46,7 +47,7 @@ No quedó ningún agente trabajando: todo lo del 27/09 está integrado en la ram
 
 - [ ] **El dueño elige** escuchando las muestras (Fiesta, Latino, Relajado, Retro, PARTY-GAME con *Breakpoint Rush*). Fiesta y Latino salen de un generador propio: aprobar o descartar al oírlos.
 - [ ] Tema del lobby del dueño: falta el MP3. Va en `assets/audio/music/original/lobby.ogg` (sumarlo a `SONGS` en `tools/audio/prepare_audio.py` con su punto de bucle). Los dos temas de "batallas" también faltan como archivo.
-- [ ] Selector de estilo también en el lobby (hoy solo en la pausa): `add_child(MusicStyleStepper.new())`.
+- [x] Selector de estilo también en el lobby (píldora "♪ Música: …" junto a "¿A qué jugamos?").
 - [ ] En una TV lenta, generar Fiesta/Latino tarda ~10–20 s por pista: el lobby puede quedar en silencio la primera vez. Opciones en el ADR 0017 (guardar en disco).
 - [ ] Peso: música ~7,7 MB (presupuesto 8 MB); con el tema del lobby del dueño, ~10 MB.
 

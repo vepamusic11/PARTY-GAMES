@@ -68,6 +68,7 @@ var _glints: Array[Vector4] = []          # x, y (0..1), fase, período (s)
 var _glint_sprites: Array[Sprite2D] = []
 var _back_towers: Array[Vector3] = []     # x (0..1), bloques, color
 var _front_towers: Array[Vector3] = []
+var _mid_towers: Array[Vector3] = []      # fila del medio (entre las de atrás y las de adelante)
 var _stars: Array[Vector3] = []           # x, y (0..1), tamaño
 var _bokeh: Array[Vector4] = []           # x, y (0..1), radio, color
 var _far_clouds: Array[Vector3] = []      # x, y (0..1), escala
@@ -120,6 +121,13 @@ func _build_layout() -> void:
 	for i in 9:
 		var gx := rng.randf_range(0.02, 0.3) if i % 2 == 0 else rng.randf_range(0.7, 0.98)
 		_glints.append(Vector4(gx, rng.randf_range(0.12, 0.7), rng.randf_range(0.0, TAU), rng.randf_range(1.8, 3.4)))
+	# Fila del medio (lobby de la maqueta: el estadio de juguetes más lleno).
+	# Va después del resto para no cambiar lo que ya salía de la semilla.
+	x = rng.randf_range(0.0, 0.02)
+	while x < 1.02:
+		var center := x > 0.32 and x < 0.68
+		_mid_towers.append(Vector3(x, rng.randi_range(1, 3) if center else rng.randi_range(2, 6), rng.randi_range(0, 7)))
+		x += rng.randf_range(UiTheme.BG_MID_TOWER_GAP.x, UiTheme.BG_MID_TOWER_GAP.y)
 
 
 func _build_nodes() -> void:
@@ -335,6 +343,8 @@ func _paint_scene() -> void:
 	# Torres de atrás (más chicas y más mezcladas con la bruma).
 	for t in _back_towers:
 		_tower(ci, t, 40.0, floor_y + 4.0, UiTheme.BG_HAZE_FAR)
+	for t in _mid_towers:
+		_tower(ci, t, UiTheme.BG_MID_TOWER_BLOCK, floor_y + 22.0, UiTheme.BG_HAZE_NEAR)
 	# Piso a cuadros en perspectiva.
 	if checker_floor:
 		_floor(ci, floor_y)
@@ -347,7 +357,7 @@ func _paint_scene() -> void:
 	batch.flush(ci)
 	# Torres de adelante: más grandes, a los costados (el centro queda para la UI).
 	for t in _front_towers:
-		_tower(ci, t, 64.0, floor_y + 40.0, UiTheme.BG_HAZE_NEAR)
+		_tower(ci, t, 64.0, floor_y + 40.0, UiTheme.BG_HAZE_FRONT)
 	# Viñeta: bordes más oscuros, centro intacto.
 	_vignette(ci, w, h)
 
@@ -377,7 +387,8 @@ func _tower(ci: CanvasItem, t: Vector3, block: float, base_y: float, haze: float
 			# (arriba) y el costado que mira al centro; los de la derecha, espejados.
 			var d := (block - 2.0) * 0.26
 			var r3 := Rect2(x - (d if dir < 0.0 else 0.0), base_y - (j + 1) * block - d, block - 2.0 + d, block - 2.0 + d)
-			Props3D.draw(ci, ("block_far_%d" if haze > 0.3 else "block_near_%d") % idx, r3, Color.WHITE, dir < 0.0)
+			var piece := "block_far_%d" if haze > 0.3 else ("block_near_%d" if haze > 0.05 else "block_%d")
+			Props3D.draw(ci, piece % idx, r3, Color.WHITE, dir < 0.0)
 			continue
 		var c: Color = UiTheme.BRICKS[idx]
 		c = c.lerp(UiTheme.BG_HAZE, haze * (1.0 - 0.08 * j))  # Lo más alto, un poco más vivo.

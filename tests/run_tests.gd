@@ -1302,7 +1302,7 @@ func test_game_card_without_thumbnail() -> void:
 	var with_photo := GameCard.new(first)
 	root.add_child(with_photo)
 	with_photo.size = Vector2(300, 206)
-	check(with_photo._thumb == GameCard.thumbnail(first.id), "la tarjeta usa la miniatura del juego")
+	check(with_photo._thumb == GameCard.card_art(first.id), "la tarjeta usa el diorama (o la captura) del juego")
 	with_photo.set_unavailable("Solo 2 jugadores")
 	await process_frame
 	check(is_instance_valid(with_photo), "se dibuja con miniatura deshabilitada")
@@ -1364,6 +1364,108 @@ func test_splash_screen() -> void:
 	var host := HostMain.new()
 	check(not host.show_splash, "la TV de los tests arranca sin presentación")
 	host.free()
+
+
+## Cada juego del registry tiene su diorama 3D para la tarjeta del lobby
+## (ADR 0018). Un juego nuevo sin diorama falla acá con el comando para
+## generarlo (sale con la receta genérica: su color y su control).
+func test_games_have_dioramas() -> void:
+	for info in MiniGameRegistry.all_info():
+		var path := GameCard.diorama_path(info.id)
+		var how := ("generalo con: xvfb-run -a -s \"-screen 0 1920x1080x24\" godot --path . --rendering-driver opengl3 "
+			+ "--audio-driver Dummy -s res://tools/make_dioramas.gd -- --only=%s ; después: godot --headless --path . --import") % info.id
+		check(FileAccess.file_exists(path), "%s: falta el diorama %s; %s" % [info.id, path, how])
+		var tex := GameCard.diorama(info.id)
+		if FileAccess.file_exists(path) and check_that(tex != null, "%s: el diorama no está importado" % info.id):
+			var ratio := tex.get_width() / float(tex.get_height())
+			check(tex.get_width() >= 600 and ratio > 2.5 and ratio < 3.0,
+				"%s: diorama apaisado (≈ 2,7:1) de al menos 600 px (%dx%d)" % [info.id, tex.get_width(), tex.get_height()])
+			check(GameCard.card_art(info.id) == tex and GameCard.diorama(info.id) == tex, "%s: la tarjeta usa el diorama (una sola carga)" % info.id)
+	check(GameCard.diorama("juego_sin_diorama") == null and GameCard.card_art("juego_sin_diorama") == null,
+		"sin diorama ni captura: dibujo de respaldo")
+
+
+## Las recetas de los dioramas arman su escena sin errores (todas las de los
+## juegos y la genérica con cada tipo de control), con cámara y cielo.
+func test_game_diorama_recipes() -> void:
+	var infos: Array[Dictionary] = MiniGameRegistry.all_info()
+	for layout: String in [Protocol.LAYOUT_JOYSTICK, Protocol.LAYOUT_ONE_BUTTON, Protocol.LAYOUT_SLIDER_H,
+			Protocol.LAYOUT_JOYSTICK_AB, "raro"]:
+		infos.append({"id": "juego_nuevo", "layout": layout, "accent": UiTheme.BRICKS[4]})
+	infos.append({})  # Sin datos: no rompe.
+	for info in infos:
+		var scene := GameDiorama.build(info)
+		var fg: Node3D = scene.fg
+		var bg: Node3D = scene.bg
+		var meshes := fg.find_children("*", "MeshInstance3D", true, false).size()
+		check(meshes > 20 and bg.get_child_count() > 0, "%s: escena con piezas (%d)" % [info.get("id", "vacío"), meshes])
+		var cam: Dictionary = scene.camera
+		check(cam.pos is Vector3 and cam.target is Vector3 and float(cam.fov) > 10.0, "%s: cámara" % info.get("id", "vacío"))
+		check((scene.sky as Array).size() == 2, "cielo en degradé")
+		fg.free()
+		bg.free()
+	check(GameDiorama.has_recipe("arena") and not GameDiorama.has_recipe("juego_nuevo"), "recetas con nombre")
+	for info in MiniGameRegistry.all_info():
+		check(GameDiorama.has_recipe(info.id), "%s: tiene receta propia" % info.id)
+	GameDiorama.release()
+
+
+## El lobby tiene el selector de estilo de música (ADR 0017): navegable con
+## el D-pad, ◀ ▶ cambian el estilo y ▲ ▼ siguen navegando.
+func test_lobby_music_selector() -> void:
+	var before := MusicStyles.style
+	var before_path := MusicStyles.prefs_path
+	MusicStyles.prefs_path = "user://test_lobby_music.cfg"
+	Music.set_style(MusicStyles.ORDER[0])
+	var lobby := LobbyScreen.new()
+	root.add_child(lobby)
+	lobby.size = Vector2(1920, 1080)
+	lobby.refresh(_fake_players(2))
+	await process_frame
+	var music := lobby._music
+	check(music != null and music.lobby and music.focus_mode == Control.FOCUS_ALL and music.is_visible_in_tree(),
+		"el lobby muestra el selector de música, navegable")
+	music.grab_focus()
+	var right := InputEventAction.new()
+	right.action = "ui_right"
+	right.pressed = true
+	music._gui_input(right)
+	check(MusicStyles.style == MusicStyles.ORDER[1], "▶ cambia el estilo desde el lobby")
+	check(music.has_focus(), "◀ ▶ no sacan el foco del selector")
+	var down := music.find_valid_focus_neighbor(SIDE_BOTTOM)
+	var up := music.find_valid_focus_neighbor(SIDE_TOP)
+	check(down is GameCard, "▼ baja a los juegos (%s)" % [down])
+	check(up is SeatCard or up is Stepper, "▲ sube a los lugares o a la cantidad (%s)" % [up])
+	await process_frame
+	lobby.queue_free()
+	await process_frame
+	MusicStyles.style = before
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(MusicStyles.prefs_path))
+	MusicStyles.prefs_path = before_path
+
+
+## Tarjetas del lobby con el look de la maqueta: el degradé usa el color del
+## jugador (o una base celeste si es muy claro, para que no quede blanca) y
+## las piezas de juguete devuelven el cuerpo donde va el texto.
+func test_lobby_toy_drawing() -> void:
+	check(UiTheme.seat_tint(Protocol.player_color(0)) == Protocol.player_color(0), "tarjeta roja: degradé rojo")
+	check(UiTheme.seat_tint(Protocol.MASCOT_COLORS[7]) == UiTheme.SEAT_LIGHT_TINT, "tarjeta del blanco: base celeste")
+	var probe := Control.new()
+	root.add_child(probe)
+	probe.size = Vector2(300, 200)
+	probe.draw.connect(func() -> void:
+		var body := UiTheme.draw_toy_tile(probe, Rect2(0, 0, 108, 146), UiTheme.code_tile_color(0))
+		check(body.size.y == 146 - UiTheme.TOY_DEPTH and body.position == Vector2.ZERO, "la ficha deja el canto abajo")
+		UiTheme.draw_seat_card(probe, Rect2(0, 0, 200, 220), Protocol.MASCOT_COLORS[9], 30, Vector2(100, 90))
+		UiTheme.draw_glass_card(probe, Rect2(0, 0, 200, 220), 30)
+		UiTheme.draw_music_note(probe, Vector2(20, 20), 30, UiTheme.INK))
+	probe.queue_redraw()
+	await process_frame
+	await process_frame
+	probe.queue_free()
+	# Paleta: amarillo dorado y verde pasto (maqueta), sin chocar con los demás.
+	check(Protocol.PLAYER_COLORS[2].h > 0.1 and Protocol.PLAYER_COLORS[2].h < 0.13, "3P amarillo dorado (no naranja)")
+	check(Protocol.PLAYER_COLORS[3].h > 0.3 and Protocol.PLAYER_COLORS[3].h < 0.4, "4P verde pasto (no turquesa)")
 
 
 # --- Integración host <-> control por WebSocket real --------------------------

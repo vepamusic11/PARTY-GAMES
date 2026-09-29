@@ -5,9 +5,11 @@ extends Button
 ## jugadores elegida queda deshabilitada, pero sigue siendo navegable para
 ## que se pueda leer el motivo ("Solo 2 jugadores").
 ##
-## Ilustración: la miniatura del juego (assets/thumbs/<id>.webp, generada con
-## tools/make_thumbnails.gd) con esquinas redondeadas. Si el juego todavía no
-## tiene miniatura, se dibuja un "escenario" genérico con el ícono del control.
+## Ilustración (`card_art`): el diorama 3D del juego (assets/thumbs/diorama/
+## <id>.webp, tools/make_dioramas.gd, ADR 0018) con esquinas redondeadas; si
+## no tiene, la captura del juego (assets/thumbs/<id>.webp, generada con
+## tools/make_thumbnails.gd); y si tampoco, un "escenario" genérico dibujado
+## con el ícono del control.
 
 const CONTROL_NAMES := {
 	Protocol.LAYOUT_JOYSTICK: "Joystick",
@@ -19,19 +21,24 @@ const CONTROL_NAMES := {
 ## Miniaturas: assets/thumbs/<id>.webp (ver tools/make_thumbnails.gd).
 const THUMB_DIR := "res://assets/thumbs/"
 const THUMB_EXT := ".webp"
+## Dioramas 3D: assets/thumbs/diorama/<id>.webp (ver tools/make_dioramas.gd).
+const DIORAMA_DIR := "res://assets/thumbs/diorama/"
 
 var info: Dictionary
 var unavailable_reason := ""
-var _thumb: Texture2D  ## null: el juego no tiene miniatura (dibujo de respaldo).
+var _thumb: Texture2D  ## Diorama o captura; null: ninguna de las dos (dibujo de respaldo).
+var _is_diorama := false  ## La ilustración es el diorama 3D (sin marco ni etiqueta del control encima).
 
 ## id -> Texture2D (o null si no hay): cada miniatura se carga una sola vez
 ## y la comparten la tarjeta y la intro.
 static var _thumb_cache := {}
+static var _diorama_cache := {}
 
 
 func _init(p_info: Dictionary) -> void:
 	info = p_info
-	_thumb = thumbnail(str(info.get("id", "")))
+	_thumb = card_art(str(info.get("id", "")))
+	_is_diorama = _thumb != null and _thumb == diorama(str(info.get("id", "")))
 	# La miniatura se achica mucho: con mipmaps no aparece serrucho.
 	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	toggle_mode = true
@@ -75,6 +82,26 @@ static func thumbnail(game_id: String) -> Texture2D:
 		var path := thumbnail_path(game_id)
 		_thumb_cache[game_id] = load(path) as Texture2D if ResourceLoader.exists(path) else null
 	return _thumb_cache[game_id]
+
+
+static func diorama_path(game_id: String) -> String:
+	return DIORAMA_DIR + game_id + THUMB_EXT
+
+
+## Diorama 3D del juego, o null si no tiene (juego nuevo sin generar).
+static func diorama(game_id: String) -> Texture2D:
+	if game_id.is_empty():
+		return null
+	if not _diorama_cache.has(game_id):
+		var path := diorama_path(game_id)
+		_diorama_cache[game_id] = load(path) as Texture2D if ResourceLoader.exists(path) else null
+	return _diorama_cache[game_id]
+
+
+## Ilustración de la tarjeta: el diorama, o la captura si no hay diorama.
+static func card_art(game_id: String) -> Texture2D:
+	var tex := diorama(game_id)
+	return tex if tex != null else thumbnail(game_id)
 
 
 ## Dibuja `tex` llenando `rect` (recorta lo que sobra, centrado) con esquinas
@@ -137,14 +164,15 @@ func _draw() -> void:
 		_draw_thumb_art(art, accent)
 	else:
 		_draw_art(art, accent, a)
-	# Tipo de control como etiqueta sobre la ilustración, abajo a la izquierda
-	# (el centro queda libre para la foto y la línea de abajo, para la
-	# cantidad de jugadores o el motivo por el que no se puede jugar).
-	var control_name: String = CONTROL_NAMES.get(info.get("layout"), "Control")
-	var cw := UiTheme.FONT_BOLD.get_string_size(control_name, HORIZONTAL_ALIGNMENT_LEFT, -1, 20).x + 24.0
-	var chip := Rect2(Vector2(art.position.x + 10, art.end.y - 10 - 32), Vector2(cw, 32))
-	UiTheme.draw_round_rect(self, chip, Color(UiTheme.PAPER, 0.92 * a), 16)
-	UiTheme.draw_text(self, control_name, chip.get_center(), 20, Color(UiTheme.INK, a))
+	# Tipo de control como etiqueta sobre la captura o el dibujo, abajo a la
+	# izquierda. El diorama va limpio, como en la maqueta (la intro "¿Cómo se
+	# juega?" muestra el control).
+	if not _is_diorama:
+		var control_name: String = CONTROL_NAMES.get(info.get("layout"), "Control")
+		var cw := UiTheme.FONT_BOLD.get_string_size(control_name, HORIZONTAL_ALIGNMENT_LEFT, -1, 20).x + 24.0
+		var chip := Rect2(Vector2(art.position.x + 10, art.end.y - 10 - 32), Vector2(cw, 32))
+		UiTheme.draw_round_rect(self, chip, Color(UiTheme.PAPER, 0.92 * a), 16)
+		UiTheme.draw_text(self, control_name, chip.get_center(), 20, Color(UiTheme.INK, a))
 
 	# Marca de selección
 	var badge := Vector2(art.end.x - 26, art.position.y + 26)
@@ -173,8 +201,12 @@ func _draw() -> void:
 
 func _draw_thumb_art(art: Rect2, accent: Color) -> void:
 	var frame := Color(accent.darkened(0.25), 0.55 if disabled else 1.0)
-	UiTheme.draw_round_rect(self, art, frame, 22)
 	var photo := art.grow(-4)
+	if _is_diorama:
+		frame = UiTheme.PAPER  # Sin marco de color: el borde se funde con la tarjeta.
+		photo = art
+	else:
+		UiTheme.draw_round_rect(self, art, frame, 22)
 	if disabled:
 		# No se puede jugar: la foto apagada (gris y transparente sobre el papel).
 		draw_thumbnail(self, _thumb, photo, 18, Color(1, 1, 1, 0.5), frame)

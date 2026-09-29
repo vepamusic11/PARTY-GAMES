@@ -91,6 +91,18 @@ Sin `--only` regenera todas (hacelo si cambiás el dibujo de un juego). Mirá el
 
 Mientras no tenga miniatura, la tarjeta usa un dibujo genérico con el ícono del control, pero `test_games_have_thumbnails` falla y dice el comando para generarla.
 
+### Diorama de la tarjeta (ADR 0018)
+
+La tarjeta del lobby muestra, antes que la captura, un **diorama 3D** del juego (`assets/thumbs/diorama/<id>.webp`, 648×240): una escena chica de juguete como la de la maqueta. Un juego sin receta propia sale con la **genérica** (escenario redondo con baldosas de su `accent` y su control —joystick, botón o deslizador— como pieza grande), así que alcanza con correr:
+
+```bash
+xvfb-run -a -s "-screen 0 1920x1080x24" godot --path . --rendering-driver opengl3 \
+  --audio-driver Dummy -s res://tools/make_dioramas.gd -- --only=dodge
+godot --headless --path . --import
+```
+
+Para una escena propia, sumá una receta en `core/art3d/game_diorama.gd` (`RECIPES` y el `match` de `build`) con las piezas de ahí (`_round_stage`, `_tile_floor`, `_toy_block`, `_star`, `_mascot`, `_joystick`…). `test_games_have_dioramas` falla si falta el archivo y dice el comando.
+
 ## Sonido y vibración
 
 Una línea por evento, sin archivos de audio (ver `core/audio/sfx.gd`):

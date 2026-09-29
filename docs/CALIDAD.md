@@ -120,14 +120,14 @@ Condiciones: el juice respeta el presupuesto de [PERFORMANCE.md](PERFORMANCE.md)
 
 ### 1.8 Daltonismo: la paleta de 10 colores
 
-Se simularon los 10 colores de `Protocol.MASCOT_COLORS` con las matrices de Machado et al. (2009) y se midió la distancia en OKLab (0 = iguales; por debajo de ~0,08 se confunden a simple vista). Pares más cercanos:
+Se simularon los 10 colores de `Protocol.MASCOT_COLORS` (con el amarillo dorado #F5B82C y el verde pasto #45C35A de la maqueta, desde el 29/09/2026) con las matrices de Machado et al. (2009) y se midió la distancia en OKLab (0 = iguales; por debajo de ~0,08 se confunden a simple vista). Pares más cercanos:
 
 | Visión | Pares que se confunden |
 |---|---|
 | Normal | Grafito/Negro 0,095 |
-| Deuteranopía (la más común, ~5 % de los hombres) | **Rosa/Celeste 0,055 · Azul/Violeta 0,058 · Rojo/Verde 0,072** |
-| Protanopía | **Azul/Rosa 0,073** · Azul/Violeta 0,094 |
-| Tritanopía | **Azul/Verde 0,035** · Amarillo/Rosa 0,075 |
+| Deuteranopía (la más común, ~5 % de los hombres) | **Rosa/Celeste 0,055 · Azul/Violeta 0,058** · Rojo/Verde 0,089 |
+| Protanopía | **Amarillo/Verde 0,047 · Azul/Rosa 0,073** · Azul/Violeta 0,094 |
+| Tritanopía | **Verde/Celeste 0,050** · Grafito/Negro 0,094 · Azul/Verde 0,099 |
 
 Es aceptable **porque** el juego no depende del color (1P–4P, patrones en Pintar el piso, colores únicos). Pero conviene: (a) cambiar Grafito; (b) un test que falle si un color nuevo queda a menos de 0,05 de otro en visión normal; (c) sumar a `tools/styles/` un filtro `--style=deutan|protan|tritan` para mirar las capturas como las ve una persona daltónica (misma infraestructura que [ESTILOS.md](ESTILOS.md)).
 

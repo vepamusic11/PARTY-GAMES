@@ -7,7 +7,7 @@ description: Ver cómo se ven de verdad la TV y el celular de Party Games genera
 
 `tools/capture_screens.gd` levanta la TV y controles reales conectados por WebSocket, recorre una competencia completa y guarda PNGs:
 
-`lobby`, `lobby_full`, `ctrl_join`, `ctrl_wait`, `ctrl_look` (selector de mascota del celular), `game_intro` (intro del primer juego), una captura por cada minijuego de la competencia (`arena`, `tap_race`, `stop_clock`…, con el nombre de su id), `ctrl_joy`, `round_summary`, `ctrl_standing`, `final`, `pingpong`, `toast` (aviso de desconexión sobre Ping Pong), `pause`, `pause_confirm` (¿Salir de la competencia?), con bots (ADR 0010) `lobby_bots` (1 persona + 3 bots, foco en un lugar con bot), `lobby_bot_menu` (menú del bot), `arena_bots` (placa BOT en el marcador) y `round_summary_bots`, y al final `selector` (TV/celular). Un juego nuevo en el registry aparece solo.
+`lobby`, `lobby_full` (con el cuarteto de la maqueta: 1P rojo antena, 2P azul oso, 3P amarillo gato, 4P verde brote), `ctrl_join`, `ctrl_wait`, `ctrl_look` (selector de mascota del celular), `lobby_colores` (variedad: rosa conejo, blanco robot y negro diablito), `game_intro` (intro del primer juego), una captura por cada minijuego de la competencia (`arena`, `tap_race`, `stop_clock`…, con el nombre de su id), `ctrl_joy`, `round_summary`, `ctrl_standing`, `final`, `pingpong`, `toast` (aviso de desconexión sobre Ping Pong), `pause`, `pause_confirm` (¿Salir de la competencia?), con bots (ADR 0010) `lobby_bots` (1 persona + 3 bots, foco en un lugar con bot), `lobby_bot_menu` (menú del bot), `arena_bots` (placa BOT en el marcador) y `round_summary_bots`, y al final `selector` (TV/celular). Un juego nuevo en el registry aparece solo.
 
 ## Comandos
 

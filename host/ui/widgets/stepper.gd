@@ -94,9 +94,8 @@ func _draw_tall(r: Rect2) -> void:
 	if has_focus():
 		UiTheme.draw_round_rect(self, r.grow(12), Color(UiTheme.INK, 0.5), radius + 12)
 		UiTheme.draw_round_rect(self, r.grow(9), UiTheme.ACCENT, radius + 9)
-	UiTheme.draw_round_rect(self, r, UiTheme.PAPER, radius, 0, UiTheme.INK, true)
-	UiTheme.draw_gradient_round_rect(self, r.grow(-6), UiTheme.ACCENT.lerp(UiTheme.PAPER, 0.7),
-		UiTheme.PAPER, radius - 6)
+	# Misma tarjeta que los lugares de los jugadores (degradé pastel), en amarillo.
+	UiTheme.draw_seat_card(self, r, UiTheme.ACCENT, radius, Vector2(r.get_center().x, r.position.y + r.size.y * 0.5))
 	var cx := r.get_center().x
 	if not caption.is_empty():
 		UiTheme.draw_text(self, caption, Vector2(cx, r.position.y + 32), 24, UiTheme.INK_SOFT)
