@@ -179,7 +179,7 @@ func _run() -> void:
 			await _seconds(1.2)
 			await _shot(root, "game_intro")
 		# Como en la TV: las mascotas del juego se hornean mientras se lee la intro.
-		await _until(func() -> bool: return MascotAtlas.is_idle() and Board25DBaker.is_idle(), 30000)
+		await _wait_bakes()
 		host.skip_intro()
 		await _settle()
 		_expect(host._game != null, "arranca %s después de la intro" % game_id)
@@ -217,7 +217,7 @@ func _run() -> void:
 	host._lobby._stepper.set_value(2)
 	_expect(host.start_tournament(["pingpong"] as Array[String]), "arranca Ping Pong con 2")
 	await _settle()
-	await _until(func() -> bool: return MascotAtlas.is_idle() and Board25DBaker.is_idle(), 30000)
+	await _wait_bakes()
 	host.skip_intro()
 	await _settle()
 	await _seconds(2.0)
@@ -268,7 +268,7 @@ func _run() -> void:
 	host._lobby._bot_menu._cancel.pressed.emit()
 	_expect(host.start_tournament(["arena", "tap_race"] as Array[String]), "arranca la competencia con bots")
 	await _settle()
-	await _until(func() -> bool: return MascotAtlas.is_idle() and Board25DBaker.is_idle(), 30000)
+	await _wait_bakes()
 	host.skip_intro()
 	await _settle()
 	await _seconds(4.0)
@@ -375,3 +375,15 @@ func _until(cond: Callable, timeout_ms: int = 5000) -> void:
 	var start := Time.get_ticks_msec()
 	while not cond.call() and Time.get_ticks_msec() - start < timeout_ms:
 		await process_frame
+
+
+## Espera a que terminen de hornearse las mascotas y el escenario 2.5D, como
+## en la TV mientras se lee la intro. La cuenta regresiva de la intro se pausa
+## mientras tanto: en una máquina lenta (la CI) el horneado puede tardar más
+## que la cuenta, el juego arrancaría solo y hasta podría terminar antes de
+## la foto (ej. Esquivar con los jugadores quietos).
+func _wait_bakes() -> void:
+	var intro_was_paused: bool = host._intro.paused
+	host._intro.paused = true
+	await _until(func() -> bool: return MascotAtlas.is_idle() and Board25DBaker.is_idle(), 30000)
+	host._intro.paused = intro_was_paused
