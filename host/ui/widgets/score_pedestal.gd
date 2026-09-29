@@ -23,10 +23,10 @@ func light_up(duration: float = 0.6) -> void:
 
 
 func _draw() -> void:
+	# Bloque de juguete (color pleno, canto oscuro abajo), como las fichas del
+	# código y los botones del lobby: la misma familia que la maqueta.
 	var r := Rect2(Vector2(14, 10), size - Vector2(28, 16))
-	UiTheme.draw_round_rect(self, r.grow(4), UiTheme.INK, 26)
-	UiTheme.draw_round_rect(self, r, color.darkened(0.25), 22)
-	UiTheme.draw_round_rect(self, Rect2(r.position, r.size - Vector2(0, 12)), color, 22)
+	UiTheme.draw_toy_tile(self, r, color, 22, UiTheme.TOY_DEPTH)
 	# Luces
 	for i in 5:
 		var p := Vector2(r.position.x + r.size.x * (0.22 + 0.14 * i), r.position.y + 22)

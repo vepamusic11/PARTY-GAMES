@@ -44,29 +44,39 @@ const Mood := PlayerAvatar.Mood
 const U := 0.1                             ## 1 u de PlayerAvatar en unidades del mundo.
 const HEAD_C := Vector3(0, 6.0, 0)         ## Centro de la cabeza.
 const HEAD_R := Vector3(4.2, 3.6, 3.45)    ## Semiejes de la cabeza.
-const FACE_C := Vector2(0, -1.05)          ## Centro de la cara (relativo a la cabeza).
-## Semiejes de la cara vista de frente. Medido en la maqueta: la cara ocupa
-## ~78 % del ancho de la cabeza y llega casi hasta el mentón (borde fino).
-const FACE_R := Vector2(3.28, 2.4)
+const FACE_C := Vector2(0, -1.0)           ## Centro de la cara (relativo a la cabeza).
+## Semiejes de la cara vista de frente. Medido en la maqueta (vuelta 2, por
+## zonas): la cara ocupa ~68 % del ancho de la cabeza (la capucha se ve
+## gruesa a los costados) y mide ~0,72 de alto por ancho; llega casi hasta
+## el mentón (borde fino).
+const FACE_R := Vector2(2.95, 2.3)
 const BODY_C := Vector3(0, 1.88, 0)
-const BODY_R := Vector3(1.62, 1.3, 1.42)  ## Semiejes aproximados del cuerpo (para no meter las manos adentro).
-const SHOULDER := Vector3(1.38, 0.6, 0.2)  ## Hombro derecho, relativo al cuerpo.
-const ARM_LEN := 1.1                       ## Del hombro al centro de la mano.
+const BODY_R := Vector3(1.72, 1.3, 1.48)  ## Semiejes aproximados del cuerpo (para no meter las manos adentro).
+## Hombro derecho, relativo al cuerpo. En la maqueta los brazos cuelgan bien
+## visibles a los costados (la silueta del cuerpo con brazos mide ~65 % de
+## la cabeza; antes ~55 %): más afuera, más abajo y más gordos.
+const SHOULDER := Vector3(1.6, 0.42, 0.28)
+const ARM_LEN := 1.35                      ## Del hombro al centro de la mano.
+const ARM_R := 0.6                         ## Radio del brazo (la manga).
+const ARM_REST := 0.36                     ## Ángulo del brazo colgando (rad desde la vertical).
 ## Saludo con una mano bien arriba (lobby, como la maqueta): el brazo se
 ## estira como en los dibujos animados y la mano queda al costado de la
 ## cabeza, a la altura de la frente. En unidades de ARM_LEN.
 const HELLO_REACH := 4.4
 const HELLO_ANGLE := 2.35                  ## Radianes desde "colgando" (PI = derecho hacia arriba).
 const HELLO_PERIOD := 0.9                  ## Segundos de un vaivén de la mano (2 cuadros horneados).
-const HAND_R := 0.56
+const HAND_R := 0.68
 const INK_W := 0.19                        ## Contorno de piezas grandes (~2 u).
 const INK_W_SMALL := 0.15                  ## Contorno de piezas chicas.
-const EYE_X := 1.3
-const EYE_Y := -0.84
+const EYE_X := 1.28
+const EYE_Y := -0.78
+## Ojo normal: semiejes (ancho, alto, profundidad). La maqueta: óvalo alto
+## (alto ≈ 1,7 × ancho) que mide ~0,4 del alto de la cara.
+const EYE_R := Vector3(0.6, 1.1, 0.4)
 const MOUTH_Y := -2.12
 
 ## Colores propios de la cara 3D (la 2D usa los de PlayerAvatar).
-const BLUSH := Color(1.0, 0.5, 0.6)       ## Cachetes (en el centro; se funden con la cara).
+const BLUSH := Color(1.0, 0.52, 0.62)     ## Cachetes (en el centro; se funden con la cara).
 const MOUTH_IN := Color(0.55, 0.1, 0.2)    ## Interior de la boca abierta.
 const SKY_RIM := Color(0.78, 0.9, 1.0)     ## Contraluz celeste (el cielo detrás de la mascota).
 const GOLD := Color(1.0, 0.78, 0.2)        ## Ojos de estrella y estrellitas.
@@ -152,7 +162,7 @@ func visible_features() -> Array[String]:
 static func vivid(col: Color) -> Color:
 	if col.s < 0.25 or col.v < 0.3:
 		return col
-	return Color.from_hsv(col.h, minf(1.0, col.s * 1.14 + 0.08), minf(1.0, col.v * 1.08 + 0.05))
+	return Color.from_hsv(col.h, minf(1.0, col.s * 1.18 + 0.1), minf(1.0, col.v * 1.08 + 0.05))
 
 
 ## Gema de la panza: brillante y de un tono vecino al del jugador (como en
@@ -179,13 +189,14 @@ func _build() -> void:
 	var sph := Mascot3DMeshes.sphere()
 	var sph_s := Mascot3DMeshes.sphere(10, 16)
 
-	# Piernas cortitas (casi escondidas bajo el cuerpo) y zapatos oscuros brillantes.
+	# Piernas cortitas (casi escondidas bajo el cuerpo) y zapatos oscuros
+	# brillantes, chicos: en la maqueta apenas asoman debajo del cuerpo.
 	for side in [-1.0, 1.0]:
-		var leg := _node(_turn, Vector3(side * 0.62, 0.95, 0.0))
-		_part(leg, sph_s, Kind.PLASTIC, col, Vector3(0, -0.25, 0), Vector3(0.5, 0.55, 0.5), INK_W_SMALL)
+		var leg := _node(_turn, Vector3(side * 0.66, 0.95, 0.0))
+		_part(leg, sph_s, Kind.PLASTIC, col, Vector3(0, -0.25, 0), Vector3(0.52, 0.55, 0.52), INK_W_SMALL)
 		_legs.append(leg)
-		var shoe := _node(_turn, Vector3(side * 0.8, 0.34, 0.24))
-		_part(shoe, sph_s, Kind.SHOE, UiTheme.MASCOT_SHOE, Vector3.ZERO, Vector3(0.68, 0.4, 0.84), INK_W_SMALL)
+		var shoe := _node(_turn, Vector3(side * 0.8, 0.3, 0.22))
+		_part(shoe, sph_s, Kind.SHOE, UiTheme.MASCOT_SHOE, Vector3.ZERO, Vector3(0.6, 0.34, 0.72), INK_W_SMALL)
 		_shoes.append(shoe)
 
 	# Cuerpo: superelipse de revolución, más ancha abajo, con la gema que brilla.
@@ -209,8 +220,8 @@ func _build() -> void:
 	# Brazos: tubo + mano redonda, con el pivote en el hombro.
 	for side in [-1.0, 1.0]:
 		var shoulder := _node(_body, SHOULDER * Vector3(side, 1, 1))
-		var arm := Mascot3DMeshes.tube("arm2", PackedVector3Array([Vector3(0, 0, 0), Vector3(0, -ARM_LEN * 0.85, 0)]),
-			PackedFloat32Array([0.46, 0.48]), 12)
+		var arm := Mascot3DMeshes.tube("arm3", PackedVector3Array([Vector3(0, 0, 0), Vector3(0, -ARM_LEN * 0.85, 0)]),
+			PackedFloat32Array([ARM_R, ARM_R * 1.04]), 12)
 		_arm_tubes.append(_part(shoulder, arm, Kind.PLASTIC, col, Vector3.ZERO, Vector3.ONE, INK_W_SMALL))
 		_hands.append(_part(shoulder, sph_s, Kind.PLASTIC, col, Vector3(0, -ARM_LEN, 0), Vector3.ONE * HAND_R, INK_W_SMALL))
 		_arms.append(shoulder)
@@ -240,7 +251,7 @@ func _build_face() -> void:
 		var e := Vector2(sx * EYE_X, EYE_Y)
 		# Normal: óvalo negro brillante (su propio reflejo sale del shader) y dos reflejos pintados.
 		var eye := _on_face(normal_eyes, e, -0.12)
-		_eye_dome(eye, Vector3(0.53, 1.0, 0.36))
+		_eye_dome(eye, EYE_R)
 		# Triste: ojo más chico y bajo, con la ceja caída hacia afuera.
 		var sad := _on_face(sad_eyes, e + Vector2(0, -0.22), -0.1)
 		_eye_dome(sad, Vector3(0.4, 0.58, 0.26))
@@ -253,18 +264,19 @@ func _build_face() -> void:
 		_part(sur, sph_s, Kind.EYE, eye_ink, Vector3(0, 0, 0.1), Vector3(0.24, 0.24, 0.1), 0.0)
 		_part(sur, sph_s, Kind.FLAT, Color.WHITE, Vector3(-0.07, 0.09, 0.19), Vector3(0.08, 0.08, 0.03), 0.0)
 		_face_tube(surprised_eyes, "sbrow%d" % sx, _arc(e + Vector2(0, 0.35), 0.42, 1.2, 1.8, 7), 0.1, eye_ink)
-		# Feliz: arco grueso (^).
-		_face_tube(happy_eyes, "happy%d" % sx, _arc(e + Vector2(0, -0.34), 0.56, 1.1, 1.9, 11), 0.18, eye_ink)
-		# Cachetes rosados que se funden con la cara (feliz, ganadora, riendo).
-		var blush := _on_face(_cheeks, Vector2(sx * (EYE_X + 0.6), EYE_Y - 1.0), -0.3)
-		_part(blush, sph_s, Kind.BLUSH, BLUSH, Vector3.ZERO, Vector3(0.9, 0.58, 0.38), 0.0)
+		# Feliz: arco grueso (^), más abierto y alto como en la maqueta.
+		_face_tube(happy_eyes, "happy%d" % sx, _arc(e + Vector2(0, -0.38), 0.62, 1.1, 1.9, 11), 0.2, eye_ink)
+		# Cachetes rosados que se funden con la cara (feliz, ganadora, riendo):
+		# en la maqueta son dos discos bien visibles, pegados a los ojos.
+		var blush := _on_face(_cheeks, Vector2(sx * (EYE_X + 0.55), EYE_Y - 0.95), -0.3)
+		_part(blush, sph_s, Kind.BLUSH, BLUSH, Vector3.ZERO, Vector3(0.98, 0.66, 0.4), 0.0)
 		# Parpadeo: una rayita.
 		_face_tube(blink_eyes, "blink%d" % sx, [e + Vector2(-0.44, 0), e + Vector2(0.44, 0)], 0.12, eye_ink)
 
 	# Bocas.
 	var m := Vector2(0, MOUTH_Y)
 	var happy := _feature("mouth_happy", _head)
-	_open_mouth(happy, m + Vector2(0, 0.3), Vector2(0.74, 0.62), "smile")
+	_open_mouth(happy, m + Vector2(0, 0.3), Vector2(0.86, 0.7), "smile2")
 	# Sonrisa cerrada (saludo con ánimo normal, como 1P en la maqueta del lobby).
 	var smile := _feature("mouth_smile", _head)
 	_face_tube(smile, "smile", _arc(m + Vector2(0, 0.42), 0.5, 1.2, 1.8, 9, true), 0.11, eye_ink)
@@ -292,11 +304,12 @@ func _build_face() -> void:
 func _eye_dome(parent: Node3D, scl: Vector3) -> void:
 	var sph_s := Mascot3DMeshes.sphere(12, 20)
 	_part(parent, sph_s, Kind.EYE, UiTheme.MASCOT_EYE, Vector3.ZERO, scl, 0.0)
-	# Reflejos chicos: el ojo se lee negro y profundo (en la maqueta el brillo
-	# es una gota arriba a la izquierda y un puntito abajo a la derecha).
+	# Reflejos: una gota arriba a la izquierda (chica: el ojo se lee negro y
+	# profundo) y un reflejo celeste abajo a la derecha que lo hace brillar
+	# como en la maqueta.
 	var k := scl.x / 0.56
-	_part(parent, sph_s, Kind.FLAT, Color.WHITE, Vector3(-0.3, 0.5, 0.8) * scl, Vector3(0.16, 0.2, 0.06) * k, 0.0)
-	_part(parent, sph_s, Kind.FLAT, Color(0.85, 0.9, 1.0), Vector3(0.34, -0.5, 0.76) * scl, Vector3(0.075, 0.075, 0.04) * k, 0.0)
+	_part(parent, sph_s, Kind.FLAT, Color.WHITE, Vector3(-0.3, 0.5, 0.8) * scl, Vector3(0.17, 0.22, 0.06) * k, 0.0)
+	_part(parent, sph_s, Kind.FLAT, Color(0.8, 0.9, 1.0), Vector3(0.34, -0.52, 0.76) * scl, Vector3(0.1, 0.09, 0.04) * k, 0.0)
 
 
 ## Boca abierta en D: borde de tinta, interior rojo oscuro y lengua.
@@ -688,15 +701,17 @@ static func pose(p_mood: int, anim: Dictionary, p_style: int) -> Dictionary:
 	var swing := 0.0       # Retraso lateral de orejas/antena (inercia).
 	var tuck := 0.0        # Pies recogidos en el aire (0..1).
 	var shoulder_dy := 0.0 # Hombros que bajan, en u.
-	var arm_l := 0.55      # Ángulo de cada brazo: 0 colgando, PI/2 de costado, PI arriba.
-	var arm_r := 0.55
+	# Ángulo de cada brazo: 0 colgando, PI/2 de costado, PI arriba. Quietos
+	# cuelgan casi derechos a los costados del cuerpo, como en la maqueta.
+	var arm_l := ARM_REST
+	var arm_r := ARM_REST
 	var sway := 0.0
 	var breathing := 0.0
 	var lift := 0.0        # Salto propio de la pose (baile, risa), en u.
 	if walking:
 		var s := sin(walk * TAU)
-		arm_l = 0.55 - s * 0.55
-		arm_r = 0.55 + s * 0.55
+		arm_l = ARM_REST - s * 0.55
+		arm_r = ARM_REST + s * 0.55
 		sway = s * 0.08
 		swing = sin(walk * TAU - 1.1) * 0.1
 		flop += absf(sin(walk * TAU - 0.9)) * 0.35
@@ -845,7 +860,9 @@ func _aim_arm(i: int, side: float, angle: float, fwd: float, dy: float, hello :=
 		# por delante, como en la maqueta (la manopla tapa un poco el borde).
 		var hy := HEAD_C.y - 0.6
 		var half := HEAD_R.x * sqrt(maxf(0.0, 1.0 - pow((hy - HEAD_C.y) / HEAD_R.y, 2.0)))
-		target = target.lerp(Vector3(side * (half + HAND_R * 0.7), hy, HEAD_R.z * 0.92), hello)
+		# La manopla (más grande desde la vuelta 2) pisa un poco más el borde de la
+		# cabeza: así entra en la celda del atlas (test_mascot_atlas_framing).
+		target = target.lerp(Vector3(side * (half + HAND_R * 0.4), hy, HEAD_R.z * 0.92), hello)
 	# Si la mano cae dentro de la cabeza o del cuerpo (vistos de frente), va por delante.
 	var need := _front_z(Vector2(target.x, target.y)) + HAND_R * 0.8
 	if target.z < need:
@@ -1021,9 +1038,11 @@ static func plastic_ramp(col: Color) -> Array:
 		return [shade.darkened(0.22), col.lerp(shade, 0.3), col.lightened(0.5), shade.darkened(0.08), SKY_RIM, 0.5]
 	var mid := vivid(col)
 	var cool := fposmod(mid.h + (0.02 if mid.h > 0.2 and mid.h < 0.7 else -0.025), 1.0)
-	var low := Color.from_hsv(cool, minf(1.0, mid.s * 1.05 + 0.05), mid.v * 0.46)  # Sombra profunda: la maqueta llega a #B8323B en el rojo.
+	# Sombra profunda: medida en la maqueta, el 10 % más oscuro del rojo es
+	# #67 0C 13 (v ≈ 0,40) y del azul #09 27 65; antes la nuestra quedaba en v ≈ 0,68.
+	var low := Color.from_hsv(cool, minf(1.0, mid.s * 1.1 + 0.05), mid.v * 0.4)
 	var high := Color.from_hsv(fposmod(mid.h + 0.012, 1.0), mid.s * 0.8, 1.0)
-	var edge := Color.from_hsv(cool, minf(1.0, mid.s * 1.08 + 0.04), mid.v * 0.66)
+	var edge := Color.from_hsv(cool, minf(1.0, mid.s * 1.1 + 0.04), mid.v * 0.58)
 	return [low, mid, high, edge, SKY_RIM, 0.55]
 
 
@@ -1039,9 +1058,11 @@ static func _toy_material(kind: int, col: Color, base := Color.BLACK) -> ShaderM
 	var rim_k := 0.4
 	var spec := 1.0
 	var spec_size := 0.018
+	var spec_soft := 0.012
 	var stretch := 1.45
 	var coat := 0.2
 	var coat_pow := 5.0
+	var spread := 0.0
 	var edge := col
 	var edge_k := 0.0
 	var sky := 0.0
@@ -1055,10 +1076,17 @@ static func _toy_material(kind: int, col: Color, base := Color.BLACK) -> ShaderM
 			edge = r[3]
 			rim = r[4]
 			rim_k = r[5]
-			edge_k = 0.7
+			edge_k = 0.85
 			bounce = mid.lerp(high, 0.25)
-			bounce_k = 0.18
-			sky = 0.45
+			bounce_k = 0.14
+			sky = 0.5
+			# Plástico "jugoso" de la maqueta: volumen de esfera (la sombra sube
+			# hasta la mitad), un reflejo grande de borde suave y el barniz ancho.
+			spread = 1.0
+			spec_size = 0.045
+			spec_soft = 0.06
+			coat = 0.3
+			coat_pow = 3.5
 			if kind == Kind.HEAD:
 				m.set_shader_parameter("face_on", 1.0)
 				m.set_shader_parameter("face_scale", HEAD_R)
@@ -1067,12 +1095,13 @@ static func _toy_material(kind: int, col: Color, base := Color.BLACK) -> ShaderM
 				m.set_shader_parameter("face_low", UiTheme.MASCOT_FACE_SHADE)
 				m.set_shader_parameter("face_mid", UiTheme.PAPER.lerp(UiTheme.MASCOT_FACE_SHADE, 0.1))
 				m.set_shader_parameter("face_high", UiTheme.PAPER)
-			if kind == Kind.BODY:  # La cabeza le hace sombra al pecho (debajo del mentón).
-				m.set_shader_parameter("neck_shadow", 0.5)
-				m.set_shader_parameter("neck_y", HEAD_C.y - HEAD_R.y - BODY_C.y)
+			if kind == Kind.BODY:  # La cabeza le hace sombra al pecho: en la maqueta casi todo el torso queda en sombra.
+				m.set_shader_parameter("neck_shadow", 0.6)
+				m.set_shader_parameter("neck_y", HEAD_C.y - HEAD_R.y - BODY_C.y - 0.55)
 			if kind == Kind.LEAF:  # Hojas: menos barniz, brillo más chico.
 				coat = 0.12
 				spec_size = 0.025
+				spec_soft = 0.02
 		Kind.SHOE:  # Zapatos de charol: casi negros, con reflejos nítidos.
 			low = col.darkened(0.5)
 			mid = col
@@ -1136,7 +1165,9 @@ static func _toy_material(kind: int, col: Color, base := Color.BLACK) -> ShaderM
 			bounce_k = 0.0
 			edge = UiTheme.PAPER.lerp(UiTheme.MASCOT_FACE_SHADE, 0.08)
 			edge_k = 1.0
-			m.set_shader_parameter("edge_range", Vector2(0.06, 0.24))
+			# El rosa pleno cubre casi todo el disco y se funde recién en el borde
+			# (antes se fundía desde el centro y el cachete casi no se veía).
+			m.set_shader_parameter("edge_range", Vector2(0.3, 0.62))
 		Kind.HALO:  # Brillo de la gema sobre el plástico: se funde con el color de alrededor.
 			low = col
 			mid = col
@@ -1176,6 +1207,8 @@ static func _toy_material(kind: int, col: Color, base := Color.BLACK) -> ShaderM
 	m.set_shader_parameter("spec_strength", spec)
 	m.set_shader_parameter("spec_size", spec_size)
 	m.set_shader_parameter("spec_stretch", stretch)
+	m.set_shader_parameter("spec_soft", spec_soft)
+	m.set_shader_parameter("shade_spread", spread)
 	m.set_shader_parameter("coat_strength", coat)
 	m.set_shader_parameter("coat_power", coat_pow)
 	m.set_shader_parameter("edge_color", edge)

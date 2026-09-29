@@ -274,3 +274,63 @@ Pedido del dueño: *"debería mejorar mucho más, la maqueta está mucho mejor, 
 Comparaciones: `docs/img/lobby_comparacion.png` (maqueta · antes · ahora), `docs/img/mascotas_3d_comparacion.png` y `docs/img/mascotas_3d_detalle.png` (2P a la misma escala que la maqueta). Rendimiento en [PERFORMANCE.md](PERFORMANCE.md#revisión-de-dirección-de-arte-2909) (sin cambio de CPU ni draw calls; +2,6 MB de atlas por la pose "¡hola!").
 
 **Qué queda distinto de la maqueta (a propósito o pendiente):** la barra superior de desarrollo no va en la TV; la mascota anfitriona de abajo a la izquierda sigue festejando con los dos brazos; los dioramas usan el cuarteto de mascotas de siempre y no los looks elegidos.
+
+## Revisión de dirección de arte, vuelta 2 (29/09/2026)
+
+Pedido del dueño: el diseño "al máximo", igual o mejor que las maquetas, pose por pose y también a tamaño de juego. Mismo método que la vuelta 1: medir por zonas con PIL, corregir, capturar, comparar, repetir. Para las mascotas se sumó un medidor de **proporciones** (`measure_mascot.py`, en la sesión): sobre el recorte de cada mascota separa el plástico del color del jugador, la cara blanca y los ojos, y calcula alto total, ancho de la cabeza, ancho del cuerpo con brazos al 88 % del alto, cara (ancho respecto de la cabeza, alto/ancho, % del área de la cabeza), ojo (alto respecto de la cara, % del área de la cara), saturación y valor medios del plástico, el 10 % más claro y más oscuro y el reflejo blanco más grande de la cabeza.
+
+### Mascotas: medidas de la maqueta, antes y después (2P normal; las otras tres dan lo mismo ±0,03)
+
+| Medida | Maqueta | Antes (`4004e93`) | Después |
+|---|---:|---:|---:|
+| Ancho de la cabeza / alto total | 0,71–0,81 | 0,75–0,81 | 0,73–0,81 |
+| Cabeza / cuerpo con brazos (al 88 % del alto) | 1,41–1,62 | 1,77–1,87 | **1,56–1,71** |
+| Cara: ancho respecto de la cabeza | 67–70 % | 76–77 % | **69–70 %** |
+| Cara: alto / ancho | 0,72–0,75 | 0,63–0,69 | **0,72–0,73** |
+| Cara: % del área de la cabeza | 32–44 % | 37–45 % | 31–40 % |
+| Ojo: alto respecto de la cara | 0,36–0,38 | ~0,35 | 0,4 (a ojo: los ojos miden 0,6 × 1,1 u en vez de 0,53 × 1,0) |
+| Ojos: % del área de la cara | 13–15 % | 12–13 % | 18 % |
+| Plástico: saturación media (rojo · azul · amarillo) | 0,80 · 0,83 · 0,81 | 0,74 · 0,82 · 0,88 | 0,75 · 0,82 · 0,83 |
+| 10 % más oscuro del azul (sombra) | #092765 | #1F498A | **#174182** |
+| 10 % más oscuro del rojo | #670C13 | #AD2737 | **#9A1527** |
+| Reflejo blanco mayor de la cabeza (azul) | 7–8 % del área | 6 % (borde duro) | 6 % (borde suave, más el barniz ancho) |
+
+**Qué cambió y por qué** (`Mascot3D`, `toy_plastic.gdshader`):
+
+- **Cara más angosta y proporcionada** (`FACE_R` 3,28×2,4 → 2,95×2,3, `FACE_C.y` −1,05 → −1,0): en la maqueta la capucha se ve gruesa a los costados de la cara (la cara es el 68 % del ancho de la cabeza; la nuestra era el 77 %) y la cara mide 0,72 de alto por ancho.
+- **Ojos más grandes y brillantes** (`EYE_R` 0,6×1,1×0,4, antes 0,53×1,0×0,36; reflejo celeste de abajo a la derecha más grande) y **cachetes que se ven** (`Kind.BLUSH`: `edge_range` 0,06–0,24 → 0,3–0,62: antes el rosa pleno era solo el centro del disco y se fundía enseguida con la cara; discos 0,98×0,66 en vez de 0,9×0,58). Sonrisa feliz más ancha (0,86×0,7) y arcos de los ojos felices más abiertos.
+- **Brazos visibles** (`SHOULDER` 1,38/0,6 → 1,6/0,42, `ARM_LEN` 1,1 → 1,35, `ARM_R` 0,46 → 0,6, `HAND_R` 0,56 → 0,68, `ARM_REST` 0,55 → 0,36 rad): en la maqueta cuelgan a los costados del cuerpo como dos mangas gordas y la silueta cuerpo+brazos mide ~65 % de la cabeza (la nuestra 55 %). Cuerpo un poco más ancho (`BODY_R.x` 1,62 → 1,72) y zapatos más chicos (0,6×0,34×0,72): apenas asoman, como en la maqueta.
+- **Plástico "jugoso"**: dos uniforms nuevos en el shader (con default = comportamiento anterior, así piezas y tablero no cambian solos): `spec_soft` (borde del reflejo nítido; las mascotas usan 0,06 con `spec_size` 0,045: un reflejo grande que se funde con el color, en vez de la mancha blanca recortada) y `shade_spread` (1 en las mascotas: la rampa de sombra sube hasta el 64 % de la pieza y la mitad de abajo queda en una sombra graduada por `n.y`, el volumen de esfera de la maqueta). Barniz más ancho (`coat` 0,2 → 0,3, `coat_power` 5 → 3,5), borde profundo más fuerte (0,7 → 0,85), rebote del piso menor (0,18 → 0,14). Sombra de la rampa más profunda (`plastic_ramp`: v×0,46 → v×0,40, borde v×0,58) y colores un poco más saturados (`vivid`: s×1,18+0,1). La cabeza le hace sombra a casi todo el pecho (`neck_shadow` 0,6, `neck_y` 0,55 más abajo), como en la maqueta.
+- `Props3D.VERSION` 2 → 3 (el shader cambió; la caché del tablero 2.5D se invalida sola por la firma del shader).
+
+Comparaciones: `docs/img/mascotas_3d_comparacion.png` (maqueta · 2D · 3D) y `docs/img/mascotas_3d_detalle.png` (2P a la misma escala que la maqueta y las 4 a tamaño de juego).
+
+### Pintar el piso: tamaño de las mascotas y cartel del power-up
+
+Medido en la maqueta (`referencia_juego_pintar.webp`, llevada a 1920 px de ancho): la cabeza de la mascota de adelante mide ~134 px (1,8 baldosas de 74 px) y la de atrás ~99 px (1,3 baldosas). Con `MASCOT_SCALE` 0,8 las nuestras medían 67 px a profundidad 1 (0,9 baldosas): se veían chicas y "lejos". Ahora `MASCOT_SCALE` = 1,3 (cabeza de 109 px a profundidad 1; 117 adelante y 101 atrás con la escala por profundidad 0,93–1,07 del 2.5D). Reglas, choques y baldosas no cambian (los pies siguen en el mismo punto); los globitos 1P–4P y los nombres acompañan porque `draw_player_tags` recibe la misma `u`. Todos los tamaños caen en el mismo nivel del atlas (1,45) y la intro los hornea de una vez; como a ese tamaño la intro no precalienta sola la caminata (`MascotAtlas.GAME_WALK_MAX_U` 1,1), Pintar declara `MASCOT_PREWARM = [[MASCOT_SCALE, ["walk@0"]]]` (`tools/mascot_prewarm_check.gd --only=paint`: 1 pose tardía, el festejo caminando del final, la misma que antes; precalentado 3,6 s y 36 MB de atlas con 4 jugadores, dentro de los 40 MB).
+
+El cartel "¡Rápido!"/"¡Brocha!" era una píldora brillante de 40 px que aparecía 165 px arriba de la mascota y tapaba el centro del tablero. Ahora `Juice.float_text` dibuja una **ficha de juguete** (color pleno, canto oscuro abajo, contorno de tinta y un reflejo chico, como las fichas del código del lobby), con letra de 34 px y un cuarto argumento de escala; Pintar la pone justo arriba del globito 1P–4P, a la escala de la mascota. Lo mismo vale para los "+1" de Arena, Ping Pong y Empujones.
+
+### Dioramas del lobby
+
+| Zona | Maqueta: sat · brillo · colorf · contraste | Antes (vuelta 1) | Ahora |
+|---|---|---|---|
+| Diorama Arena | 0,47 · 0,84 · 114 · 0,170 | 0,45 · 0,87 · 113 · 0,147 | **0,65 · 0,83 · 161 · 0,184** |
+| Diorama Carrera de toques | 0,50 · 0,90 · 126 · 0,137 | 0,45 · 0,88 · 113 · 0,148 | **0,66 · 0,82 · 153 · 0,184** |
+| Diorama Reloj exacto | 0,59 · 0,87 · 133 · 0,162 | 0,36 · 0,84 · 89 · 0,140 | **0,57 · 0,82 · 137 · 0,181** |
+| Tarjeta 1P | 0,27 · 0,90 · 89 · 0,204 | 0,30 · 0,89 · 102 · 0,208 | 0,32 · 0,88 · 102 · 0,215 |
+| Mascota 1P (cabeza) | 0,38 · 0,87 · 106 · 0,235 | 0,38 · 0,90 · 120 · 0,212 | 0,41 · 0,88 · 118 · 0,225 |
+
+("contraste" = desvío del brillo dentro de la zona: cuánta profundidad hay.) Qué cambió (`GameDiorama`, `tools/make_dioramas.gd`, `GameCard`):
+
+- **Encuadre**: en la maqueta el escenario llena la tarjeta y la pieza del control (joystick, botón) ocupa casi la mitad del alto. La cámara de cada receta se acerca (`UiTheme.DIORAMA_ZOOM` 0,8) y baja (`DIORAMA_CAM_DROP` 0,86) en `GameDiorama.framed_camera`; el control es 1,55× (`CONTROL_SCL`) y las mascotas 1,1× (`MASCOT_SCL`); las baldosas hexagonales son más grandes (`TILE_R` 4,6 → 5,6: menos y más gordas).
+- **Color**: el plástico de los dioramas usa `Mascot3D.vivid`, sombra más profunda y saturada (v×0,45), `shade_spread` 0,7 y el reflejo suave del shader; el cielo de fondo es azul pleno en vez de celeste con bruma blanca (`DIORAMA_HAZE` 0,16 → 0,06, `sky_for`). Los dioramas de Arena y Carrera quedan **más** saturados que la maqueta (0,65 contra 0,47–0,50): a propósito, la saturación de las baldosas hexagonales es lo que se lee a 3 m.
+- **Tamaño en la tarjeta**: la franja pasa del 50 % al 56 % del alto de la tarjeta (`UiTheme.CARD_ART_FRACTION`; la maqueta: 58 %) y la imagen es de 660×260 (≈ 2,5:1, la proporción de la franja; antes 648×240 se recortaba a los costados). Título y "1–4 jugadores" se acercan para que entren.
+
+### Intro, resumen de ronda y podio
+
+Para que sean de la misma familia que el lobby: el título del juego en el resumen es un `TvLogoTitle` (letras amarillas con brillo, como la intro y el logo); las consolas del resumen (`ScorePedestal`) y los bloques del podio (`FinalScreen._Block`) son bloques de juguete (`UiTheme.draw_toy_tile`: color pleno del jugador, canto oscuro abajo, borde fino, un solo lote; antes eran rectángulos redondeados con contorno de tinta y una franja clara arriba). Las mascotas de estas pantallas son las nuevas (más cabeza, brazos visibles, plástico jugoso) sin cambios en las pantallas. La intro ya usaba las tarjetas y piezas del lobby; no cambió.
+
+Comparaciones: `docs/img/lobby_comparacion.png` (maqueta · vuelta 1 · ahora), `docs/img/pintar_25d_comparacion.png` (maqueta · ahora, con el detalle de la mascota de adelante a la misma escala), capturas en `docs/img/` (`game_intro.png`, `round_summary.png`, `final.png`). Rendimiento en [PERFORMANCE.md](PERFORMANCE.md#revisión-de-dirección-de-arte-vuelta-2-2909).
+
+**Qué queda distinto de la maqueta (a propósito o pendiente):** las mascotas siguen dibujándose de frente en el tablero 2.5D; el fondo de la maqueta de Pintar tiene más juguetes fuera de foco (banderín, bloques con botones) de los que entran en el horneado actual; los dioramas de la maqueta no tienen mascotas (los nuestros sí, chicas, para que se vea de qué es cada juego); en las tarjetas del lobby el "1P" de la maqueta va más adentro de la esquina.

@@ -159,7 +159,7 @@ func _draw() -> void:
 
 	# Ilustración: la miniatura del juego; si no tiene, un "escenario" con
 	# cielo en degradé del color del juego, piso a cuadros y el ícono del control.
-	var art := Rect2(r.position + Vector2(10, 10), Vector2(r.size.x - 20, r.size.y * 0.5))
+	var art := Rect2(r.position + Vector2(10, 10), Vector2(r.size.x - 20, r.size.y * UiTheme.CARD_ART_FRACTION))
 	if _thumb != null:
 		_draw_thumb_art(art, accent)
 	else:
@@ -188,14 +188,15 @@ func _draw() -> void:
 		draw_arc(badge, 16, 0, TAU, 24, Color(UiTheme.INK_SOFT, 0.5 * a), 3.0, true)
 
 	var text_x := r.position.x + 20
-	UiTheme.draw_text_left(self, str(info.get("title", "")), Vector2(text_x, art.end.y + 30), 28,
+	# La ilustración es más alta (CARD_ART_FRACTION): título y datos van más juntos.
+	UiTheme.draw_text_left(self, str(info.get("title", "")), Vector2(text_x, art.end.y + 26), 28,
 		Color(UiTheme.INK, a), r.size.x - 40)
 	var meta := unavailable_reason if disabled else players_text(info)
 	var meta_x := text_x
 	if not disabled:
-		UiTheme.draw_glyph(self, "people", Vector2(text_x + 14, art.end.y + 66), 26, UiTheme.INK_SOFT)
+		UiTheme.draw_glyph(self, "people", Vector2(text_x + 14, art.end.y + 57), 26, UiTheme.INK_SOFT)
 		meta_x += 36
-	UiTheme.draw_text_left(self, meta, Vector2(meta_x, art.end.y + 66), 24,
+	UiTheme.draw_text_left(self, meta, Vector2(meta_x, art.end.y + 57), 24,
 		UiTheme.DANGER if disabled else UiTheme.INK_SOFT, r.size.x - 40 - (meta_x - text_x), false)
 
 

@@ -307,7 +307,7 @@ Estrellas, bloques del marco y de los fondos, medallas, corona, trofeo, ficha de
 
 - **Draw calls −13 %** aunque se sumaron el selector de música y los destellos fijos del botón: cada tarjeta de jugador, ficha del código y botón es ahora **un lote** (`UiTheme.draw_seat_card`/`draw_toy_block`: sombra, borde, canto, degradé, brillo y el borde suavizado en un solo triangle array) en vez de 4–6 StyleBox y polígonos sueltos.
 - **Scripts igual** (±3 %, ruido): lo que cambia se sigue redibujando solo cuando cambia (foco, texto, jugador); los destellos se dibujan una vez y solo laten (escala) con el foco.
-- **Dioramas**: una textura por tarjeta, igual que la captura (648×240 WebP, ~20 KB; en la GPU ≈ 0,8 MB con mipmaps para los 13). No hay 3D en la TV: se renderizan con `tools/make_dioramas.gd` (~0,3 s por juego en llvmpipe).
+- **Dioramas**: una textura por tarjeta, igual que la captura (660×260 WebP, ~25 KB; en la GPU ≈ 0,9 MB con mipmaps para los 13). No hay 3D en la TV: se renderizan con `tools/make_dioramas.gd` (~0,3 s por juego en llvmpipe).
 - **Fondo más lleno** (fila de torres del medio): se pinta una vez al preparar el escenario desenfocado, cero costo por frame.
 
 ### Tablero 2.5D horneado (ADR 0019)
@@ -357,6 +357,25 @@ Colores más vivos (tokens de `UiTheme`), mascotas con la cara de la maqueta, po
 
 - **CPU y draw calls iguales** (±10 %, ruido de la máquina): los colores son tokens, la pose nueva es un cuadro más del atlas y la tarjeta del jugador sigue siendo un lote más una capa (la base del nombre) que se dibuja una vez.
 - **Atlas +2,6 MB en el lobby**: `SCREEN_POSES` suma `hello@0` y `hello@1` (2 poses × 4 jugadores × 340 KB a u = 2,25). En los juegos el atlas queda cerca del presupuesto de 40 MB (`MascotAtlas.BUDGET_BYTES`): el LRU suelta lo que no se usa; si en la TV real se ve un tirón al volver al lobby, sacar `wave_1..3@1` de `SCREEN_POSES` (el lobby ya no festeja con `wave`).
+
+### Revisión de dirección de arte, vuelta 2 (29/09)
+
+Mascotas con las proporciones de la maqueta y plástico "jugoso" (dos uniforms más en `toy_plastic.gdshader`), Pintar el piso con `MASCOT_SCALE` 0,8 → 1,3, dioramas nuevos (660×260), fichas flotantes y consolas del resumen/podio como bloques de juguete, título "de logo" en el resumen. `tools/benchmark.gd -- --only=lobby,game_intro,round_summary,final,paint,arena`, la punta sin el cambio (`4004e93`, exportada a una carpeta aparte) y con el cambio, una corrida de cada una con el candado de Godot tomado (xvfb + llvmpipe, 300 frames):
+
+| Escena | Scripts prom. (ms) | Scripts p95 (ms) | Draw calls | Render (ms) |
+|---|---:|---:|---:|---:|
+| lobby | 0,74 → 0,69 | 0,99 → 0,92 | 405 → 405 | 50,9 → 49,5 |
+| game_intro | 0,72 → 0,67 | 1,02 → 0,89 | 176 → 176 | 46,1 → 44,0 |
+| round_summary | 0,71 → 0,68 | 1,02 → 0,90 | **181 → 147** | 34,3 → 35,5 |
+| final | 0,80 → 0,93 | 1,05 → 1,28 | **109 → 100** | 23,8 → 26,6 |
+| arena (control) | 1,16 → 1,54 | 1,72 → 2,29 | 36 → 37 | 23,3 → 26,5 |
+| paint | 1,14 → 1,58 | 1,86 → 2,69 | 44 → 48 | 19,3 → 24,9 |
+
+- **Draw calls**: el resumen baja de 181 a 147 y el podio de 109 a 100 porque cada consola y cada bloque es ahora **un lote** (`UiTheme.draw_toy_tile`) en vez de 4–5 rectángulos redondeados. El resto igual.
+- **Scripts**: lobby, intro y resumen iguales o mejores; Arena (que no cambió nada) subió lo mismo que Pintar (+0,4 ms) en la segunda corrida: es ruido de la máquina, no el arte. Lo que cambia por cuadro en Pintar es solo el tamaño del sprite. Todo muy por debajo del presupuesto (p95 ≤ 8 ms, ≤ 150 draw calls).
+- **Atlas de mascotas**: Pintar a u = 1,3 × (0,93–1,07) cae entero en el nivel 1,45 del atlas (celdas de 174 × 203 px): 21 poses ≈ 3,0 MB por jugador, 12 MB para 4 (antes, nivel 0,95: 1,3 MB por jugador). Con las poses de pantalla y de aviso, `tools/mascot_prewarm_check.gd --only=paint` da 36,2 MB de atlas y 3,6 s de precalentado con 4 jugadores (antes 23 MB y 2,4 s), 1 pose tardía (la misma de antes: festejo caminando del final). Entra en los 40 MB del presupuesto con el LRU, pero es el juego que más cerca queda: si en la TV real se ve un tirón, bajar `MASCOT_SCALE` a 1,15 (cabeza de 1,3 baldosas) o sacar `wave_1..3@1` de `SCREEN_POSES`.
+- **Horneado de las mascotas**: el modelo tiene las mismas piezas (más grandes, no más): mismo tiempo de horneado (~0,13 s por jugador para 10 poses de lobby, `Mascot3DBaker.last_report`).
+- **Dioramas**: 660×260 en vez de 648×240 (+8 % de píxeles, ~25 KB por juego en WebP); siguen siendo una textura por tarjeta, sin 3D en la TV.
 
 ## Qué se cambió y por qué
 

@@ -25,7 +25,11 @@ const SHADER_TOY := preload("res://core/mascot3d/toy_plastic.gdshader")
 const SHADER_INK := preload("res://core/mascot3d/ink_outline.gdshader")
 
 const ARENA_R := 40.0          ## Radio del escenario redondo.
-const TILE_R := 4.6            ## Radio de cada baldosa hexagonal.
+const TILE_R := 5.6            ## Radio de cada baldosa hexagonal (grandes y gordas, como la maqueta).
+## Tamaño de las mascotas y de la pieza del control dentro del diorama. En la
+## maqueta la pieza del control ocupa ~45 % del alto de la tarjeta.
+const MASCOT_SCL := 1.1
+const CONTROL_SCL := 1.55
 const INK := 0.32              ## Contorno de las piezas (unidades del mundo).
 const INK_THIN := 0.2
 
@@ -69,8 +73,18 @@ static func has_recipe(game_id: String) -> bool:
 
 
 ## Cámara de siempre: desde adelante y arriba, mirando el centro del escenario.
+## (`tools/make_dioramas.gd` la acerca con UiTheme.DIORAMA_ZOOM: la maqueta
+## encuadra más cerca y más bajo, el escenario llena la tarjeta.)
 static func default_camera() -> Dictionary:
 	return {"pos": Vector3(0, 46, 78), "target": Vector3(0, 2, 2), "fov": 34.0}
+
+
+## La misma cámara, más cerca y más baja (UiTheme.DIORAMA_ZOOM / DIORAMA_CAM_DROP).
+static func framed_camera(cam: Dictionary) -> Dictionary:
+	var target: Vector3 = cam.target
+	var d: Vector3 = (cam.pos as Vector3) - target
+	d.y *= UiTheme.DIORAMA_CAM_DROP
+	return {"pos": target + d * UiTheme.DIORAMA_ZOOM, "target": target, "fov": cam.fov}
 
 
 ## Cielo (arriba, abajo) detrás del fondo desenfocado.
@@ -79,8 +93,9 @@ static func sky_for(game_id: String, accent: Color) -> Array[Color]:
 		"quickdraw":
 			return [UiTheme.QD_SKY_MID, UiTheme.QD_HORIZON]
 		"memory", "stop_clock":
-			return [accent.darkened(0.35), accent.lerp(UiTheme.PAPER, 0.35)]
-	return [UiTheme.BG_SKY_TOP, UiTheme.BG_SKY_MID.lerp(UiTheme.PAPER, 0.35)]
+			return [accent.darkened(0.45), accent.lerp(UiTheme.PAPER, 0.2)]
+	# Cielo saturado (la maqueta no tiene bruma blanca: el fondo es azul pleno).
+	return [UiTheme.BG_SKY_TOP.darkened(0.08), UiTheme.BG_SKY_MID]
 
 
 # --- Materiales ------------------------------------------------------------------------
@@ -89,25 +104,28 @@ static func sky_for(game_id: String, accent: Color) -> Array[Color]:
 ## unidades (0 = sin contorno). `lit`: cuánto se aclara la cara iluminada.
 ## Las caras de arriba (pisos, tapas) miran a la luz: con `flat` el color
 ## iluminado es el color mismo (no pastel), como las baldosas de la maqueta.
-static func plastic(col: Color, ink := INK, lit := 0.28, flat := false, coat := 0.2) -> ShaderMaterial:
+static func plastic(col: Color, ink := INK, lit := 0.2, flat := false, coat := 0.2) -> ShaderMaterial:
 	var key := "p|%s|%.2f|%.2f|%s|%.2f" % [col.to_html(), ink, lit, flat, coat]
 	if _materials.has(key):
 		return _materials[key]
 	var lum := col.get_luminance()
 	var dark := lum < 0.2
-	var low := col.lightened(0.04) if dark else col.darkened(0.48 if lum < 0.8 else 0.28)
-	low = low.lerp(UiTheme.MASCOT_SHADE_TINT, 0.14)
-	var mid := col.darkened(0.1) if flat else col
-	var high := col.lightened(0.08 if flat else lit)
+	# Sombra profunda y saturada (la maqueta: el violeta del escenario baja a
+	# casi negro azulado en los cantos); el color pleno, sin pastel.
+	var vivid := Mascot3D.vivid(col)
+	var low := col.lightened(0.04) if dark else vivid.darkened(0.55 if lum < 0.8 else 0.3)
+	low = low.lerp(UiTheme.MASCOT_SHADE_TINT, 0.18)
+	var mid := vivid.darkened(0.08) if flat else vivid
+	var high := vivid.lightened(0.06 if flat else lit)
 	if dark:
 		mid = col.lightened(0.1)
 		high = col.lightened(0.4)
 	var m := ShaderMaterial.new()
 	m.shader = SHADER_TOY
 	var params := {"low_color": low, "mid_color": mid, "high_color": high,
-		"bounce_color": mid.lightened(0.15), "bounce_strength": 0.3, "rim_color": Color.WHITE, "rim_strength": 0.25,
-		"spec_strength": 0.9, "spec_size": 0.02, "coat_strength": coat, "edge_color": col.darkened(0.25),
-		"edge_strength": 0.25, "sky_strength": 0.25}
+		"bounce_color": mid.lightened(0.15), "bounce_strength": 0.25, "rim_color": Color.WHITE, "rim_strength": 0.25,
+		"spec_strength": 0.9, "spec_size": 0.03, "spec_soft": 0.04, "shade_spread": 0.7, "coat_strength": coat,
+		"edge_color": low.lerp(vivid, 0.35), "edge_strength": 0.4, "sky_strength": 0.25}
 	for k: String in params:
 		m.set_shader_parameter(k, params[k])
 	if ink > 0.0:
@@ -294,7 +312,7 @@ static func _towers(bg: Node3D, radius := 70.0, count := 16, seed := 11, z_min :
 
 ## Mascota 3D (Mascot3D) del lugar `slot` (color y estilo por defecto).
 static func _mascot(parent: Node3D, slot: int, pos: Vector3, rot_y := 0.0, mood := PlayerAvatar.Mood.HAPPY,
-		anim := {}, scl := 1.0) -> Mascot3D:
+		anim := {}, scl := MASCOT_SCL) -> Mascot3D:
 	var m := Mascot3D.new()
 	m.setup(Protocol.player_color(slot), slot)
 	parent.add_child(m)
@@ -347,11 +365,11 @@ static func _generic(fg: Node3D, bg: Node3D, accent: Color, layout: String) -> v
 	_towers(bg)
 	match layout:
 		Protocol.LAYOUT_ONE_BUTTON:
-			_big_button(fg, Vector3(-18, 0.8, 14), UiTheme.BRICKS[0], 1.3)
+			_big_button(fg, Vector3(-20, 0.8, 14), UiTheme.BRICKS[0], CONTROL_SCL)
 		Protocol.LAYOUT_SLIDER_H:
-			_slider(fg, Vector3(-16, 0.8, 14), UiTheme.BRICKS[0], 1.2)
+			_slider(fg, Vector3(-18, 0.8, 14), UiTheme.BRICKS[0], CONTROL_SCL * 0.9)
 		_:
-			_joystick(fg, Vector3(-19, 0.8, 12), UiTheme.BRICKS[0], 1.25)
+			_joystick(fg, Vector3(-21, 0.8, 8), UiTheme.BRICKS[0], CONTROL_SCL)
 	_star(fg, Vector3(14, 9, -8), 5.0)
 	_mascot(fg, 1, Vector3(8, 0.8, 10), -20)
 
@@ -361,12 +379,12 @@ static func _arena(fg: Node3D, bg: Node3D) -> Dictionary:
 	_round_stage(fg, [UiTheme.BRICKS[5], UiTheme.BRICKS[6], UiTheme.BRICKS[4], UiTheme.BRICKS[5].lightened(0.3),
 		UiTheme.BRICKS[7], UiTheme.BRICKS[2]], UiTheme.BRICKS, 5)
 	_towers(bg)
-	_joystick(fg, Vector3(-24, 0.8, 12), UiTheme.BRICKS[0], 1.25)
-	_star(fg, Vector3(2, 9.5, -14), 7.5, Vector3(-5, 12, 0))
+	_joystick(fg, Vector3(-23, 0.8, 8), UiTheme.BRICKS[0], CONTROL_SCL)
+	_star(fg, Vector3(2, 10.5, -14), 8.5, Vector3(-5, 12, 0))
 	_star(fg, Vector3(20, 6, 6), 5.0, Vector3(-10, -20, 8))
 	_star(fg, Vector3(-6, 5, 2), 4.0, Vector3(-10, 25, -6))
 	_mascot(fg, 0, Vector3(9, 0.8, -2), 0, PlayerAvatar.Mood.HAPPY, {"walk": 0.25, "look": Vector2(-1, 0), "t": 0.3})
-	_mascot(fg, 2, Vector3(24, 0.8, -12), -30, PlayerAvatar.Mood.HAPPY, {"wave": true, "t": 0.2}, 0.9)
+	_mascot(fg, 2, Vector3(24, 0.8, -12), -30, PlayerAvatar.Mood.HAPPY, {"wave": true, "t": 0.2}, MASCOT_SCL * 0.9)
 	return default_camera()
 
 
@@ -410,7 +428,7 @@ static func _tap_race(fg: Node3D, bg: Node3D) -> Dictionary:
 		for j in 2:
 			var col := UiTheme.INK if (i + j) % 2 == 0 else UiTheme.PAPER
 			_box(fg, Vector3(2.6, 0.6, 2.6), col, Vector3(22 + j * 2.6, 1.9, -14 + i * 2.6), 0.2, 0.0, true)
-	_big_button(fg, Vector3(-21, 0.8, 12), UiTheme.BRICKS[3], 1.35)
+	_big_button(fg, Vector3(-23, 0.8, 12), UiTheme.BRICKS[3], CONTROL_SCL)
 	_mascot(fg, 0, Vector3(4, 0.8, -6), 0, PlayerAvatar.Mood.HAPPY, {"walk": 0.3, "look": Vector2(1, 0), "t": 0.4})
 	_mascot(fg, 1, Vector3(-4, 0.8, 6), 0, PlayerAvatar.Mood.ANGRY, {"walk": 0.8, "look": Vector2(1, 0), "t": 0.9})
 	return default_camera()
@@ -445,8 +463,8 @@ static func _stop_clock(fg: Node3D, bg: Node3D) -> Dictionary:
 			Vector3.ONE, Vector3(0, 0, -side * 32.0))
 		_box(clock, Vector3(1.6, 5.0, 1.6), UiTheme.BRICKS[6].darkened(0.2), Vector3(side * 8.0, -14.0, 0), 0.6, INK_THIN,
 			false, Vector3(0, 0, side * 20.0))
-	_big_button(fg, Vector3(-24, 0.8, 14), UiTheme.BRICKS[0], 1.1)
-	_mascot(fg, 3, Vector3(21, 0.8, 10), -25, PlayerAvatar.Mood.SURPRISED, {})
+	_big_button(fg, Vector3(-26, 0.8, 14), UiTheme.BRICKS[0], CONTROL_SCL * 0.85)
+	_mascot(fg, 3, Vector3(22, 0.8, 10), -25, PlayerAvatar.Mood.SURPRISED, {})
 	return default_camera()
 
 
@@ -461,8 +479,8 @@ static func _dodge(fg: Node3D, bg: Node3D) -> Dictionary:
 		# Sombra en el piso: donde va a caer.
 		_cylinder(fg, 5.2, 0.2, UiTheme.INK.lerp(UiTheme.FLOOR, 0.55), Vector3(p.x, 1.1, p.z), 0.0, 32, true)
 	_toy_block(fg, Vector3(-2, 1.1, 10), 8.0, UiTheme.BRICKS[2], 12.0)
-	_mascot(fg, 0, Vector3(-12, 1.1, 8), 0, PlayerAvatar.Mood.SURPRISED, {"walk": 0.3, "look": Vector2(1, 0)})
-	_mascot(fg, 1, Vector3(14, 1.1, 12), 0, PlayerAvatar.Mood.HAPPY, {"walk": 0.7, "look": Vector2(-1, 0)})
+	_mascot(fg, 0, Vector3(-12, 1.1, 3), 0, PlayerAvatar.Mood.SURPRISED, {"walk": 0.3, "look": Vector2(1, 0)})
+	_mascot(fg, 1, Vector3(14, 1.1, 6), 0, PlayerAvatar.Mood.HAPPY, {"walk": 0.7, "look": Vector2(-1, 0)})
 	return {"pos": Vector3(0, 38, 50), "target": Vector3(0, 4, 2), "fov": 36.0}
 
 
@@ -541,7 +559,7 @@ static func _kart(parent: Node3D, pos: Vector3, slot: int) -> void:
 		for z in [-3.8, 3.8]:
 			_cylinder(k, 1.7, 1.6, UiTheme.INK.lerp(UiTheme.PAPER, 0.15), Vector3(x, 1.7, z), INK_THIN, 20) \
 				.rotation_degrees = Vector3(0, 0, 90)
-	var m := _mascot(k, slot, Vector3(0, 3.2, 1.0), -70, PlayerAvatar.Mood.HAPPY, {"wave": true, "t": 0.1 * slot}, 0.72)
+	var m := _mascot(k, slot, Vector3(0, 3.2, 1.0), -70, PlayerAvatar.Mood.HAPPY, {"wave": true, "t": 0.1 * slot}, 0.8)
 
 
 ## ¡Que no te deje la cámara!: plataformas de bloques, flechas y una sierra.

@@ -161,11 +161,10 @@ class _Block:
 	var points := ""
 
 	func _draw() -> void:
+		# Bloque de juguete (color pleno, canto oscuro abajo): la misma familia
+		# que las fichas del lobby y las consolas del resumen.
 		var r := Rect2(Vector2(10, 0), size - Vector2(20, 0))
-		UiTheme.draw_round_rect(self, r.grow(4), UiTheme.INK, 22)
-		UiTheme.draw_round_rect(self, r, color.darkened(0.2), 18)
-		UiTheme.draw_round_rect(self, Rect2(r.position, Vector2(r.size.x, r.size.y - 14)), color, 18)
-		UiTheme.draw_round_rect(self, Rect2(r.position + Vector2(0, 0), Vector2(r.size.x, 18)), color.lightened(0.25), 18)
+		UiTheme.draw_toy_tile(self, r, color, 18, UiTheme.TOY_DEPTH + 2.0)
 		var cy := r.position.y + (r.size.y - 14.0) / 2.0 + 4.0
 		var c := Vector2(r.position.x + 62.0, cy)
 		if place <= 3 and Props3D.is_ready():

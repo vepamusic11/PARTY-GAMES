@@ -1241,6 +1241,7 @@ const MEMORY_CARD := Color(1, 1, 1, 0.88)    ## Tarjeta de cada jugador y de la 
 const SUMMARY_BAR_PAD := 12.0
 const SUMMARY_BAR_H := HUD_CLOCK_H + 2.0 * SUMMARY_BAR_PAD
 ## Placa de los puntos ganados en la ronda ("+70", PointsBadge).
+const SUMMARY_TITLE_SIZE := 72     ## Nombre del juego en el resumen de ronda (título "de logo").
 const POINTS_BADGE_SIZE := 64      ## Tamaño del número.
 const POINTS_BADGE_H := 92.0       ## Alto de la placa.
 const POINTS_BADGE_PAD := 30.0     ## Aire a cada lado del número.
@@ -1286,7 +1287,7 @@ const FX_SHAKE_MAX := 9.0       ## px de la sacudida más fuerte (leve a propós
 const FX_ZOOM := 0.035          ## Zoom sutil: +3,5 %.
 const FX_MAX_PARTICLES := 192   ## Tope del pool de partículas de cada juego.
 const FX_REDUCED := 0.35        ## Fracción de partículas con "Reducir movimiento".
-const FX_FLOAT_SIZE := 40       ## Números flotantes.
+const FX_FLOAT_SIZE := 34       ## Textos flotantes ("+1", "¡Rápido!"): ficha de juguete chica que no tapa el juego.
 const FX_FLOAT_RISE := 70.0
 const FX_BANNER_SIZE := 200     ## "¡Tiempo!", "¡Meta!".
 
@@ -1662,7 +1663,10 @@ static func music_style_color(style_id: String) -> Color:
 # en degradé pastel del color del jugador, fichas del código y botón
 # "¡A jugar!" con más volumen, y dioramas 3D de los juegos (ADR 0018).
 
-const DIORAMA_HAZE := 0.16            ## Bruma sobre el fondo desenfocado de los dioramas.
+const CARD_ART_FRACTION := 0.56       ## Alto de la ilustración en la tarjeta del juego (la maqueta: 58 %).
+const DIORAMA_HAZE := 0.06            ## Bruma sobre el fondo desenfocado de los dioramas (poca: el fondo queda saturado).
+const DIORAMA_ZOOM := 0.8            ## La cámara de cada diorama se acerca al blanco (1 = la receta tal cual)…
+const DIORAMA_CAM_DROP := 0.86        ## …y baja (multiplica su altura sobre el blanco): el escenario llena la tarjeta.
 
 # Tarjeta del jugador (SeatCard alta): degradé pastel del color del jugador
 # con marco claro y un resplandor, como la maqueta.

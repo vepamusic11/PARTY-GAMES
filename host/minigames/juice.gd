@@ -25,7 +25,7 @@ extends Node2D
 ## con menos partículas. Sin nada que animar, apaga su _process.
 
 const SCREEN := Vector2(1920, 1080)
-const FLOAT_PILL_H := 58.0     ## Alto de la píldora de un número flotante.
+const FLOAT_PILL_H := 50.0     ## Alto de la ficha de un texto flotante.
 const MAX_POPUPS := 12         ## Tope de números flotantes a la vez (el más viejo se va).
 
 var particles: FxParticles
@@ -114,10 +114,11 @@ func camera_transform() -> Transform2D:
 
 ## Número flotante ("+1", "+5"): píldora del color del jugador con el texto en
 ## su color legible (UiTheme.text_on), que salta, sube y se desvanece.
-func float_text(text: String, pos: Vector2, col: Color) -> void:
+## `scale`: tamaño relativo (ej. la profundidad en un tablero 2.5D).
+func float_text(text: String, pos: Vector2, col: Color, scale: float = 1.0) -> void:
 	if _popups.size() >= MAX_POPUPS:
 		_popups.pop_front()
-	_popups.append({"text": text, "pos": pos, "col": col, "t": 0.0})
+	_popups.append({"text": text, "pos": pos, "col": col, "t": 0.0, "s": clampf(scale, 0.5, 1.5)})
 	_wake()
 
 
@@ -243,38 +244,45 @@ func _draw() -> void:
 		draw_set_transform(Vector2.ZERO)
 
 
-## Píldoras de todos los números en un lote (un draw call) y después los textos.
-## La píldora de cada texto se arma una vez (tamaño fijo, GameArt la guarda) y
+## Fichas de todos los textos en un lote (un draw call) y después los textos.
+## La ficha de cada texto se arma una vez (tamaño fijo, GameArt la guarda) y
 ## el golpe de escala va en el Transform2D: nada se recalcula por frame.
+## Es una ficha de juguete como las del código del lobby (color pleno, canto
+## oscuro abajo, contorno de tinta y un reflejo chico), no una píldora
+## brillante: chica, no tapa el juego y es de la misma familia que el lobby.
 func _draw_popups() -> void:
 	var boxes: Array = []
 	for p in _popups:
 		var t: float = p.t
 		var k := t / UiTheme.DUR_FLOAT
-		var s := UiTheme.pop_scale(t, 0.25)
+		var s := UiTheme.pop_scale(t, 0.25) * float(p.get("s", 1.0))
 		var a := clampf((1.0 - k) / 0.35, 0.0, 1.0)  # Se desvanece en el último tercio.
 		var rise := UiTheme.FX_FLOAT_RISE * (1.0 - (1.0 - k) * (1.0 - k))
 		var c: Vector2 = (p.pos as Vector2) - Vector2(0, rise)
 		var size := Vector2(_text_width(str(p.text)), FLOAT_PILL_H)
 		var xf := Transform2D(0.0, Vector2(s, s), 0.0, c)
 		var col: Color = p.col
-		var ink := size + Vector2(8.0, 8.0)
-		_pill.shape(GameArt.round_rect_tris(ink, ink.y / 2.0), xf, Color(UiTheme.INK, a))
-		_pill.shape(GameArt.round_rect_tris(size, size.y / 2.0), xf, Color(col, a))
-		var shine := Vector2(size.x - size.y * 0.7, size.y * 0.22)
-		_pill.shape(GameArt.round_rect_tris(shine, shine.y / 2.0), xf * Transform2D(0.0, Vector2(0, -size.y * 0.27)),
-			Color(1, 1, 1, 0.3 * a))
+		var r := size.y * 0.3
+		var lip := UiTheme.TOY_DEPTH * 0.6
+		var ink := size + Vector2(8.0, 8.0 + lip)
+		_pill.shape(GameArt.round_rect_tris(ink, r + 4.0), xf * Transform2D(0.0, Vector2(0, lip / 2.0)), Color(UiTheme.INK, a))
+		_pill.shape(GameArt.round_rect_tris(size, r), xf * Transform2D(0.0, Vector2(0, lip)), Color(col.darkened(UiTheme.TOY_LIP_SHADE), a))
+		_pill.shape(GameArt.round_rect_tris(size, r), xf, Color(col, a))
+		var spec := Vector2(minf(size.x * 0.2, 40.0), size.y * 0.12)
+		_pill.shape(GameArt.round_rect_tris(spec, spec.y / 2.0),
+			xf * Transform2D(0.0, Vector2(-size.x / 2.0 + r * 0.6 + spec.x / 2.0, -size.y * 0.32)), Color(UiTheme.TOY_SPEC, UiTheme.TOY_SPEC.a * a))
 		boxes.append([c, s, a, col, str(p.text)])
 	_pill.flush(self)
 	for b: Array in boxes:
 		draw_set_transform(b[0], 0.0, Vector2(b[1], b[1]))
 		var fg := UiTheme.text_on(b[3])
-		UiTheme.draw_text(self, b[4], Vector2(0, -2), UiTheme.FX_FLOAT_SIZE, Color(fg, b[2]))
+		var edge := UiTheme.INK if fg == UiTheme.PAPER else UiTheme.PAPER
+		UiTheme.draw_text(self, b[4], Vector2(0, -1), UiTheme.FX_FLOAT_SIZE, Color(fg, b[2]), 5, Color(edge, b[2]))
 	draw_set_transform(Vector2.ZERO)
 
 
 ## Ancho de la píldora de un texto (se mide una vez por texto).
 func _text_width(text: String) -> float:
 	if not _widths.has(text):
-		_widths[text] = UiTheme.FONT_BOLD.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, UiTheme.FX_FLOAT_SIZE).x + 34.0
+		_widths[text] = UiTheme.FONT_BOLD.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, UiTheme.FX_FLOAT_SIZE).x + 30.0
 	return _widths[text]

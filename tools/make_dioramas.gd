@@ -21,7 +21,7 @@ extends SceneTree
 
 const OUT_DIR := "res://assets/thumbs/diorama/"
 const EXT := ".webp"
-const SIZE := Vector2i(648, 240)   ## ≈ 2,7:1, la franja de la tarjeta del lobby.
+const SIZE := Vector2i(660, 260)   ## ≈ 2,5:1, la franja de la tarjeta del lobby (como la maqueta).
 const SUPERSAMPLE := 2
 const WEBP_QUALITY := 0.9
 const BLUR_DOWN := 7               ## El fondo se achica tantas veces y se vuelve a agrandar (desenfoque).
@@ -72,8 +72,9 @@ func _run() -> void:
 static func render(host: Node, info: Dictionary) -> Image:
 	var scene := GameDiorama.build(info)
 	var px := SIZE * SUPERSAMPLE
-	var bg := await _render_layer(host, scene.bg, scene.camera, px)
-	var fg := await _render_layer(host, scene.fg, scene.camera, px)
+	var cam := GameDiorama.framed_camera(scene.camera)
+	var bg := await _render_layer(host, scene.bg, cam, px)
+	var fg := await _render_layer(host, scene.fg, cam, px)
 	GameDiorama.release()
 	if bg == null or fg == null:
 		return null

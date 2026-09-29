@@ -36,6 +36,8 @@ description: Sistema visual y reglas de UI de Party Games (TV y celular). Usar a
 13. **Piezas de juguete** (estrellas, bloques, premios): usar `Props3D` con el 2D de respaldo; una pieza nueva se agrega al catálogo (`Props3D.catalog()` + receta en `Props3D.build`) y se revisa en la hoja de piezas.
 14. **Look de la maqueta del lobby** (sección "Lobby maqueta" de `UiTheme`): tarjetas de jugador con `draw_seat_card` (degradé pastel del color del jugador, marco claro y resplandor; base celeste si el color es muy claro), lugar libre con `draw_glass_card`, fichas y botones con `draw_toy_block`/`draw_toy_tile` (sin contorno de tinta, canto oscuro abajo, un solo lote). La mascota va con la cabeza adentro de la tarjeta y el cuerpo detrás de la base del nombre (`SeatCard.MASCOT_TOP/MASCOT_SINK`). Colores del fondo, fichas y botones medidos contra la maqueta (`docs/ARTE.md`, "Revisión de dirección de arte"): antes de cambiar un token, medir. Referencia: `docs/img/lobby_comparacion.png`.
 
+15. **Fichas y bloques en todas las pantallas** (vuelta 2 de dirección de arte): los textos flotantes de los juegos (`juice().float_text`, con un 4.º argumento de escala para el 2.5D), las consolas del resumen (`ScorePedestal`) y los bloques del podio usan `UiTheme.draw_toy_tile`: color pleno, canto oscuro abajo, sin brillo blanco encima. El título del juego en el resumen es un `TvLogoTitle` como en la intro. Al tocar el plástico de las mascotas (`toy_plastic.gdshader`, `Mascot3D._toy_material`) medir contra la maqueta con el método de `docs/ARTE.md` (proporciones por zonas con PIL) antes y después.
+
 ## Después de cambiar algo
 
 Tests + skill `verificar-visual`. Si el cambio es de identidad visual, actualizar `docs/adr/0004-sistema-visual.md`.

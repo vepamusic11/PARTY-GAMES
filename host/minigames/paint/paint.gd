@@ -44,7 +44,16 @@ const EMPTY := -1                 ## Baldosa sin pintar.
 
 const SPEED := 620.0              ## Igual que Arena.
 const SPEED_BOOST := 1.6
-const MASCOT_SCALE := 0.8
+## Tamaño de la mascota. Medido contra la maqueta (docs/design/
+## referencia_juego_pintar.webp): ahí la cabeza de la mascota de adelante
+## mide ~1,5 baldosas de ancho y la de atrás ~1,2; con 0,8 las nuestras
+## medían ~0,85 (con 1,3 miden ~1,4 y ~1,2). Con la escala por profundidad del 2.5D (0,93–1,07) todos
+## los tamaños caen en el mismo nivel del atlas (MascotAtlas.TIERS_U 1,45):
+## un solo horneado por jugador, el de la intro.
+const MASCOT_SCALE := 1.3
+## A este tamaño la intro no precalienta sola la caminata (MascotAtlas.GAME_WALK_MAX_U:
+## los juegos con mascotas grandes no suelen caminar); acá sí caminan.
+const MASCOT_PREWARM := [[MASCOT_SCALE, ["walk@0"]]]
 const NAME_OFFSET := 26.0         ## Nombre debajo de los pies.
 ## Los pies llegan casi al borde: así se pueden pintar todas las baldosas.
 const MOVE_MARGIN_X := 20.0
@@ -333,8 +342,10 @@ func _pickup_fx(pid: int, at: Vector2, kind: int) -> void:
 		return
 	juice().sparkles(_screen(at))
 	juice().shine(_screen(at), 80.0)
-	juice().float_text("¡Brocha!" if kind == PowerUp.BRUSH else "¡Rápido!", _screen(_pos[pid]) + Vector2(0, -165),
-		player_by_id(pid).get("color", UiTheme.GOLD))
+	# Ficha chica arriba del globito 1P–4P, a la escala de la mascota (no tapa el tablero).
+	var d := _depth(_pos[pid])
+	juice().float_text("¡Brocha!" if kind == PowerUp.BRUSH else "¡Rápido!", _screen(_pos[pid]) + Vector2(0, -196.0 * MASCOT_SCALE) * d,
+		player_by_id(pid).get("color", UiTheme.GOLD), d)
 
 
 ## "¡Tiempo!": cartel con golpe de escala y confeti sobre los que van ganando.

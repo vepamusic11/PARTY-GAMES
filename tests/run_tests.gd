@@ -1385,8 +1385,8 @@ func test_games_have_dioramas() -> void:
 		var tex := GameCard.diorama(info.id)
 		if FileAccess.file_exists(path) and check_that(tex != null, "%s: el diorama no está importado" % info.id):
 			var ratio := tex.get_width() / float(tex.get_height())
-			check(tex.get_width() >= 600 and ratio > 2.5 and ratio < 3.0,
-				"%s: diorama apaisado (≈ 2,7:1) de al menos 600 px (%dx%d)" % [info.id, tex.get_width(), tex.get_height()])
+			check(tex.get_width() >= 600 and ratio > 2.4 and ratio < 3.0,
+				"%s: diorama apaisado (≈ 2,5:1) de al menos 600 px (%dx%d)" % [info.id, tex.get_width(), tex.get_height()])
 			check(GameCard.card_art(info.id) == tex and GameCard.diorama(info.id) == tex, "%s: la tarjeta usa el diorama (una sola carga)" % info.id)
 	check(GameCard.diorama("juego_sin_diorama") == null and GameCard.card_art("juego_sin_diorama") == null,
 		"sin diorama ni captura: dibujo de respaldo")

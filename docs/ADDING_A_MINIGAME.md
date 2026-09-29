@@ -93,7 +93,7 @@ Mientras no tenga miniatura, la tarjeta usa un dibujo genérico con el ícono de
 
 ### Diorama de la tarjeta (ADR 0018)
 
-La tarjeta del lobby muestra, antes que la captura, un **diorama 3D** del juego (`assets/thumbs/diorama/<id>.webp`, 648×240): una escena chica de juguete como la de la maqueta. Un juego sin receta propia sale con la **genérica** (escenario redondo con baldosas de su `accent` y su control —joystick, botón o deslizador— como pieza grande), así que alcanza con correr:
+La tarjeta del lobby muestra, antes que la captura, un **diorama 3D** del juego (`assets/thumbs/diorama/<id>.webp`, 660×260): una escena chica de juguete como la de la maqueta. Un juego sin receta propia sale con la **genérica** (escenario redondo con baldosas de su `accent` y su control —joystick, botón o deslizador— como pieza grande), así que alcanza con correr:
 
 ```bash
 xvfb-run -a -s "-screen 0 1920x1080x24" godot --path . --rendering-driver opengl3 \
@@ -169,7 +169,7 @@ Que cada acción se *sienta*: partículas, números que saltan, un temblor leve.
 
 ```gdscript
 juice().sparkles(pos)                           # estrellitas (también shine, dust, sparks, confetti, splash)
-juice().float_text("+1", cabeza, p.color)       # número flotante del color del jugador
+juice().float_text("+1", cabeza, p.color)       # ficha flotante del color del jugador (4.º arg. opcional: escala, ej. la profundidad del 2.5D)
 juice().stop_dust(pid, axis.length(), pies)     # polvo al frenar de golpe (llamar en cada paso)
 juice().shake(0.8)                              # sacudida leve en golpes grandes
 juice().zoom_punch(pos)                         # zoom sutil hacia un punto

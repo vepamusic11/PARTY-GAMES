@@ -39,6 +39,13 @@ uniform float rim_strength = 0.3;
 uniform float spec_strength = 0.9;
 uniform float spec_size = 0.05;      // Tamaño del reflejo nítido (0 = nada; 0,05 ≈ 18°).
 uniform float spec_stretch = 1.35;   // > 1: el reflejo se estira en diagonal, siguiendo la curva.
+// Borde del reflejo nítido: 0,012 es un corte "pintado"; más grande, un
+// reflejo "jugoso" que se funde con el color (el de la maqueta: ~0,05).
+uniform float spec_soft = 0.012;
+// Cuánto se ensancha la zona de sombra de la rampa (0 = la de siempre: corta,
+// de juguete plano; 1 = el volumen de esfera de la maqueta: la sombra sube
+// hasta la mitad de la pieza y el color pleno queda arriba a la izquierda).
+uniform float shade_spread = 0.0;
 uniform float coat_strength = 0.18;
 uniform float coat_power = 10.0;
 uniform vec3 edge_color : source_color = vec3(0.5);
@@ -76,8 +83,10 @@ void vertex() {
 // Rampa de tres colores con transiciones suaves pero cortas (más "juguete"
 // que un degradé lineal). t: 0 sombra, 1 luz.
 vec3 ramp(vec3 lo, vec3 mi, vec3 hi, float t) {
-	return t < 0.5
-		? mix(lo, mi, smoothstep(0.1, 0.5, t))
+	float a = mix(0.1, -0.2, shade_spread);   // Desde dónde empieza a aclararse la sombra…
+	float b = mix(0.5, 0.64, shade_spread);   // …y dónde llega al color pleno.
+	return t < b
+		? mix(lo, mi, smoothstep(a, b, t))
 		: mix(mi, hi, smoothstep(0.82, 1.0, t));
 }
 
@@ -93,6 +102,10 @@ void fragment() {
 	// Relleno: levanta un poco la sombra del lado derecho.
 	float fill = max(dot(n, normalize(LIGHT_FILL)), 0.0);
 	col = mix(col, mid_color, fill * 0.28 * (1.0 - smoothstep(0.1, 0.6, d)));
+	// Volumen de esfera (shade_spread): la mitad de abajo de la pieza queda en
+	// una sombra graduada aunque el relleno la alcance, como el mentón de la
+	// capucha y la panza de la maqueta.
+	col = mix(col, low_color, shade_spread * 0.5 * smoothstep(0.2, -0.75, n.y));
 	// Rebote del piso: las caras que miran abajo reciben luz clara.
 	col = mix(col, bounce_color, smoothstep(-0.2, -0.95, n.y) * bounce_strength);
 	// Sombra de la cabeza (cuerpo): más fuerte cuanto más arriba.
@@ -142,7 +155,7 @@ void fragment() {
 	vec3 hx = normalize(vec3(1.0, 1.0, 0.0));
 	vec3 ns = normalize(n - hx * dot(n - h, hx) * (1.0 - 1.0 / spec_stretch));
 	float cut = 1.0 - spec_size;
-	float spec = smoothstep(cut, cut + 0.012, dot(ns, h));
+	float spec = smoothstep(cut, cut + spec_soft, dot(ns, h));
 	col = mix(col, vec3(1.0), spec * spec_k);
 	// Gema / foco: centro blanco caliente que no depende de la luz.
 	col = mix(col, high_color, glow * smoothstep(0.55, 1.0, ndv));

@@ -27,7 +27,7 @@ extends RefCounted
 const GROUP := &"props3d"
 
 ## Versión de las recetas: subirla invalida la caché en disco.
-const VERSION := 2
+const VERSION := 3  ## 3: toy_plastic.gdshader con spec_soft y shade_spread (vuelta 2 de dirección de arte).
 
 ## Apagado a mano (benchmark A/B, o si una TV no se lleva bien con el 3D).
 static var enabled := true

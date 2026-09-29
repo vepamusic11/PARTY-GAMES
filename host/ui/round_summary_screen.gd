@@ -26,7 +26,7 @@ const REVEAL_GAP := 0.45
 var paused := false  ## Con el menú de pausa abierto no corre la cuenta regresiva.
 
 var _bar: ScoreBar
-var _title: Label
+var _title: TvLogoTitle
 var _subtitle: Label
 var _columns: HBoxContainer
 var _next: Label
@@ -209,7 +209,8 @@ func _build() -> void:
 
 	_bar = ScoreBar.new()
 	col.add_child(_bar)
-	_title = UiTheme.headline("", 76)
+	# Título "de logo" (letras amarillas con brillo), como en la intro y el lobby.
+	_title = TvLogoTitle.new("", UiTheme.SUMMARY_TITLE_SIZE)
 	col.add_child(_title)
 	_subtitle = UiTheme.label("", 30, UiTheme.INK, true)
 	_subtitle.add_theme_constant_override("outline_size", 8)
