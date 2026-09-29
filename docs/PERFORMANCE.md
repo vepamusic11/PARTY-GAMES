@@ -244,6 +244,24 @@ Todas las mascotas se dibujan como un sprite del atlas horneado (`MascotAtlas`, 
 - Al irse un jugador (o cambiar de color o estilo en el lobby) su apariencia se suelta a los ~3 s (`MascotAtlas.keep_only`, lo llama el host en cada cambio de jugadores y el celular con la suya).
 - Durante el horneado se reserva además un viewport temporal (≤ 1 MP con supersampling, ≈ 8 MB con profundidad) que se suelta al terminar.
 
+**Precalentado por juego** (29/09/2026, `tools/mascot_prewarm_check.gd`: hace lo mismo que la intro, espera a que termine el horneado y juega la partida entera con 4 bots; cuenta las poses pedidas recién al dibujar, cada una un tirón chico y unos cuadros con la pose parecida). Cada juego declara en `MASCOT_PREWARM` las poses que dibuja además de las típicas (cara de susto caminando, festejo caminando al final, la tribuna) y `MASCOT_SCALE` si no dibuja a 0,8:
+
+| Juego | Tarde antes | Tarde después | Precalentado (llvmpipe) | Atlas tras la intro |
+|---|---:|---:|---:|---:|
+| Empujones (sumo) | 16 | 0 | 4,4 s | 32,6 MB |
+| Karts | 4 | 0 | 3,0 s | 17,7 MB |
+| ¡Que no te deje la cámara! | 17 | 0 | 5,3 s | 33,4 MB |
+| Esquivar | 25 | 0 | 4,1 s | 32,6 MB |
+| Carrera de obstáculos | 13 | 0 | 3,3 s | 25,5 MB |
+| Carrera de toques (dibujaba a u 1,3 y se precalentaba a 0,8) | 5 | 0 | 3,3 s | 29,3 MB |
+| Ping Pong (u 1,6; ídem) | 5 | 0 | 1,0 s | 11,4 MB |
+| Arena de estrellas · Pintar el piso | 1 · 1 | 1 · 1 | 3,0 s | 21,5 MB |
+| Reloj exacto, Memoria de colores, Desenfunde, Pool loco | 0 | 0 | — | — |
+| **Total** | **87** | **2** | | |
+
+- Lo que queda: un cuadro de festejo caminando al final de Arena y de Pintar el piso (una pose; no justifica 24 poses más por jugador).
+- El atlas llega a ~33 MB con 4 jugadores en los juegos con más poses (incluye ~13,6 MB de poses de pantalla a 2,25): entra en el presupuesto de 40 MB y al pasar al juego siguiente se sueltan las hojas que ya no se dibujan.
+
 Cómo repetirlo:
 
 ```bash

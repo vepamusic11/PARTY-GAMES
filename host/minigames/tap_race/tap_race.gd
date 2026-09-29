@@ -8,6 +8,11 @@ const MAX_TAPS_PER_SEC := 14  ## Tope humano: frena scripts o controles trucados
 const TRACK_LEFT := 320.0
 const TRACK_RIGHT := 1700.0
 const LANE_HEIGHT := 180.0
+## Tamaño de las mascotas (u de PlayerAvatar): el precalentado de la intro
+## las hornea a este tamaño, con la carrera hacia la derecha (normal y feliz
+## al llegar), que no está entre las poses típicas a este tamaño.
+const MASCOT_SCALE := 1.3
+const MASCOT_PREWARM := [[MASCOT_SCALE, ["walk_r@0", "walk_r@1"]]]
 
 var _taps: Dictionary = {}       # player_id -> int
 var _was_down: Dictionary = {}   # player_id -> bool
@@ -116,7 +121,7 @@ func _draw() -> void:
 		var progress := float(_taps[p.id]) / TAPS_TO_WIN
 		var x := lerpf(TRACK_LEFT + 20.0, TRACK_RIGHT - 30.0, progress)
 		var hop := absf(sin(float(_taps[p.id]) * PI / 2.0)) * 6.0 + celebrate_hop(p.id)
-		PlayerAvatar.draw_mascot(self, Vector2(x, y + LANE_HEIGHT - 16), 1.3, p.color, PlayerAvatar.style_of(p),
+		PlayerAvatar.draw_mascot(self, Vector2(x, y + LANE_HEIGHT - 16), MASCOT_SCALE, p.color, PlayerAvatar.style_of(p),
 			PlayerAvatar.Mood.HAPPY if _taps[p.id] >= TAPS_TO_WIN else PlayerAvatar.Mood.NORMAL, 0.0, hop, false,
 			# Cada toque es medio paso: la mascota corre al ritmo del dedo.
 			{"t": anim_time + p.slot, "walk": _taps[p.id] * 0.5 if _taps[p.id] > 0 else -1.0,

@@ -475,14 +475,10 @@ func _refresh_lobby() -> void:
 
 
 ## Mientras se lee la intro "¿Cómo se juega?", hornea las mascotas al
-## tamaño del juego (su MASCOT_SCALE, si lo declara) y verifica las de
-## pantalla: al arrancar el juego ya están.
+## tamaño del juego (su MASCOT_SCALE, si lo declara), sus poses extra
+## (MASCOT_PREWARM) y verifica las de pantalla: al arrancar el juego ya están.
 func _prewarm_mascots(game_id: String, players: Array[Dictionary]) -> void:
-	var u := 0.8
-	for script in MiniGameRegistry.GAMES:
-		if script.call("get_info").id == game_id:
-			u = float(script.get_script_constant_map().get("MASCOT_SCALE", u))
-	MascotAtlas.prewarm_game(players, u)
+	MascotAtlas.prewarm_game(players, MiniGameRegistry.mascot_scale(game_id), MiniGameRegistry.mascot_prewarm(game_id))
 
 
 # --- UI ---------------------------------------------------------------------------

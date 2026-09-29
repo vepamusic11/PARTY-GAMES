@@ -21,6 +21,9 @@ const GO_SEC := 0.8               ## Cuánto se ve "¡YA!" después del 1.
 const FIELD := Rect2(160, 140, 1600, 860)
 const SPEED := 620.0              ## Igual que Arena.
 const MASCOT_SCALE := 0.8
+## Poses extra que se hornean en la intro (MascotAtlas.prewarm_game): cara de
+## susto caminando con un bloque cerca y festejo caminando al final.
+const MASCOT_PREWARM := [[MASCOT_SCALE, ["walk@3", "walk@1"]]]
 const HIT_RADIUS := 28.0          ## Radio del "pie" de la mascota para choques.
 const NAME_OFFSET := 26.0         ## Nombre debajo de los pies.
 ## Márgenes para que la mascota (hacia arriba) y el nombre (hacia abajo)

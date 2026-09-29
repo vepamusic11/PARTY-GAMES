@@ -75,8 +75,13 @@ static var release_after_msec := RELEASE_AFTER_MSEC
 ## Imprime cada horneado (tools/mascot_atlas_check.gd).
 static var log_jobs := false
 ## Estadísticas para medir (tools/benchmark.gd, docs/PERFORMANCE.md).
+## "late": poses que se pidieron recién al dibujar (no estaban precalentadas):
+## en la TV son un tirón chico y un cuadro con la pose parecida.
 static var stats := {"jobs": 0, "poses": 0, "worst_frame_ms": 0.0, "cpu_ms": 0.0, "failures": 0,
-	"last_job": {}, "released": 0}
+	"last_job": {}, "released": 0, "late": 0}
+## Poses horneadas tarde: "<pose> u=<tamaño>" -> veces (para medir el
+## precalentado: tools/mascot_prewarm_check.gd). Se puede vaciar a mano.
+static var late_poses: Dictionary = {}
 
 static var _runner: MascotAtlas
 static var _entries: Dictionary = {}        # int (ver _key) -> Entry
@@ -284,6 +289,9 @@ static func lookup(col: Color, p_style: int, u: float, pose: String) -> Array:
 	if sheet == null:
 		if not e.pending.has(pose) and not pose_def(pose).is_empty():
 			_request(e, pose, true)
+			stats.late = int(stats.late) + 1
+			var lk := "%s u=%.2f" % [pose, e.native_u]
+			late_poses[lk] = int(late_poses.get(lk, 0)) + 1
 		for fb in fallbacks(pose):
 			sheet = e.poses.get(fb)
 			if sheet != null:
@@ -327,7 +335,8 @@ static func prewarm(looks: Array, u: float, poses: Array) -> void:
 			e = _new_entry(col, style, tier)
 		e.last_used = maxi(e.last_used, Time.get_ticks_msec())
 		for p: String in poses:
-			if not e.poses.has(p) and not e.pending.has(p) and mood_supported(int(p.get_slice("@", 1))):
+			if not e.poses.has(p) and not e.pending.has(p) and not pose_def(p).is_empty() \
+					and mood_supported(int(p.get_slice("@", 1))):
 				_request(e, p, false)
 
 
@@ -337,17 +346,43 @@ static func prewarm_screens(players: Array) -> void:
 
 
 ## Antes de un juego (durante la intro): las poses del juego al tamaño en
-## que las dibuja (u, su MASCOT_SCALE) y las de los avisos.
-static func prewarm_game(players: Array, u: float) -> void:
+## que las dibuja (u, su MASCOT_SCALE), las extra que declara el juego
+## (extra: lista de [u, poses], su MASCOT_PREWARM; ver expand_poses) y las
+## de los avisos. Las extra van antes que las de pantalla: se usan primero.
+static func prewarm_game(players: Array, u: float, extra: Array = []) -> void:
 	var looks := players.map(look_of)
 	var poses: Array[String] = GAME_POSES_STATIC.duplicate()
 	if u <= GAME_WALK_MAX_U:
-		for dir in ["r", "l", "f"]:
-			for i in WALK_FRAMES:
-				poses.append("walk_%s_%d@0" % [dir, i])
+		poses.append_array(expand_poses(["walk@0"]))
 	prewarm(looks, u, poses)
+	for item: Variant in extra:
+		if item is Array and (item as Array).size() == 2 and (item[0] is float or item[0] is int) and item[1] is Array:
+			prewarm(looks, float(item[0]), expand_poses(item[1]))
 	prewarm(looks, TOAST_U, ["idle@0", "idle@1", "idle@2"])
 	prewarm_screens(players)
+
+
+## Nombres de pose con atajos: "walk@M" son los 24 cuadros de caminata
+## (derecha, izquierda y de frente) con el ánimo M, "walk_r@M" (o _l, _f)
+## los 8 de una dirección y "wave@M" los 4 del saludo. Lo demás pasa tal
+## cual (lo inválido lo descarta prewarm).
+## Ejemplo: ["walk@3", "idle@2"] → walk_r_0@3 … walk_f_7@3, idle@2.
+static func expand_poses(poses: Array) -> Array[String]:
+	var out: Array[String] = []
+	for p: Variant in poses:
+		var s := str(p)
+		var base := s.get_slice("@", 0)
+		var m := s.get_slice("@", 1)
+		if base == "walk" or base in ["walk_r", "walk_l", "walk_f"]:
+			for dir in (["r", "l", "f"] if base == "walk" else [base[5]]):
+				for i in WALK_FRAMES:
+					out.append("walk_%s_%d@%s" % [dir, i, m])
+		elif base == "wave":
+			for i in 4:
+				out.append("wave_%d@%s" % [i, m])
+		elif not s in out:
+			out.append(s)
+	return out
 
 
 ## Estas son las apariencias que usa `owner` (ej. "tv" con los jugadores,

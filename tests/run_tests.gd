@@ -9,6 +9,8 @@ extends SceneTree
 ## 47994, la TV del test siguiente no podía abrir ese puerto y fallaba de
 ## forma intermitente en la CI.
 const TEST_PORT := 28990
+## Carpeta de la caché de música de los tests (ver _run).
+const TEST_MUSIC_CACHE := "user://test_music_cache/"
 
 var _passed := 0
 var _failed := 0
@@ -21,6 +23,10 @@ func _initialize() -> void:
 
 func _run() -> void:
 	print("\n=== Party Games · tests ===\n")
+	# La música generada se guarda en disco (MusicCache): en los tests, en una
+	# carpeta propia, nunca en la de la TV.
+	MusicCache.dir = TEST_MUSIC_CACHE
+	MusicCache.clear()
 	for method in get_method_list():
 		var n: String = method.name
 		if n.begins_with("test_"):
@@ -28,6 +34,7 @@ func _run() -> void:
 			var before := _failed
 			await call(n)
 			print(("  ok    " if _failed == before else "  FALLA ") + n)
+	MusicCache.clear()
 	print("\n%d ok, %d fallas\n" % [_passed, _failed])
 	await process_frame
 	quit(1 if _failed > 0 else 0)
@@ -4282,6 +4289,118 @@ func test_music_song_loop() -> void:
 	var s: AudioStreamOggVorbis = load(path)
 	check(s.loop and s.loop_offset > 10.0 and s.loop_offset < s.get_length() - 60.0,
 		"Breakpoint Rush vuelve a %.2f s (de %.1f s)" % [s.loop_offset, s.get_length()])
+
+
+## Caché en disco de la música generada (MusicCache, ADR 0017): lo guardado
+## se lee igual; una versión vieja o un archivo roto se descartan (y se
+## borran) sin romper nada; la carpeta no pasa del límite.
+func test_music_cache() -> void:
+	check(MusicCache.dir == TEST_MUSIC_CACHE, "los tests no usan la caché de la TV")
+	MusicCache.clear()
+	var s := MusicGen.render("fiesta", "summary", 1)
+	check(MusicCache.load_track("fiesta", "summary", 1) == null, "sin archivo no hay nada")
+	check(MusicCache.save_track("fiesta", "summary", s, 1), "guarda la pista")
+	var path := MusicCache.path_for("fiesta", "summary")
+	check(FileAccess.file_exists(path) and not FileAccess.file_exists(path + ".tmp"), "queda el archivo (sin temporal)")
+	var back := MusicCache.load_track("fiesta", "summary", 1)
+	check(back != null and back.data == s.data and back.stereo and back.mix_rate == s.mix_rate
+		and back.loop_mode == AudioStreamWAV.LOOP_FORWARD and back.loop_end == s.loop_end, "se lee igual que se compuso")
+	# Firma: cambia con la receta, los compases o la versión del sintetizador.
+	check(MusicCache.signature("fiesta", "summary", 1) != MusicCache.signature("fiesta", "summary", 2)
+		and MusicCache.signature("fiesta", "summary", 1) != MusicCache.signature("fiesta", "lobby", 1)
+		and MusicCache.signature("no-existe", "lobby") == "", "la firma depende de la receta y los compases")
+	# Versión vieja: otra firma en el archivo -> se descarta y se borra.
+	var bytes := FileAccess.get_file_as_bytes(path)
+	bytes[12] = (bytes[12] + 1) % 128  # Primer carácter de la firma.
+	_write_bytes(path, bytes)
+	check(MusicCache.load_track("fiesta", "summary", 1) == null and not FileAccess.file_exists(path),
+		"una pista de otra versión se descarta y se borra")
+	# Archivos rotos: vacío, cortado, basura y cuadros imposibles.
+	MusicCache.save_track("fiesta", "summary", s, 1)
+	var good := FileAccess.get_file_as_bytes(path)
+	var huge := good.duplicate()
+	var frames_at := 12 + MusicCache.signature("fiesta", "summary", 1).length() + 4
+	huge.encode_u32(frames_at, 0x7fffffff)
+	for bad: PackedByteArray in [PackedByteArray(), good.slice(0, good.size() / 2), "hola, no soy música".to_utf8_buffer(),
+			good.slice(0, 20), huge]:
+		_write_bytes(path, bad)
+		check(MusicCache.load_track("fiesta", "summary", 1) == null and not FileAccess.file_exists(path),
+			"un archivo roto (%d bytes) no rompe y se borra" % bad.size())
+	check(not MusicCache.save_track("fiesta", "summary", null, 1) and not MusicCache.save_track("no-existe", "lobby", s),
+		"no guarda pistas nulas ni recetas desconocidas")
+	# Límite de tamaño: con lugar para dos pistas, al guardar la tercera se borra la más vieja.
+	var one := good.size()
+	MusicCache.max_bytes = one * 2 + one / 2
+	MusicCache.save_track("fiesta", "summary", s, 1)
+	MusicCache.save_track("fiesta", "podium", MusicGen.render("fiesta", "podium", 1), 1)
+	MusicCache.save_track("latino", "lobby", MusicGen.render("latino", "lobby", 1), 1)
+	check(MusicCache.total_bytes() <= MusicCache.max_bytes and MusicCache.list_files().size() == 2,
+		"la caché no pasa del límite (%d archivos, %d bytes)" % [MusicCache.list_files().size(), MusicCache.total_bytes()])
+	check(MusicCache.load_track("latino", "lobby", 1) != null, "la recién guardada queda")
+	MusicCache.max_bytes = MusicCache.MAX_BYTES
+	# Apagada: ni lee ni escribe.
+	MusicCache.enabled = false
+	check(MusicCache.load_track("latino", "lobby", 1) == null and not MusicCache.save_track("fiesta", "lobby", s, 1),
+		"apagada no toca el disco")
+	MusicCache.enabled = true
+	MusicCache.clear()
+	check(MusicCache.list_files().is_empty(), "clear() vacía la caché")
+
+
+## Mientras se compone una pista generada y no sonaba nada (TV recién
+## prendida), suena el suplente (Retro) en vez de silencio; la generada entra
+## sola y queda en disco: en el "arranque siguiente" se lee de la caché.
+func test_music_stand_in_and_cache() -> void:
+	var before := MusicStyles.style
+	var path_before := MusicStyles.prefs_path
+	MusicStyles.prefs_path = ""  # No tocar los ajustes reales de la TV.
+	var bars_before := Music.gen_bars
+	Music.gen_bars = 1
+	MusicStyles.style = MusicStyles.FIESTA
+	MusicCache.clear()
+	var music := Music.new()
+	root.add_child(music)
+	Music.play("lobby")
+	check(music.is_waiting() and music.is_playing_stand_in(), "la pista se compone y mientras tanto suena el suplente")
+	var p := music._players[music._active]
+	var stand_in := music.stand_in_stream("lobby")
+	check(stand_in != null and p.stream == stand_in and p.playing, "el suplente es el lobby Retro")
+	_advance_music(music, Music.FADE + 0.1)
+	check(is_equal_approx(music.gains()[music._active], 1.0), "el suplente suena a pleno (no hay silencio)")
+	var t0 := Time.get_ticks_msec()
+	while music.is_waiting() and Time.get_ticks_msec() - t0 < 30000:
+		await process_frame
+		music.advance(1.0 / 60.0)
+	_advance_music(music, Music.FADE + 0.1)
+	p = music._players[music._active]
+	check(not music.is_waiting() and not music.is_playing_stand_in() and p.stream is AudioStreamWAV
+		and is_equal_approx(music.gains()[music._active], 1.0), "la pista generada reemplaza al suplente con fundido")
+	check(MusicCache.load_track(MusicStyles.FIESTA, "lobby", 1) != null, "la pista compuesta quedó en disco")
+	music.queue_free()
+	await process_frame
+	# "Arranque siguiente": la pista sale de la caché (y es la misma música).
+	var again := Music.new()
+	root.add_child(again)
+	Music.play("lobby")
+	t0 = Time.get_ticks_msec()
+	while again.is_waiting() and Time.get_ticks_msec() - t0 < 30000:
+		await process_frame
+		again.advance(1.0 / 60.0)
+	p = again._players[again._active]
+	check(p.stream is AudioStreamWAV and (p.stream as AudioStreamWAV).data == MusicGen.render(MusicStyles.FIESTA, "lobby", 1).data,
+		"desde la caché suena la misma pista")
+	again.queue_free()
+	await process_frame
+	MusicCache.clear()
+	Music.gen_bars = bars_before
+	MusicStyles.style = before
+	MusicStyles.prefs_path = path_before
+
+
+func _write_bytes(path: String, bytes: PackedByteArray) -> void:
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	f.store_buffer(bytes)
+	f.close()
 # --- Pantallas: intro, pausa, avisos, selector (agente) -----------------------------
 
 ## Intro: pasos con ícono (uno por oración) y ready check: tocar el celular
@@ -4657,6 +4776,69 @@ func test_mascot_atlas_cache() -> void:
 	check(MascotAtlas.pose_count() == 0 and MascotAtlas.memory_bytes() == 0 and MascotAtlas.is_idle(), "clear() deja todo vacío")
 	MascotAtlas.fake_render = false
 	MascotAtlas.release_after_msec = MascotAtlas.RELEASE_AFTER_MSEC
+
+
+## Sin escalón de luz entre celdas: el shader de plástico usa la dirección
+## de la vista desde cada punto (VIEW) aunque la cámara sea ortográfica, así
+## que la mascota de la celda del borde tiene que verse casi desde el mismo
+## ángulo que la del centro (< 1°). Con la cámara a 80 u eran ~60° y el
+## brillo medio de la misma pose variaba 14/255 (medido en xvfb con
+## tools/mascot_atlas_check.gd, que ahora falla si pasa de 1,5).
+func test_mascot_atlas_uniform_light() -> void:
+	for u in MascotAtlas.TIERS_U:
+		var cell := Mascot3DBaker.atlas_cell_px(u)
+		var grid := Mascot3DBaker.job_grid(cell)
+		var vp := Mascot3DBaker.make_viewport(Vector2i(grid.x * cell.x, grid.y * cell.y) * Mascot3DBaker.SUPERSAMPLE,
+			grid.x, grid.y, Mascot3D.Shading.TOON, Mascot3DBaker.ATLAS_CELL.y)
+		var cams := vp.find_children("*", "Camera3D", false, false)
+		if not check_that(cams.size() == 1, "el viewport de horneado tiene su cámara"):
+			vp.free()
+			return
+		var cam := cams[0] as Camera3D
+		var cell_w := Mascot3DBaker.ATLAS_CELL.y * cell.x / float(cell.y)
+		var worst := 0.0
+		for j in grid.y:
+			for i in grid.x:
+				var o := Mascot3DBaker.cell_origin(i, j, grid.x, grid.y, Vector2(cell_w, Mascot3DBaker.ATLAS_CELL.y),
+					Mascot3DBaker.ATLAS_FEET)
+				worst = maxf(worst, rad_to_deg((cam.position - o).angle_to(cam.basis.z)))
+		check(worst < 1.0, "u=%.2f (%d×%d celdas): la vista cambia %.2f° entre celdas" % [u, grid.x, grid.y, worst])
+		# Toda la mascota (±10 u alrededor del plano de la grilla) entre near y far.
+		var depth := cam.position.dot(cam.basis.z)
+		check(cam.near < depth - 10.0 and cam.far > depth + 10.0, "la grilla entra entre near y far")
+		vp.free()
+
+
+## Precalentado de poses extra (MASCOT_PREWARM de cada juego): los atajos se
+## expanden, todo lo que declaran los juegos es válido y prewarm_game encola
+## esas poses al tamaño pedido (para que no se horneen recién al dibujar,
+## medido con tools/mascot_prewarm_check.gd).
+func test_mascot_prewarm_extra() -> void:
+	var walk := MascotAtlas.expand_poses(["walk@3", "walk_r@1", "wave@1", "idle@2", "idle@2"])
+	check(walk.size() == 24 + 8 + 4 + 1 and "walk_f_7@3" in walk and "walk_r_0@1" in walk and not "walk_l_0@1" in walk
+		and "wave_3@1" in walk, "atajos de poses: %d" % walk.size())
+	for info in MiniGameRegistry.all_info():
+		var id: String = info.id
+		var u := MiniGameRegistry.mascot_scale(id)
+		check(u > 0.2 and u < 4.0, "%s: MASCOT_SCALE razonable (%.2f)" % [id, u])
+		for item: Variant in MiniGameRegistry.mascot_prewarm(id):
+			if not check_that(item is Array and item.size() == 2 and item[1] is Array, "%s: MASCOT_PREWARM es [[u, poses]]" % id):
+				continue
+			for pose in MascotAtlas.expand_poses(item[1]):
+				check(not MascotAtlas.pose_def(pose).is_empty(), "%s: la pose %s existe" % [id, pose])
+	check(MiniGameRegistry.mascot_scale("no-existe") == 0.8 and MiniGameRegistry.mascot_prewarm("no-existe").is_empty(),
+		"juego desconocido: valores por defecto")
+	# Con render simulado: las extra se encolan (y lo inválido se ignora).
+	MascotAtlas.clear()
+	MascotAtlas.fake_render = true
+	var players := [{"id": 1, "slot": 0, "color": Color.RED, "style": 2}]
+	MascotAtlas.prewarm_game(players, 0.85)
+	var base := MascotAtlas.pending_count()
+	MascotAtlas.clear()
+	MascotAtlas.prewarm_game(players, 0.85, [[0.85, ["walk@3", "no-es-pose", "look_x@1"]], "basura", [0.56, ["look_l@3"]]])
+	check(MascotAtlas.pending_count() == base + 24 + 1, "encola las 25 poses extra (%d → %d)" % [base, MascotAtlas.pending_count()])
+	MascotAtlas.clear()
+	MascotAtlas.fake_render = false
 # --- Piezas 3D horneadas (core/art3d, ADR 0016) ------------------------------------
 
 ## Sin pantalla (--headless) no hay atlas: todo cae en el dibujo 2D de

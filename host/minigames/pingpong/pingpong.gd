@@ -8,6 +8,10 @@ const TABLE := Rect2(610, 130, 700, 900)
 const PADDLE_SIZE := Vector2(150, 22)
 const PADDLE_MARGIN := 50.0
 const BALL_RADIUS := 16.0
+## Tamaño de las mascotas (u de PlayerAvatar) y poses extra para el
+## precalentado de la intro: el que va ganando mira la pelota contento.
+const MASCOT_SCALE := 1.6
+const MASCOT_PREWARM := [[MASCOT_SCALE, ["look_l@1", "look_r@1", "look_u@1", "look_d@1"]]]
 const BALL_START_SPEED := 620.0
 const BALL_SPEEDUP := 1.06
 const PADDLE_FOLLOW := 18.0  ## Suavizado: evita saltos si llegan inputs con jitter.
@@ -171,7 +175,7 @@ func _draw() -> void:
 		var side := _mascot_feet(top)
 		# Siguen la pelota con la mirada.
 		var look := (_ball - (side + Vector2(0, -80))).normalized()
-		PlayerAvatar.draw_mascot(self, side, 1.6, p.color, PlayerAvatar.style_of(p),
+		PlayerAvatar.draw_mascot(self, side, MASCOT_SCALE, p.color, PlayerAvatar.style_of(p),
 			PlayerAvatar.Mood.HAPPY if _score[pid] > _score[_other(pid)] else PlayerAvatar.Mood.NORMAL,
 			0.0, celebrate_hop(pid), false, {"t": anim_time + p.slot, "look": look, "wave": is_celebrating(pid)})
 	UiTheme.draw_ellipse(self, _ball + Vector2(6, 10), BALL_RADIUS, BALL_RADIUS * 0.7, Color(0, 0, 0, 0.25))

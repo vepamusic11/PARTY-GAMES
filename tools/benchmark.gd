@@ -231,7 +231,7 @@ func _measure(scene: String, mode: String = "3d") -> void:
 		var players := _game_players if not _game_id.is_empty() else _fake_players(4)
 		MascotAtlas.prewarm_screens(players)
 		if not _game_id.is_empty():
-			MascotAtlas.prewarm_game(players, _mascot_scale(_game_id))
+			MascotAtlas.prewarm_game(players, _mascot_scale(_game_id), MiniGameRegistry.mascot_prewarm(_game_id))
 		for i in 2:
 			var t0 := Time.get_ticks_msec()
 			while not MascotAtlas.is_idle() and Time.get_ticks_msec() - t0 < 60000:
@@ -454,10 +454,7 @@ func _make_controller(layout: String) -> Node:
 
 ## MASCOT_SCALE del juego (u de sus mascotas), para precalentar el atlas.
 func _mascot_scale(game_id: String) -> float:
-	for script in MiniGameRegistry.GAMES:
-		if script.call("get_info").id == game_id:
-			return float(script.get_script_constant_map().get("MASCOT_SCALE", 0.8))
-	return 0.8
+	return MiniGameRegistry.mascot_scale(game_id)
 
 
 func _fake_players(n: int) -> Array[Dictionary]:

@@ -33,6 +33,16 @@ const FEET_MARGIN := 0.6
 const PITCH_DEG := 8.0
 ## Supersampling: se renderiza al doble y se achica (bordes suaves sin MSAA).
 const SUPERSAMPLE := 2
+## Distancia de la cámara del horneado (u del mundo). Concepto: el shader de
+## plástico calcula la dirección de la vista (VIEW) desde cada punto hacia la
+## cámara aunque la cámara sea ortográfica. Con la cámara cerca (antes, 80 u)
+## una mascota en la celda del borde de un trabajo de 24 celdas (a ~140 u del
+## centro) se veía desde ~60° de costado: brillos corridos y un "escalón" de
+## luz entre celdas (brillo medio 143 → 157 de 255 en la misma pose). A
+## 10 000 u la diferencia es < 1°: todas las celdas se ven como la del centro.
+## No se aleja más (como las piezas de ADR 0016, a 100 000 u) para no perder
+## precisión de profundidad en las piezas chicas (ojos, contorno a 0,18 u).
+const CAM_DISTANCE := 10000.0
 ## Lado máximo del viewport de horneado (GLES3 garantiza 2048; la mayoría 4096+).
 const MAX_VIEWPORT := 4096
 
@@ -431,10 +441,10 @@ static func make_viewport(px: Vector2i, cols := 1, rows := 1, p_shading := Masco
 	cam.projection = Camera3D.PROJECTION_ORTHOGONAL
 	cam.keep_aspect = Camera3D.KEEP_HEIGHT
 	cam.size = cell_h * rows
-	cam.near = 1.0
-	cam.far = 200.0
+	cam.near = CAM_DISTANCE - 500.0
+	cam.far = CAM_DISTANCE + 500.0
 	cam.basis = _cam_basis()
-	cam.position = cam.basis.z * 80.0
+	cam.position = cam.basis.z * CAM_DISTANCE
 	vp.add_child(cam)
 	var env := WorldEnvironment.new()
 	env.environment = Environment.new()

@@ -84,6 +84,9 @@ const AUTOPILOT_LOOKAHEAD := 110.0
 
 # --- Dibujo ---------------------------------------------------------------------
 const MASCOT_SCALE := 0.56
+## Poses extra que se hornean en la intro (MascotAtlas.prewarm_game): cara de
+## susto al patinar en un charco, mirando hacia donde va el kart.
+const MASCOT_PREWARM := [[MASCOT_SCALE, ["look_l@3", "look_r@3", "look_u@3", "look_d@3"]]]
 const SEAT_OFFSET := 12.0           ## Los pies de la mascota, abajo del centro del kart.
 const NAME_OFFSET := -1.0            ## Sin nombre abajo: en el pelotón se tapaban (el globito 1P–4P alcanza).
 const KART_LEN := 82.0

@@ -28,6 +28,10 @@ const SHOT_DELAY := {"stop_clock": 5.0, "dodge": 6.0, "paint": 8.0, "sumo": 4.5,
 ## Juegos en los que los controles de prueba mueven el joystick en círculos
 ## mientras esperan la captura (ej. para que se vea el piso pintado).
 const WANDER := ["paint", "sumo"]
+## Juegos en los que los controles de prueba avanzan hacia la derecha (con un
+## vaivén arriba y abajo) mientras esperan: en "¡Que no te deje la cámara!",
+## quietos los alcanza la cámara y el juego termina antes de la foto.
+const RUN_RIGHT := ["scroller"]
 ## Apariencia que piden los controles de prueba al unirse (ver Protocol.parse_look).
 ## Las capturas principales usan el cuarteto de la maqueta
 ## (docs/design/referencia_lobby.webp): la apariencia de cada lugar
@@ -181,6 +185,8 @@ func _run() -> void:
 		_expect(host._game != null, "arranca %s después de la intro" % game_id)
 		if game_id in WANDER:
 			await _wander(SHOT_DELAY.get(game_id, 2.5))
+		elif game_id in RUN_RIGHT:
+			await _run_right(SHOT_DELAY.get(game_id, 2.5))
 		else:
 			await _seconds(SHOT_DELAY.get(game_id, 2.5))
 		await _shot(root, game_id)
@@ -335,6 +341,19 @@ func _wander(s: float) -> void:
 		await _seconds(0.05)
 	for c in _clients:
 		c.send_input(Vector2.ZERO, 0)
+
+
+## Los controles de prueba avanzan hacia la derecha un poco más rápido que la
+## cámara de "¡Que no te deje la cámara!" (joystick a 0,45: ~250 px/s contra
+## 140–160 px/s), cada uno con su vaivén, durante `s` segundos. El del
+## celular (Juli) se queda quieto: la cámara lo alcanza y sale volando.
+func _run_right(s: float) -> void:
+	var start := Time.get_ticks_msec()
+	while Time.get_ticks_msec() - start < s * 1000.0:
+		var t := (Time.get_ticks_msec() - start) / 1000.0
+		for i in _clients.size():
+			_clients[i].send_input(Vector2(0.45, 0.7 * sin(t * (1.3 + i * 0.4) + i * 2.1)), 0)
+		await _seconds(0.05)
 
 
 ## Espera a que termine el barrido entre pantallas (Transition).

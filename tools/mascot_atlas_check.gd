@@ -3,7 +3,9 @@ extends SceneTree
 ## precalienta las poses de 4 jugadores como en la TV, espera a que termine,
 ## mide tiempos por cuadro, memoria y poses, y guarda una hoja 2D vs 3D
 ## (misma llamada a PlayerAvatar.draw_mascot, con el 3D apagado y prendido).
-## Sale con 1 si algo no se horneó.
+## Además hornea la MISMA pose en todas las celdas de un trabajo y compara el
+## brillo medio de cada celda (escalón de luz entre celdas: ver
+## `light_step()`). Sale con 1 si algo no se horneó o si hay escalón.
 ##
 ##   xvfb-run -a -s "-screen 0 1920x1080x24" godot --path . --rendering-driver opengl3 \
 ##     --audio-driver Dummy -s res://tools/mascot_atlas_check.gd -- --out=/tmp/atlas.png
@@ -51,6 +53,12 @@ func _run() -> void:
 	print("  Cuadro de la escena: base %s · horneando %s" % [_stats(base), _stats(baking)])
 	print("  Memoria: %.1f MB · fallas: %d" % [MascotAtlas.memory_bytes() / 1048576.0, s.failures])
 	var ok: bool = MascotAtlas.pose_count() > 0 and int(s.failures) == 0 and MascotAtlas.is_idle()
+	for u in [MascotAtlas.TIERS_U[0], MascotAtlas.TIERS_U[1]]:
+		var step := await light_step(root, Mascot3DBaker.atlas_cell_px(u))
+		print("    ", ", ".join(step["values"].map(func(v: float) -> String: return "%.0f" % v)))
+		print("  Escalón de luz (misma pose en %d celdas, u=%.2f): brillo %.1f–%.1f, diferencia %.2f (tope %.1f)" % [
+			step.cells, u, step.min, step.max, step.max - step.min, MAX_LIGHT_STEP])
+		ok = ok and step.cells > 1 and step.max - step.min <= MAX_LIGHT_STEP
 
 	# Hoja: arriba 2D, abajo 3D horneado (tamaños de juego y de pantalla).
 	var vp := SubViewport.new()
@@ -90,6 +98,47 @@ func _run() -> void:
 	vp.get_texture().get_image().save_png(_out)
 	print("Hoja 2D (arriba) vs 3D horneado (abajo): ", _out)
 	quit(0 if ok else 1)
+
+
+## Diferencia máxima tolerada de brillo medio (0–255) entre celdas con la
+## misma pose. Con la cámara del horneado cerca (80 u) daba ~9 en los bordes
+## de un trabajo de 24 celdas; con la cámara lejos, < 0,5 (ruido del render).
+const MAX_LIGHT_STEP := 1.5
+
+
+## Hornea la misma pose (quieta, roja) en todas las celdas de un trabajo del
+## tamaño cell y mide el brillo medio de lo opaco de cada celda.
+## Devuelve {"cells", "min", "max", "values"}.
+func light_step(host: Node, cell: Vector2i) -> Dictionary:
+	var grid := Mascot3DBaker.job_grid(cell)
+	var def := MascotAtlas.pose_def("idle@0")
+	var defs: Array = []
+	for i in grid.x * grid.y:
+		defs.append({"name": "c%d" % i, "mood": def.mood, "anim": def.anim})
+	var job := Mascot3DBaker.Job.new({"color": 0, "style": 0}, defs, cell)
+	while not job.step(host):
+		await process_frame
+	var out := {"cells": 0, "min": 999.0, "max": -1.0, "values": []}
+	if not job.ok:
+		return out
+	var img := job.texture.get_image()
+	img.save_png(_out.get_basename() + "_luz_%d.png" % cell.x)  # Para mirarla.
+	for i in defs.size():
+		var r: Rect2 = job.regions["c%d" % i]
+		var sum := 0.0
+		var n := 0
+		for y in range(int(r.position.y), int(r.end.y)):
+			for x in range(int(r.position.x), int(r.end.x)):
+				var c := img.get_pixel(x, y)
+				if c.a > 0.99:
+					sum += (c.r + c.g + c.b) / 3.0 * 255.0
+					n += 1
+		var v := sum / maxi(1, n)
+		out.values.append(v)
+		out.min = minf(out.min, v)
+		out.max = maxf(out.max, v)
+	out.cells = defs.size()
+	return out
 
 
 func _frame_times(n: int) -> Array[float]:

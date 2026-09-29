@@ -26,9 +26,11 @@ extends Node
 ## *Estilos* (ADR 0017): la misma pantalla suena distinto según el estilo
 ## elegido en la pausa (MusicStyles: PARTY-GAME, Fiesta, Latino, Relajado,
 ## Retro, Sin música). Los estilos "generados" los compone MusicGen en un hilo
-## de WorkerThreadPool, una pista por vez y empezando por la que se pidió;
-## mientras tanto sigue sonando lo anterior y la nueva entra con fundido
-## apenas está lista. `Music.set_style("latino")` cambia en el momento.
+## de WorkerThreadPool, una pista por vez y empezando por la que se pidió, y
+## quedan guardados en disco (MusicCache): desde el segundo arranque se leen.
+## Mientras tanto sigue sonando lo anterior (o, si no sonaba nada, el
+## suplente MusicStyles.STAND_IN) y la nueva entra con fundido apenas está
+## lista. `Music.set_style("latino")` cambia en el momento.
 
 ## Pistas (una por pantalla o energía de juego) y sus archivos del estilo
 ## Retro. Los otros estilos están en MusicStyles.
@@ -89,6 +91,7 @@ var _duck_target := 0.0
 var _duck_hold := 0.0
 var _paused := false
 var _waiting := false                             # `current` espera a que MusicGen la componga.
+var _playing_stand_in := false                    # Lo que suena es el suplente (MusicStyles.STAND_IN).
 var _gen_queue: Array[String] = []                # "estilo|pista" pendientes, en orden.
 var _gen_key := ""                                # La que se está componiendo.
 var _gen_task := -1
@@ -213,6 +216,11 @@ func is_waiting() -> bool:
 	return _waiting
 
 
+## true si lo que suena es el suplente de una pista que se está componiendo.
+func is_playing_stand_in() -> bool:
+	return _playing_stand_in
+
+
 ## Pistas generadas listas en memoria ("estilo|pista").
 func generated_ready() -> Array:
 	return _streams.keys().filter(func(k: String) -> bool: return k.begins_with("gen:"))
@@ -226,7 +234,7 @@ func advance(delta: float) -> void:
 		busy = true
 	if _waiting:
 		busy = true
-		if _stream(current) != null:
+		if _pending_delay <= 0.0 and _stream(current) != null:
 			_waiting = false
 			_start_track()
 	if _pending_delay > 0.0:
@@ -266,13 +274,17 @@ func _play(track: String, intro_jingle: String) -> void:
 	_waiting = false
 	var src := MusicStyles.resolve(current_style, current) if not current.is_empty() else {}
 	if src.has("generated") and _stream(current) == null:
-		# Todavía se está componiendo: sigue lo que suena y entra al estar lista.
+		# Todavía se está componiendo: entra con fundido apenas esté lista.
 		_request_generated(str(src.generated), current)
-		if Jingles.has_jingle(intro_jingle):
-			_jingle(intro_jingle)
 		_waiting = true
-		set_process(true)
-		return
+		if _audible() and not _playing_stand_in:
+			# Mientras tanto sigue lo que suena.
+			if Jingles.has_jingle(intro_jingle):
+				_jingle(intro_jingle)
+			set_process(true)
+			return
+		# No suena nada (ej. la TV recién prendida): en vez de silencio, el
+		# suplente (MusicStyles.STAND_IN) hasta que llegue (ver _start_track).
 	# Lo que suena se va con fundido.
 	_targets[0] = 0.0
 	_targets[1] = 0.0
@@ -290,6 +302,20 @@ func _start_track() -> void:
 	if current.is_empty():
 		return
 	var stream := _stream(current)
+	var stand_in := false
+	if stream != null:
+		_waiting = false
+	elif _waiting:
+		stream = stand_in_stream(current)
+		stand_in = true
+		if stream == null:
+			return  # Sin suplente: se espera a la generada.
+		if _players[_active].stream == stream and _players[_active].playing:
+			_targets[_active] = 1.0  # Ya suena este suplente: sigue.
+			_targets[1 - _active] = 0.0
+			_playing_stand_in = true
+			return
+	_playing_stand_in = stand_in
 	if stream == null:
 		_targets[0] = 0.0  # "Sin música" o archivo que falta: silencio.
 		_targets[1] = 0.0
@@ -344,7 +370,25 @@ func _stream(track: String) -> AudioStream:
 		return _streams.get("gen:%s|%s" % [src.generated, track], null)
 	if not src.has("file"):
 		return null
-	var path := str(src.file)
+	return _file_stream(str(src.file))
+
+
+## Suplente de `track` mientras su versión generada se compone (el mismo
+## archivo del estilo MusicStyles.STAND_IN), o null.
+func stand_in_stream(track: String) -> AudioStream:
+	var src := MusicStyles.resolve(MusicStyles.STAND_IN, track)
+	return _file_stream(str(src.file)) if src.has("file") else null
+
+
+## ¿Suena (o está entrando) alguna pista?
+func _audible() -> bool:
+	for i in 2:
+		if _players[i].playing and _targets[i] > 0.0:
+			return true
+	return false
+
+
+func _file_stream(path: String) -> AudioStream:
 	if not _streams.has(path):
 		var stream: AudioStream = load(path)
 		if stream is AudioStreamOggVorbis:
@@ -422,9 +466,15 @@ func _poll_generation() -> bool:
 	return true
 
 
-## Corre en un hilo: compone una pista con MusicGen y la deja en _gen_done.
+## Corre en un hilo: lee la pista de la caché en disco (MusicCache) o, si no
+## está, la compone con MusicGen y la guarda; la deja en _gen_done.
 func _render_generated(key: String) -> void:
-	var stream := MusicGen.render(key.get_slice("|", 0), key.get_slice("|", 1), gen_bars)
+	var style := key.get_slice("|", 0)
+	var track := key.get_slice("|", 1)
+	var stream := MusicCache.load_track(style, track, gen_bars)
+	if stream == null:
+		stream = MusicGen.render(style, track, gen_bars)
+		MusicCache.save_track(style, track, stream, gen_bars)
 	_mutex.lock()
 	_gen_done[key] = stream
 	_mutex.unlock()

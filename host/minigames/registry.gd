@@ -49,6 +49,30 @@ static func create(game_id: String) -> MiniGame:
 	return null
 
 
+## Tamaño (u de PlayerAvatar) al que el juego dibuja las mascotas: su
+## constante MASCOT_SCALE, o 0,8 si no la declara. Lo usa el precalentado
+## de las mascotas 3D durante la intro (ADR 0012).
+static func mascot_scale(game_id: String) -> float:
+	var s := _script(game_id)
+	return float(s.get_script_constant_map().get("MASCOT_SCALE", 0.8)) if s != null else 0.8
+
+
+## Poses extra que el juego dibuja además de las típicas (constante opcional
+## MASCOT_PREWARM: lista de [u, poses], ver MascotAtlas.prewarm_game).
+## Ejemplo: Empujones pone cara de susto caminando cerca del borde.
+static func mascot_prewarm(game_id: String) -> Array:
+	var s := _script(game_id)
+	var v: Variant = s.get_script_constant_map().get("MASCOT_PREWARM", []) if s != null else []
+	return v if v is Array else []
+
+
+static func _script(game_id: String) -> Script:
+	for script in GAMES:
+		if script.call("get_info").id == game_id:
+			return script
+	return null
+
+
 static func can_play(info: Dictionary, player_count: int) -> bool:
 	return player_count >= int(info.min_players) and player_count <= int(info.max_players)
 

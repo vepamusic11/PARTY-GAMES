@@ -41,6 +41,9 @@ const KO_WINDOW_SEC := 1.5        ## Ventana para que la caída cuente como tuya
 const KO_BONUS := 5.0
 const START_RING := 0.55          ## Posición inicial: fracción del radio de la isla.
 const MASCOT_SCALE := 0.85
+## Poses extra que se hornean en la intro (MascotAtlas.prewarm_game): cara de
+## susto caminando cerca del borde y festejo caminando al final.
+const MASCOT_PREWARM := [[MASCOT_SCALE, ["walk@3", "walk@1"]]]
 const FEET_OFFSET := 32.0         ## Los pies se dibujan un poco abajo del centro físico.
 const NAME_OFFSET := 26.0
 const NAME_SIZE := 26

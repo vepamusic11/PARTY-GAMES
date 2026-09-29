@@ -41,16 +41,27 @@ Restricciones:
 
 ## Costo medido
 - Composición de una pista de 16 compases (29–42 s de audio) en la PC de desarrollo (motor en modo editor): **2,4–3,4 s** (síntesis de notas ~0,4–0,8 s, mezcla ~1,0–1,5 s, efectos ~0,6–0,8 s, nivel final ~0,3 s). Un estilo entero: ~17 s en segundo plano. `tools/render_music.gd` imprime el desglose.
-- Estimado en una TV de gama baja: 4–6 veces más lento (~10–20 s por pista). La primera vez que suena un estilo generado, su primera pista puede tardar eso en entrar; mientras tanto sigue lo anterior.
+- Estimado en una TV de gama baja: 4–6 veces más lento (~10–20 s por pista). Solo la primera vez que suena un estilo generado: su primera pista puede tardar eso en entrar; mientras tanto sigue lo anterior o el suplente Retro. Después se lee de la caché en disco.
+- Espacio en la TV: hasta 40 MB en `user://music_cache/` (tope de `MusicCache`).
 - Peso agregado al APK: **4,5 MB** (Breakpoint Rush 2,2 + Relajado 2,3). Música total: **7,7 MB** (≤ 8 MB).
 
 ## Alternativas descartadas
 - **Bajar audio de YouTube** o usar packs "royalty free" sin texto de licencia: la licencia no se puede verificar y bajar de YouTube viola sus términos.
 - **SoundSafari/CC0-1.0-Music** (GitHub, ~9000 archivos): es un rejunte sin el aviso de cada autor; parte viene de sitios donde la licencia real es CC-BY. No cumple "texto del autor con el archivo".
 - **Relajado también generado:** posible (piano eléctrico, swing y crujido de vinilo), pero un músico real suena mejor en lo tranquilo, donde el timbre se escucha más. Queda como plan B si el APK aprieta.
-- **Pistas generadas guardadas en disco** (`user://`) para no recomponer en cada arranque: ahorra el tiempo de la primera pista, pero son ~3 MB por pista en el almacenamiento de la TV (~40 MB los dos estilos). Se deja para cuando se mida en una TV real.
+- ~~**Pistas generadas guardadas en disco**~~: se descartó al principio por el espacio (~3 MB por pista); se adoptó el 29/09/2026 (ver "Caché en disco y suplente").
 - **Sintetizar pistas más cortas (8 compases):** la mitad del costo, pero se repiten el doble. Con 16 compases hay forma A/B y cierre de frase.
 - **Tema del dueño para todas las pantallas desde ya:** un solo tema cansaría; mejor sumar temas a medida que los haga.
+
+## Caché en disco y suplente (29/09/2026)
+En una TV lenta cada pista generada tarda ~10–20 s: la primera vez que se prendía, el lobby podía quedar en silencio. Dos cambios:
+
+- **`MusicCache`** (`core/audio/music_cache.gd`): cada pista compuesta se guarda en `user://music_cache/<estilo>_<pista>.pcm` (PCM de 16 bits estéreo, sin comprimir: el OGG no se puede codificar en el aparato). Medido en la PC: componer una pista de Fiesta 1,7–1,9 s; guardarla 4 ms; leerla ~1 ms (2,5–2,7 MB). En la TV la lectura depende de la memoria flash, pero es del orden de decenas de ms contra 10–20 s de componer. Desde el segundo arranque, el hilo de `Music` lee el archivo en vez de componer.
+  - **Versión de receta**: el archivo lleva una *firma* (MD5 de la receta de la pista, las tablas compartidas de `MusicGen`, la frecuencia, los compases y `MusicGen.GEN_VERSION`). Si no coincide, es de una versión vieja: se borra y se compone de nuevo. `GEN_VERSION` hay que subirlo a mano solo al cambiar el **código** del sintetizador (los cambios de receta ya cambian la firma).
+  - **Límite**: 40 MB entre todos los archivos (entran los dos estilos generados completos, ~12 pistas de 2,5–3,7 MB). Al guardar una pista se borran las más viejas hasta entrar.
+  - **Nunca rompe**: un archivo vacío, cortado, con otro formato o con tamaños imposibles se descarta y se borra; la pista se compone como siempre. Se escribe a un temporal y se renombra, así un corte de luz no deja un archivo a medias con el nombre bueno. Lectura y escritura corren en el hilo, nunca en un cuadro.
+- **Suplente** (`MusicStyles.STAND_IN` = Retro): si la pista pedida se está componiendo y **no suena nada** (TV recién prendida), suena la misma pantalla del estilo Retro, que viene en el APK; al estar lista la generada, entra con el fundido cruzado de siempre. Si ya sonaba otra pista (cambio de estilo en la pausa, cambio de pantalla), sigue esa, como antes. Con el jingle de entrada del lobby: jingle → suplente → generada.
+- Tests: `test_music_cache` (caché válida, versión vieja descartada, archivos rotos, límite de tamaño, apagada) y `test_music_stand_in_and_cache` (suplente sin silencio, reemplazo con fundido y lectura desde disco en el "arranque siguiente"). Los tests usan su propia carpeta (`user://test_music_cache/`), nunca la de la TV.
 
 ## Consecuencias
 - `test_audio_licenses` recorre las subcarpetas de `assets/audio/` y acepta `LICENSE*` CC0/CC-BY (sin NC ni ND) o `NOTICE*` del dueño, que tiene que nombrar a Suno y la condición de **plan pago** para uso comercial (también anotada en CREDITS.md). **Antes de vender el juego hay que confirmar que cada tema de Suno se hizo con plan pago**; si no, regenerarlo o sacarlo.

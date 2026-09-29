@@ -29,6 +29,10 @@ extends RefCounted
 ## en una PC. Music la pide en un hilo de WorkerThreadPool, una por vez, y la
 ## guarda en memoria (~2,7 MB): nunca se sintetiza dentro de un cuadro.
 
+## Versión del sintetizador: subirla al cambiar el código que compone o
+## sintetiza (no las recetas: esas ya entran en la firma). Invalida las
+## pistas guardadas en disco (MusicCache).
+const GEN_VERSION := 1
 const MIX_RATE := 22050
 const BARS := 16
 const TARGET_RMS_DB := -16.0   ## Misma sonoridad que los .ogg (prepare_audio.py).

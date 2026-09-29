@@ -32,10 +32,11 @@ No quedó ningún agente trabajando: todo lo del 27/09 está integrado en la ram
 - [x] Calidad de las mascotas 3D al nivel de la maqueta: plástico, cara, contorno y los 9 ánimos ([comparación](img/mascotas_3d_comparacion.png)). Paleta: amarillo dorado y verde pasto de la maqueta (29/09).
 - [x] Piezas del escenario en 3D: estrellas, bloques, medallas, corona y trofeos con el mismo plástico ([ADR 0016](adr/0016-piezas-3d-horneadas.md), hoja `docs/img/piezas_3d.png`). El celular sigue con piezas 2D.
 - [x] Lobby más cerca de la maqueta (29/09): tarjetas de jugador en degradé pastel, fichas del código y "¡A jugar!" de juguete, fondo más lleno y **dioramas 3D de los juegos** en las tarjetas ([ADR 0018](adr/0018-dioramas-de-los-juegos.md), [comparación](img/lobby_comparacion.png)). Pendiente: pose de saludo con los dos brazos bien arriba (hoy festeja con `wave`); dioramas con los looks elegidos no (usan el cuarteto).
-- [ ] Posible "escalón" de luz entre celdas del atlas de mascotas (la cámara del horneado está a 80 u; en las piezas se arregló alejándola a 100 000 u): revisar en `tools/mascot_atlas_check.gd`.
-- [ ] Capturas de Empujones y ¡Que no te deje la cámara!: muestran el resumen en vez del juego (el juego termina antes de la foto); ajustar `SHOT_DELAY` en `tools/capture_screens.gd`.
+- [x] ~~Escalón de luz entre celdas del atlas de mascotas~~: estaba (brillo medio de la misma pose 143 → 157 de 255 entre la primera y la última celda). La cámara del horneado pasó de 80 u a 10 000 u: diferencia 0,2/255. `tools/mascot_atlas_check.gd` lo mide (falla si pasa de 1,5) y `test_mascot_atlas_uniform_light` controla la geometría ([ADR 0012](adr/0012-mascotas-3d.md)).
+- [x] Captura de Empujones: ya muestra el juego (con --out a una carpeta temporal; docs/img sin regenerar). La espera en sí no era el problema: la foto esperaba hasta 2,5 s a que se hornearan poses tardías (susto caminando) y en ese tiempo se caían todos; con el precalentado por juego ya no espera.
+- [ ] Captura de ¡Que no te deje la cámara!: sigue saliendo el resumen. Los controles de prueba ahora avanzan a la derecha mientras esperan (`RUN_RIGHT` en `tools/capture_screens.gd`); en una simulación sin pantalla con esa misma entrada nadie cae antes de los 8 s (el 4P, quieto, a los 5,5 s), pero en la corrida real con xvfb el juego igual terminó antes de la foto (todos con 0 m). Revisar si la entrada de los controles llega a este juego durante la captura.
 - [ ] Revisar con la maqueta de Pintar el piso (`docs/design/referencia_juego_pintar.webp`) juego por juego una vez integrado todo.
-- [ ] Algunas poses se hornean la primera vez que se dibujan (Empujones, Karts): si se nota un tirón en la TV real, sumarlas al precalentado.
+- [x] ~~Poses que se hornean la primera vez que se dibujan~~: cada juego declara `MASCOT_PREWARM` (y `MASCOT_SCALE` Carrera de toques y Ping Pong, que se precalentaban a otro tamaño). Poses tardías en una partida con 4 bots: 87 → 2 (un cuadro de festejo caminando al final de Arena y de Pintar). Tabla en [PERFORMANCE.md](PERFORMANCE.md); medir con `tools/mascot_prewarm_check.gd`. El atlas llega a ~33 MB en los juegos con más poses (presupuesto 40 MB).
 
 ## 4. Juegos nuevos (ver [JUEGOS.md](JUEGOS.md))
 
@@ -48,7 +49,7 @@ No quedó ningún agente trabajando: todo lo del 27/09 está integrado en la ram
 - [ ] **El dueño elige** escuchando las muestras (Fiesta, Latino, Relajado, Retro, PARTY-GAME con *Breakpoint Rush*). Fiesta y Latino salen de un generador propio: aprobar o descartar al oírlos.
 - [ ] Tema del lobby del dueño: falta el MP3. Va en `assets/audio/music/original/lobby.ogg` (sumarlo a `SONGS` en `tools/audio/prepare_audio.py` con su punto de bucle). Los dos temas de "batallas" también faltan como archivo.
 - [x] Selector de estilo también en el lobby (píldora "♪ Música: …" junto a "¿A qué jugamos?").
-- [ ] En una TV lenta, generar Fiesta/Latino tarda ~10–20 s por pista: el lobby puede quedar en silencio la primera vez. Opciones en el ADR 0017 (guardar en disco).
+- [x] ~~Silencio en una TV lenta mientras se compone Fiesta/Latino~~: las pistas generadas se guardan en `user://music_cache/` (`MusicCache`: firma de la receta, tope 40 MB, archivo roto o viejo se descarta) y, si no suena nada mientras se compone, suena la misma pantalla en Retro y la generada entra con fundido ([ADR 0017](adr/0017-estilos-de-musica.md)). Falta medir en la TV real cuánto tarda en leerse (en la PC ~1 ms).
 - [ ] Peso: música ~7,7 MB (presupuesto 8 MB); con el tema del lobby del dueño, ~10 MB.
 
 ## 5. Técnico y calidad

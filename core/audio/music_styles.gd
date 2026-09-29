@@ -26,6 +26,11 @@ const RELAJADO := "relajado"
 const LATINO := "latino"
 const NONE := "none"
 
+## Suplente mientras se compone una pista generada y no suena nada (ej. la
+## primera vez que arranca la TV): sus archivos vienen en el APK y siempre
+## están. Cuando la pista generada queda lista, entra con fundido.
+const STAND_IN := RETRO
+
 ## Orden del selector (◀ ▶). El primero es el estilo por defecto.
 const ORDER: Array[String] = [ORIGINAL, FIESTA, LATINO, RELAJADO, RETRO, NONE]
 const DEFAULT := ORIGINAL

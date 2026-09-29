@@ -80,6 +80,9 @@ const LANE_H_MAX := 290.0
 const GROUND_H := 40.0
 const CAM_X := 360.0                ## La mascota va fija a esta distancia del borde izquierdo.
 const MASCOT_SCALE := 0.8
+## Poses extra que se hornean en la intro (MascotAtlas.prewarm_game): cara de
+## susto corriendo (y mirando abajo al caer) y festejo corriendo al llegar.
+const MASCOT_PREWARM := [[MASCOT_SCALE, ["walk_r@3", "walk_r@1", "look_d@3"]]]
 const PERIOD := GRID * 2.0          ## El piso alterna dos tonos de ladrillo.
 const TAG_SIZE := Vector2(236, 48)  ## Cartel [1P | nombre] de cada carril.
 const RAIL_W := 300.0

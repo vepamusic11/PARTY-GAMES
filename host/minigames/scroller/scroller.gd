@@ -88,6 +88,10 @@ const ANNOUNCE_SEC := 1.8
 const TRIB := Rect2(104, 922, 1712, 94)
 const TRIB_TITLE_W := 212.0
 const TRIB_SCALE := 0.58
+## Poses extra que se hornean en la intro (MascotAtlas.prewarm_game): cara de
+## susto caminando cerca del borde, festejo caminando al final y la mascota
+## triste en la tribuna (con su último paso).
+const MASCOT_PREWARM := [[MASCOT_SCALE, ["walk@3", "walk@1"]], [TRIB_SCALE, ["walk_f@2"]]]
 
 ## Tramos prediseñados, en coordenadas del tramo (x 0..SEG_W, y 0..WORLD_H).
 ##   ["block", Rect2]                          bloque sólido (frena, no mata)
