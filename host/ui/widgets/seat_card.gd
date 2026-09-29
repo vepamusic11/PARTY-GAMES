@@ -9,8 +9,9 @@ extends Control
 ## Dos formatos: tarjeta alta o fila compacta (`compact`):
 ## [1P] (mascota) Pablo ········ ¡Listo!
 ##
-## Tarjeta alta (la del lobby): la mascota es grande y *sobresale* por arriba
-## de la tarjeta (OVERHANG px libres arriba para la cabeza), sobre un fondo
+## Tarjeta alta (la del lobby): la mascota es grande, con la cabeza adentro
+## de la tarjeta (solo el accesorio asoma: OVERHANG px libres arriba) y el
+## cuerpo escondido detrás de la base del nombre, como la maqueta; sobre un fondo
 ## en degradé del color del jugador con un resplandor detrás. La etiqueta 1P
 ## es una píldora con contorno que va encima de todo (capa `_tag_layer`).
 ##
@@ -30,11 +31,14 @@ signal activated(slot: int)
 
 enum State { READY, RECONNECTING, OPEN, LOCKED }
 
-const OVERHANG := 44.0        ## Alto libre arriba de la tarjeta para la cabeza de la mascota.
+const OVERHANG := 28.0        ## Alto libre arriba de la tarjeta para el accesorio de la mascota.
 const TALL_HEIGHT := 268.0
 const LABELS_HEIGHT := 72.0   ## Nombre + estado, abajo de la tarjeta.
-const MASCOT_RISE := 22.0     ## Cuánto sube la mascota por encima del control.
-const MASCOT_GAP := 6.0       ## Aire entre los pies de la mascota y el nombre.
+## Medido en la maqueta: la cabeza mide ~69 % del ancho de la tarjeta y
+## empieza ~20 px debajo del borde de arriba; el mentón apoya en la base
+## del nombre y el cuerpo queda detrás (se ven los brazos a los costados).
+const MASCOT_TOP := 16.0      ## Desde dónde dibuja la mascota (debajo del borde del control).
+const MASCOT_SINK := 50.0     ## Cuánto se meten los pies detrás de la base del nombre.
 const CARD_RADIUS := 30.0
 const NAME_FONT := 34
 const STATUS_FONT := 26
@@ -69,9 +73,15 @@ func _init(p_slot: int, p_compact: bool = false) -> void:
 	_avatar.slot = slot
 	_avatar.color = Protocol.player_color(slot)
 	_avatar.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	_avatar.offset_top = -MASCOT_RISE
-	_avatar.offset_bottom = -LABELS_HEIGHT - MASCOT_GAP
+	_avatar.offset_top = MASCOT_TOP
+	_avatar.offset_bottom = -LABELS_HEIGHT + MASCOT_SINK
 	add_child(_avatar)
+	# Base clara del nombre, encima de los pies de la mascota y debajo del texto.
+	var base_layer := Control.new()
+	base_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	base_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	base_layer.draw.connect(_draw_name_base.bind(base_layer))
+	add_child(base_layer)
 	var box := VBoxContainer.new()
 	box.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
 	box.offset_top = -LABELS_HEIGHT - 8.0
@@ -144,7 +154,11 @@ func show_player(player: Dictionary, locked: bool) -> void:
 	var avatar_visible := compact or present
 	_avatar.modulate.a = (0.55 if state == State.RECONNECTING else 1.0) if avatar_visible else 0.0
 	_avatar.animate = avatar_visible
-	_avatar.mood = PlayerAvatar.Mood.HAPPY if state == State.READY else PlayerAvatar.Mood.NORMAL
+	# Listo: "¡hola!" con una mano bien arriba, como la maqueta; se alternan la
+	# cara normal sonriente (1P, 3P) y la feliz con cachetes (2P, 4P).
+	var ready := state == State.READY
+	_avatar.mood = PlayerAvatar.Mood.HAPPY if ready and slot % 2 == 1 else PlayerAvatar.Mood.NORMAL
+	_avatar.hello = 1.0 if ready and not compact else 0.0
 	_name.add_theme_color_override("font_color", UiTheme.INK if present else UiTheme.INK_SOFT)
 	if not compact:
 		_name.add_theme_font_size_override("font_size", NAME_FONT if present else STATUS_FONT + 2)
@@ -173,6 +187,9 @@ func show_player(player: Dictionary, locked: bool) -> void:
 	queue_redraw()
 	if _tag_layer != null:
 		_tag_layer.queue_redraw()
+	for c in get_children():
+		if c is Control and c != _avatar:
+			(c as Control).queue_redraw()
 
 
 func _gui_input(event: InputEvent) -> void:
@@ -216,10 +233,17 @@ func _draw() -> void:
 	# resplandor detrás de la mascota (ver UiTheme.draw_seat_card).
 	var glow := Vector2(r.get_center().x, r.position.y + (r.size.y - LABELS_HEIGHT) * 0.42)
 	UiTheme.draw_seat_card(self, r, col, CARD_RADIUS, glow)
-	# Base clara para el nombre: se lee bien sobre cualquier color de jugador.
-	var inner := r.grow(-UiTheme.SEAT_RIM_W)
-	var base := Rect2(Vector2(inner.position.x, inner.end.y - LABELS_HEIGHT - 6), Vector2(inner.size.x, LABELS_HEIGHT + 6))
-	UiTheme.draw_gradient_round_rect(self, base, Color(UiTheme.PAPER, 0.0), Color(UiTheme.PAPER, 0.85), CARD_RADIUS - 6)
+
+
+## Base clara para el nombre: se lee bien sobre cualquier color de jugador y
+## tapa los pies de la mascota (va en su propia capa, encima de la mascota).
+func _draw_name_base(layer: Control) -> void:
+	if not (state == State.READY or state == State.RECONNECTING):
+		return
+	var inner := _card_rect().grow(-UiTheme.SEAT_RIM_W)
+	var base := Rect2(Vector2(inner.position.x, inner.end.y - LABELS_HEIGHT - 24), Vector2(inner.size.x, LABELS_HEIGHT + 24))
+	UiTheme.draw_gradient_round_rect(layer, base, Color(UiTheme.PAPER, UiTheme.SEAT_NAME_BASE_TOP),
+		Color(UiTheme.PAPER, UiTheme.SEAT_NAME_BASE_BOTTOM), CARD_RADIUS - 6)
 
 
 ## Etiqueta 1P–4P: píldora del color del jugador con contorno, encima de la

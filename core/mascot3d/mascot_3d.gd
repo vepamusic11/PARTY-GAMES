@@ -44,18 +44,26 @@ const Mood := PlayerAvatar.Mood
 const U := 0.1                             ## 1 u de PlayerAvatar en unidades del mundo.
 const HEAD_C := Vector3(0, 6.0, 0)         ## Centro de la cabeza.
 const HEAD_R := Vector3(4.2, 3.6, 3.45)    ## Semiejes de la cabeza.
-const FACE_C := Vector2(0, -0.95)          ## Centro de la cara (relativo a la cabeza).
-const FACE_R := Vector2(2.98, 2.2)         ## Semiejes de la cara vista de frente.
+const FACE_C := Vector2(0, -1.05)          ## Centro de la cara (relativo a la cabeza).
+## Semiejes de la cara vista de frente. Medido en la maqueta: la cara ocupa
+## ~78 % del ancho de la cabeza y llega casi hasta el mentón (borde fino).
+const FACE_R := Vector2(3.28, 2.4)
 const BODY_C := Vector3(0, 1.88, 0)
 const BODY_R := Vector3(1.62, 1.3, 1.42)  ## Semiejes aproximados del cuerpo (para no meter las manos adentro).
 const SHOULDER := Vector3(1.38, 0.6, 0.2)  ## Hombro derecho, relativo al cuerpo.
 const ARM_LEN := 1.1                       ## Del hombro al centro de la mano.
+## Saludo con una mano bien arriba (lobby, como la maqueta): el brazo se
+## estira como en los dibujos animados y la mano queda al costado de la
+## cabeza, a la altura de la frente. En unidades de ARM_LEN.
+const HELLO_REACH := 4.4
+const HELLO_ANGLE := 2.35                  ## Radianes desde "colgando" (PI = derecho hacia arriba).
+const HELLO_PERIOD := 0.9                  ## Segundos de un vaivén de la mano (2 cuadros horneados).
 const HAND_R := 0.56
 const INK_W := 0.19                        ## Contorno de piezas grandes (~2 u).
 const INK_W_SMALL := 0.15                  ## Contorno de piezas chicas.
 const EYE_X := 1.3
-const EYE_Y := -0.78
-const MOUTH_Y := -2.02
+const EYE_Y := -0.84
+const MOUTH_Y := -2.12
 
 ## Colores propios de la cara 3D (la 2D usa los de PlayerAvatar).
 const BLUSH := Color(1.0, 0.5, 0.6)       ## Cachetes (en el centro; se funden con la cara).
@@ -140,11 +148,11 @@ func visible_features() -> Array[String]:
 ## Color vivo del plástico: la maqueta es un juguete de colores saturados.
 ## Sube un poco saturación y brillo (sin cambiar el tono: el jugador sigue
 ## siendo "el rojo"). Blanco, negro y grafito quedan igual.
-## Ejemplo: el rojo #E24B4A se ve #FD3634 en la parte iluminada.
+## Ejemplo: el rojo #E24B4A se ve #FF3230 en la parte iluminada (la maqueta: #F53047).
 static func vivid(col: Color) -> Color:
 	if col.s < 0.25 or col.v < 0.3:
 		return col
-	return Color.from_hsv(col.h, minf(1.0, col.s * 1.1 + 0.06), minf(1.0, col.v * 1.08 + 0.05))
+	return Color.from_hsv(col.h, minf(1.0, col.s * 1.14 + 0.08), minf(1.0, col.v * 1.08 + 0.05))
 
 
 ## Gema de la panza: brillante y de un tono vecino al del jugador (como en
@@ -232,7 +240,7 @@ func _build_face() -> void:
 		var e := Vector2(sx * EYE_X, EYE_Y)
 		# Normal: óvalo negro brillante (su propio reflejo sale del shader) y dos reflejos pintados.
 		var eye := _on_face(normal_eyes, e, -0.12)
-		_eye_dome(eye, Vector3(0.6, 0.92, 0.36))
+		_eye_dome(eye, Vector3(0.53, 1.0, 0.36))
 		# Triste: ojo más chico y bajo, con la ceja caída hacia afuera.
 		var sad := _on_face(sad_eyes, e + Vector2(0, -0.22), -0.1)
 		_eye_dome(sad, Vector3(0.4, 0.58, 0.26))
@@ -257,6 +265,9 @@ func _build_face() -> void:
 	var m := Vector2(0, MOUTH_Y)
 	var happy := _feature("mouth_happy", _head)
 	_open_mouth(happy, m + Vector2(0, 0.3), Vector2(0.74, 0.62), "smile")
+	# Sonrisa cerrada (saludo con ánimo normal, como 1P en la maqueta del lobby).
+	var smile := _feature("mouth_smile", _head)
+	_face_tube(smile, "smile", _arc(m + Vector2(0, 0.42), 0.5, 1.2, 1.8, 9, true), 0.11, eye_ink)
 	var sad_mouth := _feature("mouth_sad", _head)
 	_face_tube(sad_mouth, "frown", _arc(m + Vector2(0, -0.45), 0.46, 1.2, 1.8, 9, true), 0.11, eye_ink)
 	_tear = _node(sad_mouth, Vector3.ZERO)
@@ -281,9 +292,11 @@ func _build_face() -> void:
 func _eye_dome(parent: Node3D, scl: Vector3) -> void:
 	var sph_s := Mascot3DMeshes.sphere(12, 20)
 	_part(parent, sph_s, Kind.EYE, UiTheme.MASCOT_EYE, Vector3.ZERO, scl, 0.0)
+	# Reflejos chicos: el ojo se lee negro y profundo (en la maqueta el brillo
+	# es una gota arriba a la izquierda y un puntito abajo a la derecha).
 	var k := scl.x / 0.56
-	_part(parent, sph_s, Kind.FLAT, Color.WHITE, Vector3(-0.3, 0.42, 0.8) * scl, Vector3(0.22, 0.25, 0.06) * k, 0.0)
-	_part(parent, sph_s, Kind.FLAT, Color(0.85, 0.9, 1.0), Vector3(0.32, -0.46, 0.76) * scl, Vector3(0.1, 0.1, 0.04) * k, 0.0)
+	_part(parent, sph_s, Kind.FLAT, Color.WHITE, Vector3(-0.3, 0.5, 0.8) * scl, Vector3(0.16, 0.2, 0.06) * k, 0.0)
+	_part(parent, sph_s, Kind.FLAT, Color(0.85, 0.9, 1.0), Vector3(0.34, -0.5, 0.76) * scl, Vector3(0.075, 0.075, 0.04) * k, 0.0)
 
 
 ## Boca abierta en D: borde de tinta, interior rojo oscuro y lengua.
@@ -521,7 +534,9 @@ func _pivot(pos: Vector3, base_rot: float, flop_k: float, swing_k: float, sway_k
 
 ## Aplica un ánimo y una pose. anim: mismas claves que PlayerAvatar.draw_mascot
 ## (t, walk, look, squash, wave, dance, dance_kind, defeat, greet, flop) más
-## `blink` (bool), `bob` (u, respiración de la cabeza), `lift` (false: sin
+## `blink` (bool), `bob` (u, respiración de la cabeza), `hello` (0..1: una
+## mano bien arriba, quieta, como en las tarjetas del lobby de la maqueta;
+## con ánimo normal sonríe), `lift` (false: sin
 ## el salto propio de la pose, ver pose_lift), `in_place` (true: sin nada que
 ## mueva la mascota entera: salto, squash & stretch, inclinación,
 ## respiración ni rebote del paso; los suma la 2D sobre el sprite) y `fx`
@@ -563,6 +578,8 @@ func apply(p_mood: int, anim: Dictionary) -> void:
 		shoulder_dy = 0.0
 	var flop: float = q.flop
 	var look: Vector2 = q.look
+	var hello: float = q.hello
+	var hello_side: float = q.hello_side
 
 	# --- Aplicar la pose a los nodos ---
 	# Squash & stretch alrededor de los pies; la inclinación (lean) gira sobre los pies.
@@ -596,7 +613,7 @@ func apply(p_mood: int, anim: Dictionary) -> void:
 		var side := -1.0 if i == 0 else 1.0
 		var angle := arm_l if i == 0 else arm_r
 		var fwd := sin(walk * TAU) * side * 0.7 if walking else 0.0
-		_aim_arm(i, side, angle, fwd, shoulder_dy * U)
+		_aim_arm(i, side, angle, fwd, shoulder_dy * U, hello if side == hello_side else 0.0)
 
 	# --- Cara según el ánimo ---
 	_mood = p_mood
@@ -629,6 +646,8 @@ func apply(p_mood: int, anim: Dictionary) -> void:
 			show = ["eyes_blink" if blinking else "eyes_open"]
 			if style == STYLE_ROBOT:
 				show.append("mouth_robot")
+			elif hello > 0.35:  # Saludando con ánimo normal: sonrisa cerrada.
+				show.append("mouth_smile")
 	# fx = false: los efectos alrededor de la cabeza (estrellitas, Z y globito,
 	# destellos, venita) los dibuja la 2D encima del sprite.
 	if not bool(anim.get("fx", true)):
@@ -657,6 +676,7 @@ static func pose(p_mood: int, anim: Dictionary, p_style: int) -> Dictionary:
 	var dance := clampf(float(anim.get("dance", 0.0)), 0.0, 1.0)
 	var defeat := clampf(float(anim.get("defeat", 0.0)), 0.0, 1.0)
 	var greet := clampf(float(anim.get("greet", 0.0)), 0.0, 1.0)
+	var hello := clampf(float(anim.get("hello", 0.0)), 0.0, 1.0)
 	var flop := float(anim.get("flop", absf(sq) * 1.6))
 	var walking := walk >= 0.0
 
@@ -771,11 +791,29 @@ static func pose(p_mood: int, anim: Dictionary, p_style: int) -> Dictionary:
 		arm_r = lerpf(arm_r, 2.0 + sin(t * 11.0) * 0.35, greet)
 		tilt -= 0.08 * greet
 		swing += sin(t * 11.0 - 1.0) * 0.06 * greet
+	var hside := hello_side(st)
+	if hello > 0.0:  # "¡Hola!" del lobby: una mano bien arriba (la del lado del estilo), la otra colgando.
+		var up := HELLO_ANGLE + sin(t * TAU / HELLO_PERIOD) * 0.09
+		if hside > 0.0:
+			arm_r = lerpf(arm_r, up, hello)
+			arm_l = lerpf(arm_l, 0.42, hello)
+		else:
+			arm_l = lerpf(arm_l, up, hello)
+			arm_r = lerpf(arm_r, 0.42, hello)
+		tilt += hside * 0.06 * hello
+		swing -= hside * 0.05 * hello
 	sq = clampf(sq, -0.5, 0.5)
 	flop = clampf(flop, -0.8, 2.0)
 	return {"lean": lean, "tilt": tilt, "head_dy": head_dy, "spin": spin, "swing": swing, "tuck": tuck,
 		"shoulder_dy": shoulder_dy, "arm_l": arm_l, "arm_r": arm_r, "sway": sway, "breathing": breathing,
-		"lift": lift, "squash": sq, "flop": flop, "look": look}
+		"lift": lift, "squash": sq, "flop": flop, "look": look, "hello": hello, "hello_side": hside}
+
+
+## Qué mano levanta cada estilo al saludar (`hello`): -1 la del lado
+## izquierdo de la pantalla, +1 la del derecho. Alternado, como en la maqueta
+## del lobby (1P y 3P la izquierda, 2P y 4P la derecha).
+static func hello_side(p_style: int) -> float:
+	return -1.0 if posmod(p_style, 2) == 0 else 1.0
 
 
 ## Salto propio de la pose en u (bailes, risa): lo que apply() sube la
@@ -787,26 +825,38 @@ static func pose_lift(p_mood: int, anim: Dictionary, p_style: int) -> float:
 
 ## Orienta el brazo i. angle: como en 2D (0 colgando, PI arriba); fwd: giro
 ## hacia adelante al caminar; dy: los hombros bajan (derrota, respiración).
-func _aim_arm(i: int, side: float, angle: float, fwd: float, dy: float) -> void:
+func _aim_arm(i: int, side: float, angle: float, fwd: float, dy: float, hello := 0.0) -> void:
 	var shoulder := _arms[i]
-	shoulder.position = SHOULDER * Vector3(side, 1, 1) + Vector3(0, -dy, 0)
+	# Saludando, el hombro se adelanta: el brazo pasa por delante del cuerpo y
+	# del borde de la cabeza (si no, la cabeza ancha lo tapa).
+	shoulder.position = SHOULDER * Vector3(side, 1, 1) + Vector3(0, -dy, 1.1 * hello)
 	var sh := _body.position + shoulder.position
 	# Brazos levantados: en 3D la cabeza es ancha y los taparía. Como en la
 	# maqueta, van hacia afuera (a la altura del mentón) y se estiran un poco
 	# (en dibujos animados se vale). Ejemplo: saludo 2,2 rad -> ~1,85 rad y 1,7× de largo.
-	var raise := smoothstep(1.2, 2.0, angle)
+	# Con `hello` el brazo sí sube de verdad (HELLO_ANGLE) y se estira
+	# HELLO_REACH veces: la mano queda al costado de la cabeza, bien arriba.
+	var raise := smoothstep(1.2, 2.0, angle) * (1.0 - hello)
 	var a3 := lerpf(angle, 1.72 + (angle - 1.3) * 0.25, raise)
-	var reach := ARM_LEN * (1.0 + 0.7 * raise)
+	var reach := ARM_LEN * (1.0 + 0.7 * raise + (HELLO_REACH - 1.0) * hello)
 	var target := sh + Vector3(side * sin(a3) * cos(fwd), -cos(a3) * cos(fwd), sin(fwd)) * reach
+	if hello > 0.0:
+		# La mano queda pegada al borde de la cabeza, a la altura de los ojos y
+		# por delante, como en la maqueta (la manopla tapa un poco el borde).
+		var hy := HEAD_C.y - 0.6
+		var half := HEAD_R.x * sqrt(maxf(0.0, 1.0 - pow((hy - HEAD_C.y) / HEAD_R.y, 2.0)))
+		target = target.lerp(Vector3(side * (half + HAND_R * 0.7), hy, HEAD_R.z * 0.92), hello)
 	# Si la mano cae dentro de la cabeza o del cuerpo (vistos de frente), va por delante.
 	var need := _front_z(Vector2(target.x, target.y)) + HAND_R * 0.8
 	if target.z < need:
 		target.z = need
 	var d := target - sh
-	var stretch := clampf(d.length() / ARM_LEN, 0.8, 1.8)
+	var stretch := clampf(d.length() / ARM_LEN, 0.8, 1.8 + (HELLO_REACH - 1.8) * hello)
 	shoulder.basis = Basis(Quaternion(Vector3.DOWN, d.normalized()))
-	_arm_tubes[i].scale = Vector3(1.0, stretch, 1.0)
+	# Saludando, el brazo estirado es más gordo (una manga, no un palito) y la manopla más grande.
+	_arm_tubes[i].scale = Vector3(1.0 + 0.55 * hello, stretch, 1.0 + 0.55 * hello)
 	_hands[i].position = Vector3(0, -ARM_LEN * stretch, 0)
+	_hands[i].scale = Vector3.ONE * HAND_R * (1.0 + 0.45 * hello)
 
 
 ## Frente (z) de la cabeza o del cuerpo en (x, y) vistos de frente; -INF si
@@ -971,7 +1021,7 @@ static func plastic_ramp(col: Color) -> Array:
 		return [shade.darkened(0.22), col.lerp(shade, 0.3), col.lightened(0.5), shade.darkened(0.08), SKY_RIM, 0.5]
 	var mid := vivid(col)
 	var cool := fposmod(mid.h + (0.02 if mid.h > 0.2 and mid.h < 0.7 else -0.025), 1.0)
-	var low := Color.from_hsv(cool, minf(1.0, mid.s * 1.05 + 0.05), mid.v * 0.5)
+	var low := Color.from_hsv(cool, minf(1.0, mid.s * 1.05 + 0.05), mid.v * 0.46)  # Sombra profunda: la maqueta llega a #B8323B en el rojo.
 	var high := Color.from_hsv(fposmod(mid.h + 0.012, 1.0), mid.s * 0.8, 1.0)
 	var edge := Color.from_hsv(cool, minf(1.0, mid.s * 1.08 + 0.04), mid.v * 0.66)
 	return [low, mid, high, edge, SKY_RIM, 0.55]

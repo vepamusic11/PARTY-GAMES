@@ -212,3 +212,65 @@ La maqueta de Pintar el piso es una escena 3D con **cámara en perspectiva**: el
 - Para comparar colores se usan las mascotas de la maqueta: rojo robot, azul oso, amarillo gato y verde brote (`tools/board25d_preview.gd -- --flat --compare=…`).
 
 Lo que queda distinto a propósito: las mascotas se dibujan de frente (no se inclinan con la cámara) y el marco usa la paleta `UiTheme.BRICKS`. Para pasar otro juego (Arena, Esquivar, Pool…) ver [ADDING_A_MINIGAME.md](ADDING_A_MINIGAME.md#tablero-25d-horneado-adr-0019).
+
+## Revisión de dirección de arte (29/09/2026)
+
+Pedido del dueño: *"debería mejorar mucho más, la maqueta está mucho mejor, tiene los colores más vivos, los personajes son más lindos, seguir mejorándolo al máximo"*. Objetivo: lobby y mascotas **iguales o mejores que la maqueta**, medido y no opinado.
+
+**Método.** La maqueta (`docs/design/referencia_lobby.webp`, 1814×867) y la captura real del lobby (`tools/capture_screens.gd --width=1920 --lobby-only`) se recortan por zonas equivalentes y se miden con Python/PIL: saturación y brillo medios (HSV), *colorfulness* (Hasler–Süsstrunk: cuánto "color" hay, 0 = gris) y los 4 colores dominantes (k-means). Zonas: cielo, fondo de juguetes, piso, tarjeta de jugador, mascota sola, fichas del código, tarjeta de juego, diorama, botón "¡A jugar!", panel izquierdo y logo.
+
+### Medición antes de tocar nada (commit `699f795`)
+
+| Zona | Maqueta: sat · brillo · colorf | Nuestro: sat · brillo · colorf | Dominantes maqueta → nuestro |
+|---|---|---|---|
+| Cielo | 0,80 · 0,83 · 99 | 0,67 · 0,81 · **40** | #2398F4 (azul vivo) → #4683CE (azul grisáceo) |
+| Fondo de juguetes | 0,54 · 0,89 · 125 | 0,42 · 0,82 · 96 | #4789F0 #A388D7 → #BF7B70 #5A92D0 (lavados) |
+| Piso | 0,13 · 0,98 · 19 | 0,15 · 0,88 · 18 | #E1E6FC (casi blanco azulado) → #B7C0DE (gris) |
+| Tarjeta 1P | 0,27 · 0,91 · 89 | 0,32 · 0,89 · 95 | parecido; la mascota ocupa más en la maqueta |
+| Mascota roja | 0,35 · 0,88 · 100 | 0,40 · 0,86 · 115 | cara blanca 52 % del recorte → 35 % |
+| Fichas del código | 0,64 · 0,85 · **143** | 0,43 · 0,83 · **97** | #E69628 #1B9765 #467DD8 #EBA2CB → más pálidas, con brillo "pegatina" |
+| Tarjeta de juego | 0,34 · 0,86 · 92 | 0,33 · 0,86 · 90 | igual |
+| Diorama Arena | 0,52 · 0,83 · 119 | 0,48 · 0,86 · 114 | parecido |
+| Botón "¡A jugar!" | 0,76 · 0,88 · 122 | 0,65 · 0,89 · 113 | #F7B41D → #F1AF2B con más blanco encima |
+| Panel izquierdo | 0,24 · 0,92 · 79 | 0,17 · 0,90 · 56 | #F7FAFE + lavanda #A4AAD2 → blanco plano |
+| Logo | 0,75 · 0,78 · 165 | 0,70 · 0,75 · 148 | igual (es la misma imagen; difiere el fondo) |
+
+### Diferencias priorizadas (qué, dónde, cuánto)
+
+1. **Cielo y fondo lavados** (`UiTheme.BG_SKY_*`, `BG_HAZE`, `BG_VIGNETTE`, `PartyBackground`): la maqueta tiene un azul saturado (#2398F4, colorfulness 99) y el nuestro es la mitad de colorido (40). Las torres de juguete están mezcladas con bruma (#BF7B70 en vez de #F0524F). Es la diferencia más grande de "colores vivos".
+2. **Personajes** (`Mascot3D`): en la maqueta la cabeza es casi toda la tarjeta y la cara blanca cubre ~52 % del recorte (35 % en la nuestra); ojos negros grandes y altos con reflejo chico; cuerpo casi escondido; una mano bien arriba. Las nuestras muestran el cuerpo y los zapatos enteros, saludan con las dos manos y los reflejos son manchas blancas grandes (más "vidrio" que "plástico mate brillante").
+3. **Fichas del código** (`draw_toy_tile`, `code_tile_color`): colorfulness 97 contra 143. Están aclaradas arriba (`TOY_TOP_LIGHT` 0,22), con un brillo ancho al 55 % y un reflejo chico "de pegatina". La maqueta: color pleno, degradé suave y letra blanca con contorno gris oscuro.
+4. **Botón "¡A jugar!"**: saturación 0,65 contra 0,76 por el mismo brillo blanco encima.
+5. **Panel izquierdo**: la maqueta es blanco con un tinte lavanda y filas #E9EDFB; el nuestro es blanco plano (colorfulness 56 contra 79).
+6. **Piso**: la maqueta es casi blanco azulado (brillo 0,98); el nuestro gris (0,88).
+7. **Tarjetas de jugador**: parecidas; en la maqueta la etiqueta 1P está más adentro de la esquina y la mascota más grande.
+
+### Qué cambió (vueltas 1–4: corregir, capturar, medir, repetir)
+
+- **Fondo y cielo vivos** (`UiTheme.BG_SKY_TOP` #3C8CE6 → #1F8BEF, `BG_SKY_MID` → #43ADF8, `BG_HAZE` #D3E9FF → #B2DBFF celeste en vez de blanco, `BG_GLOW` 0,42 → 0,26, `BG_VIGNETTE` 0,30 → 0,20, bruma de las torres `BG_HAZE_FAR/NEAR` 0,42/0,2 → 0,3/0,1, piso `BG_FLOOR_A/B` más claros y azulados; `SKY_TOP/BOTTOM` del celular y del cielo liso también). La saturación del cielo pasó de 0,67 a 0,79 (maqueta 0,80).
+- **Fichas del código y botones** (`TOY_TOP_LIGHT` 0,22 → 0,1, `TOY_GLOSS` 0,55 → 0,26, `TOY_SPEC` 0,85 → 0,5; `CODE_TILE_COLORS` dorado #FFB728, verde, azul y rosa como la maqueta; `START_TOP/BOTTOM` un poco más naranjas). El botón "¡A jugar!" pasó de saturación 0,65 a 0,75 (maqueta 0,76).
+- **Panel izquierdo:** `PAPER_DIM` #EEF2FA → #EAEEFB (filas lavanda como la maqueta).
+- **Mascotas** (`Mascot3D`): cara más grande y más baja (`FACE_R` 2,98×2,2 → 3,28×2,4; llega casi al mentón, como la maqueta), ojos más altos y angostos (0,6×0,92 → 0,53×1,0) con reflejos más chicos (se leen negros y profundos), sonrisa cerrada nueva (`mouth_smile`) para el ánimo normal cuando saluda, plástico un poco más saturado (`vivid`: s×1,14+0,08) y sombra más profunda (`plastic_ramp`: v×0,46).
+- **Pose "¡hola!"** (`anim["hello"]` en `Mascot3D.pose/apply`, `Mascot3DBaker.POSES` "hello"/"hello_happy", `MascotAtlas` "hello@M" (un solo cuadro, quieta como la maqueta: +2 poses de pantalla por jugador, ≈ +0,7 MB), `PlayerAvatar.hello`): una mano bien arriba al costado de la cabeza, a la altura de los ojos y por delante (el hombro se adelanta 1,1 u para que el brazo no quede tapado por la cabeza), brazo estirado ×4,4 y más gordo (una manga, no un palito), manopla ×1,45. Alternado por estilo (`hello_side`): antena y gato la mano izquierda de la pantalla; oso y brote la derecha, como en la maqueta. Está en `SCREEN_POSES` (se precalienta en el lobby). En 2D de respaldo se dibuja como el saludo `greet`.
+- **Tarjeta del jugador** (`SeatCard`): la cabeza queda **adentro** de la tarjeta (medido en la maqueta: la cabeza es el 69 % del ancho y empieza ~20 px bajo el borde; antes sobresalía 44 px), el mentón apoya en la base del nombre y el cuerpo queda detrás (`MASCOT_TOP` 16, `MASCOT_SINK` 50, `OVERHANG` 44 → 28). La base del nombre pasó a su propia capa encima de la mascota (`SEAT_NAME_BASE_TOP/BOTTOM`). Listo = "¡hola!"; 1P y 3P con cara normal sonriente, 2P y 4P feliz con cachetes (como la maqueta).
+
+### Medición después (misma captura y zonas; commit final de esta revisión)
+
+| Zona | Maqueta: sat · brillo · colorf | Antes | Después | Dominantes después |
+|---|---|---|---|---|
+| Cielo | 0,80 · 0,83 · 99* | 0,67 · 0,81 · 40 | **0,79 · 0,87 · 71** | #2984DD #2F89E0 (azul vivo, sin gris) |
+| Fondo de juguetes | 0,54 · 0,89 · 125 | 0,42 · 0,82 · 96 | **0,48 · 0,84 · 112** | #CE7E68 #469AE1 (menos bruma) |
+| Piso | 0,13 · 0,98 · 19 | 0,15 · 0,88 · 18 | 0,13 · **0,93** · 19 | #C7CFED #D7DCEE |
+| Tarjeta 1P | 0,27 · 0,91 · 89 | 0,32 · 0,89 · 95 | 0,38 · 0,89 · 114 | la mascota ocupa más (como la maqueta) |
+| Mascota roja | 0,35 · 0,88 · 100 | 0,40 · 0,86 · 115 | 0,45 · 0,89 · 128 | #F05252 rojo vivo, cara blanca 36 % |
+| Fichas del código | 0,64 · 0,85 · 143 | 0,43 · 0,83 · 97 | **0,46 · 0,82 · 105**† | #E0AA3D #3D7F68 (color pleno) |
+| Tarjeta de juego | 0,34 · 0,86 · 92 | 0,33 · 0,86 · 90 | 0,35 · 0,86 · 95 | igual |
+| Diorama Arena | 0,52 · 0,83 · 119 | 0,48 · 0,86 · 114 | **0,51 · 0,86 · 122** | regenerado con el plástico nuevo |
+| Botón "¡A jugar!" | 0,76 · 0,88 · 122 | 0,65 · 0,89 · 113 | **0,75 · 0,89 · 123** | #F1A91E #FDD24D |
+| Panel izquierdo | 0,24 · 0,92 · 79 | 0,17 · 0,90 · 56 | 0,19 · 0,89 · 60 | filas lavanda |
+
+\* La zona de cielo de la maqueta incluye parte de su barra superior oscura (no existe en la TV), que infla el *colorfulness*. † La zona de las fichas de nuestra captura incluye más panel blanco alrededor que la de la maqueta (fichas más chicas respecto del panel); medidas sobre la ficha sola, las nuestras son color pleno (#FFB728, #3CC46B, #3E7BFA, #F26CB5) como las de la maqueta.
+
+Comparaciones: `docs/img/lobby_comparacion.png` (maqueta · antes · ahora), `docs/img/mascotas_3d_comparacion.png` y `docs/img/mascotas_3d_detalle.png` (2P a la misma escala que la maqueta). Rendimiento en [PERFORMANCE.md](PERFORMANCE.md#revisión-de-dirección-de-arte-2909) (sin cambio de CPU ni draw calls; +2,6 MB de atlas por la pose "¡hola!").
+
+**Qué queda distinto de la maqueta (a propósito o pendiente):** la barra superior de desarrollo no va en la TV; la mascota anfitriona de abajo a la izquierda sigue festejando con los dos brazos; los dioramas usan el cuarteto de mascotas de siempre y no los looks elegidos.

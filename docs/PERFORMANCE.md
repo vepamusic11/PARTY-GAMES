@@ -326,6 +326,20 @@ Pintar el piso con el escenario 3D horneado (tablero en perspectiva, marco con v
 - **Después, del disco**: `user://board25d/board_paint_<firma>.png` se lee en un hilo en **~37–45 ms** (32 ms leer + 4–8 ms subir a la placa): no traba la intro.
 - **Memoria**: la textura es de 1920 × 1080 RGB = **6,2 MB** (8,3 MB si el driver la guarda como RGBA), mientras se juega a Pintar el piso y 2 s después (`Board25DBaker.retain`). Transitorio del horneado ≈ 35 MB (render de 1920 × 1080 con profundidad, el achicado y las imágenes intermedias), que se suelta al terminar.
 
+### Revisión de dirección de arte (29/09)
+
+Colores más vivos (tokens de `UiTheme`), mascotas con la cara de la maqueta, pose "¡hola!" en el lobby y tarjetas con la cabeza adentro. `tools/benchmark.gd -- --only=lobby,dodge,sumo`, la punta sin el cambio (`699f795`, desplegada en el mismo worktree) y con el cambio, una corrida de cada una con el candado de Godot tomado (xvfb + llvmpipe):
+
+| Escena | Scripts prom. (ms) | Scripts p95 (ms) | Draw calls | Objetos | Atlas de mascotas (MB) |
+|---|---:|---:|---:|---:|---:|
+| lobby | 0,78 → 0,76 | 1,08 → 0,93 | 405 → 405 | 2213 → 2229 | 15,9 → **18,5** |
+| dodge | 1,62 → 1,42 | 2,52 → 2,23 | 46 → 42 | 1974 → 1983 | 35,6 → 39,8 |
+| sumo | 2,35 → 2,21 | 3,64 → 3,16 | 91 → 91 | 1977 → 1984 | 35,6 → 39,8 |
+| sumo_tarde | 2,66 → 2,78 | 4,11 → 4,79 | 95 → 95 | 1983 → 1988 | 35,6 → 39,2 |
+
+- **CPU y draw calls iguales** (±10 %, ruido de la máquina): los colores son tokens, la pose nueva es un cuadro más del atlas y la tarjeta del jugador sigue siendo un lote más una capa (la base del nombre) que se dibuja una vez.
+- **Atlas +2,6 MB en el lobby**: `SCREEN_POSES` suma `hello@0` y `hello@1` (2 poses × 4 jugadores × 340 KB a u = 2,25). En los juegos el atlas queda cerca del presupuesto de 40 MB (`MascotAtlas.BUDGET_BYTES`): el LRU suelta lo que no se usa; si en la TV real se ve un tirón al volver al lobby, sacar `wave_1..3@1` de `SCREEN_POSES` (el lobby ya no festeja con `wave`).
+
 ## Qué se cambió y por qué
 
 ### 1. Capas estáticas que se dibujan una sola vez

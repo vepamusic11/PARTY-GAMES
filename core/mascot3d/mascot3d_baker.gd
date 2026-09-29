@@ -76,6 +76,9 @@ const POSES := {
 	"wave_1": [PlayerAvatar.Mood.HAPPY, {"wave": true, "t": 0.13}],
 	"wave_2": [PlayerAvatar.Mood.HAPPY, {"wave": true, "t": 0.26}],
 	"wave_3": [PlayerAvatar.Mood.HAPPY, {"wave": true, "t": 0.39}],
+	# Saludo con una mano bien arriba (lobby, como la maqueta): normal (sonrisa) y feliz.
+	"hello": [PlayerAvatar.Mood.NORMAL, {"hello": 1.0, "t": 0.22}],
+	"hello_happy": [PlayerAvatar.Mood.HAPPY, {"hello": 1.0, "t": 0.22}],
 }
 
 ## Juego típico: respirar, parpadeo, caminar (8 cuadros, se espeja en 2D

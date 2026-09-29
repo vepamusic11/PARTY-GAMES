@@ -4625,6 +4625,7 @@ func test_mascot_atlas_pose_keys() -> void:
 	for m in M.size():
 		for anim in [{}, {"t": 1.7}, {"look": Vector2(-1, 0)}, {"look": Vector2(0, 1)}, {"t": 0.2, "wave": true},
 				{"walk": 0.6, "look": Vector2(1, 0)}, {"walk": 0.1}, {"greet": 1.0, "t": 0.4}, {"defeat": 1.0},
+				{"hello": 1.0, "t": 0.3}, {"hello": 1.0, "t": 0.7, "wave": true},
 				{"dance": 1.0, "t": 0.8, "dance_kind": 0}, {"dance": 1.0, "t": 0.3, "dance_kind": 1}]:
 			keys.append(MascotAtlas.pose_for(m, anim, 3))
 	for k in keys:
@@ -4679,7 +4680,7 @@ func test_mascot_atlas_framing() -> void:
 	var box := Rect2(Vector2(-cell.x / 2.0, cy - cell.y / 2.0), cell)
 	var ink := 0.35  # Contorno inflado (INK_W) y un poco de antialiasing.
 	var poses := ["idle@0", "wave_1@1", "walk_r_2@0", "walk_l_6@0", "look_u@0", "look_d@2", "greet_0@1",
-		"dance0_1@1", "dance1_2@1", "dance2_3@1", "defeat@2"]
+		"hello@0", "hello@1", "dance0_1@1", "dance1_2@1", "dance2_3@1", "defeat@2"]
 	var worst := Rect2()
 	for st in PlayerAvatar.STYLE_NAMES.size():
 		var m := Mascot3D.new().setup(Protocol.MASCOT_COLORS[st], st)

@@ -91,6 +91,12 @@ var greet := 0.0:
 	set(v):
 		greet = v
 		queue_redraw()
+## 0..1: "¡hola!" quieto con una mano bien arriba (tarjetas del lobby, como
+## la maqueta). Con ánimo NORMAL sonríe; con HAPPY, cara feliz sin festejar.
+var hello := 0.0:
+	set(v):
+		hello = v
+		queue_redraw()
 ## Segundos sin wake() (ni hop, baile o saludo) para quedarse dormida con
 ## ánimo NORMAL. 0 = nunca. Ejemplo: el lobby lo pone en 40 y llama a wake()
 ## cuando ese jugador toca algo.
@@ -235,8 +241,8 @@ func _draw() -> void:
 	var m := shown_mood()
 	var anim := {
 		"t": _t, "look": look, "squash": squash,
-		"wave": m == Mood.HAPPY and animate and greet <= 0.0,
-		"dance": dance, "dance_kind": dance_kind, "defeat": defeat, "greet": greet,
+		"wave": m == Mood.HAPPY and animate and greet <= 0.0 and hello <= 0.0,
+		"dance": dance, "dance_kind": dance_kind, "defeat": defeat, "greet": greet, "hello": hello,
 	}
 	if animate:
 		anim["flop"] = _flop
@@ -347,7 +353,8 @@ static func draw_mascot(ci: CanvasItem, feet: Vector2, u: float, col: Color, p_s
 	# --- Pose (ver *pose por capas*) ---
 	var dance := clampf(float(anim.get("dance", 0.0)), 0.0, 1.0)
 	var defeat := clampf(float(anim.get("defeat", 0.0)), 0.0, 1.0)
-	var greet := clampf(float(anim.get("greet", 0.0)), 0.0, 1.0)
+	# La 2D no tiene la pose "hello" (mano bien arriba): la dibuja como el saludo.
+	var greet := maxf(clampf(float(anim.get("greet", 0.0)), 0.0, 1.0), clampf(float(anim.get("hello", 0.0)), 0.0, 1.0))
 	var flop := float(anim.get("flop", absf(sq) * 1.6))
 	var lean := 0.0        # Inclinación de todo el cuerpo (sobre los pies).
 	var tilt := 0.0        # Inclinación de la cabeza.

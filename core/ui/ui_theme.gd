@@ -15,14 +15,14 @@ const FONT_BOLD := preload("res://assets/fonts/Fredoka-Bold.ttf")
 const FONT_SEMI := preload("res://assets/fonts/Fredoka-SemiBold.ttf")
 
 # --- Paleta -------------------------------------------------------------------
-const SKY_TOP := Color("#4FB3F6")
-const SKY_BOTTOM := Color("#CDEBFF")
+const SKY_TOP := Color("#2B9CF5")
+const SKY_BOTTOM := Color("#BFE4FF")
 const STUDIO_BG := Color("#000D22")     ## Fondo de la presentación IO-GAMES (el de su logo).
 const INK := Color("#1D2140")          ## Texto principal y contornos.
 const INK_SOFT := Color("#565C85")     ## Texto secundario.
 const MUTED := Color("#9AA0BE")        ## Deshabilitado / pistas.
 const PAPER := Color("#FFFFFF")        ## Tarjetas y paneles.
-const PAPER_DIM := Color("#EEF2FA")
+const PAPER_DIM := Color("#EAEEFB")
 const CHIP_DARK := Color("#1C1F33")    ## Fondo de números (marcadores).
 const ACCENT := Color("#FFC83D")       ## Foco del D-pad y acción principal.
 const SUCCESS := Color("#27B26B")
@@ -820,18 +820,18 @@ class ShapeBatch:
 ## pantallas (Transition) y confeti del podio (Confetti). El fondo va más
 ## suave y desenfocado que la UI: tarjetas y textos tienen que seguir
 ## destacando.
-const BG_SKY_TOP := Color("#3C8CE6")
-const BG_SKY_MID := Color("#6DB9F7")
-const BG_HAZE := Color("#D3E9FF")        ## Bruma del horizonte: lo lejano se mezcla con este color.
-const BG_GLOW := Color(1.0, 0.98, 0.9, 0.42)   ## Luz ambiente arriba al centro.
+const BG_SKY_TOP := Color("#1F8BEF")
+const BG_SKY_MID := Color("#43ADF8")
+const BG_HAZE := Color("#B2DBFF")        ## Bruma del horizonte: lo lejano se mezcla con este color (celeste, no blanco: la maqueta no lava el fondo).
+const BG_GLOW := Color(1.0, 0.98, 0.9, 0.26)   ## Luz ambiente arriba al centro.
 const BG_BEAM := Color(1.0, 1.0, 1.0, 0.12)    ## Haces de luz del escenario.
 const BG_CLOUD_SHADE := Color("#C9DDF6")  ## Panza de las nubes.
-const BG_FLOOR_A := Color("#F1F3FC")
-const BG_FLOOR_B := Color("#CCD5EF")
-const BG_VIGNETTE := Color(0.06, 0.12, 0.38, 0.30)  ## Bordes más oscuros: la UI del centro resalta.
+const BG_FLOOR_A := Color("#F5F7FF")
+const BG_FLOOR_B := Color("#D4DCF9")
+const BG_VIGNETTE := Color(0.06, 0.12, 0.38, 0.20)  ## Bordes más oscuros: la UI del centro resalta.
 const BG_SPARKLE := Color("#FFF4C2")      ## Brillos que titilan.
-const BG_HAZE_FAR := 0.42   ## Cuánto se mezclan con la bruma las torres de atrás.
-const BG_HAZE_NEAR := 0.2  ## …y las de adelante.
+const BG_HAZE_FAR := 0.3   ## Cuánto se mezclan con la bruma las torres de atrás.
+const BG_HAZE_NEAR := 0.1  ## …y las de adelante.
 const BG_BLUR_STEP := 1.1   ## Separación entre muestras del desenfoque (px de la textura a media resolución).
 
 
@@ -953,7 +953,12 @@ static func draw_toy_disc(ci: CanvasItem, c: Vector2, r: float, color: Color, pr
 ## Color de la ficha `i` del código de sala: el mismo orden que la TV,
 ## así el código se ve igual en los dos.
 static func code_tile_color(i: int) -> Color:
-	return BRICKS[(i * 2 + 1) % BRICKS.size()]
+	return CODE_TILE_COLORS[i % CODE_TILE_COLORS.size()]
+
+
+## Fichas del código: amarillo dorado, verde, azul y rosa, como la maqueta
+## (la primera era el naranja de los bloques; la maqueta la tiene dorada).
+const CODE_TILE_COLORS: Array[Color] = [Color("#FFB728"), BRICKS[3], BRICKS[5], BRICKS[7]]
 
 
 ## Ficha grande de una letra del código (como en la TV). `lit`: es la que
@@ -1672,6 +1677,8 @@ const SEAT_SHADOW_Y := 8.0
 const SEAT_GLASS := Color(1, 1, 1, 0.34)   ## Lugar libre: tarjeta de vidrio.
 const SEAT_GLASS_TOP := Color(1, 1, 1, 0.5)
 const SEAT_PLUS_DISC := Color(1, 1, 1, 0.75)  ## Disco del "+" grande del lugar libre.
+const SEAT_NAME_BASE_TOP := 0.3            ## Base clara del nombre: opacidad arriba (tapa los pies de la mascota)…
+const SEAT_NAME_BASE_BOTTOM := 0.92        ## …y abajo.
 const SEAT_TAG_SIZE := Vector2(80, 46)     ## Pastilla 1P–4P.
 const SEAT_TAG_FONT := 28
 
@@ -1680,12 +1687,12 @@ const SEAT_TAG_FONT := 28
 # borde apenas más oscuro, como los bloques de la maqueta.
 const TOY_DEPTH := 12.0                ## Alto del canto de abajo.
 const TOY_LIP_SHADE := 0.3             ## Canto: cuánto se oscurece el color.
-const TOY_TOP_LIGHT := 0.22            ## Cuerpo: arriba, el color aclarado…
-const TOY_BOTTOM_SHADE := 0.05         ## …abajo, apenas oscurecido.
+const TOY_TOP_LIGHT := 0.1             ## Cuerpo: arriba, el color apenas aclarado (la maqueta es color pleno)…
+const TOY_BOTTOM_SHADE := 0.08         ## …abajo, apenas oscurecido.
 const TOY_EDGE_SHADE := 0.42           ## Borde fino alrededor de la pieza.
 const TOY_EDGE_W := 2.5
-const TOY_GLOSS := Color(1, 1, 1, 0.55)    ## Brillo de la mitad de arriba.
-const TOY_SPEC := Color(1, 1, 1, 0.85)     ## Reflejo chico arriba a la izquierda.
+const TOY_GLOSS := Color(1, 1, 1, 0.26)    ## Brillo de la mitad de arriba (suave: no lava el color).
+const TOY_SPEC := Color(1, 1, 1, 0.5)      ## Reflejo chico arriba a la izquierda.
 const TOY_SHADOW := Color(0.07, 0.1, 0.3, 0.25)
 const CODE_TILE_SIZE := Vector2(108, 146)  ## Fichas del código de sala en la TV.
 const CODE_TILE_RADIUS := 24.0
@@ -1695,8 +1702,8 @@ const CODE_LETTER_OUTLINE := 12
 # Botón "¡A jugar!": amarillo con bisel fuerte, ▶ grande y destellos.
 const START_SIZE := Vector2(660, 118)
 const START_FONT := 44
-const START_TOP := Color("#FFDD55")
-const START_BOTTOM := Color("#FFB524")
+const START_TOP := Color("#FFD435")
+const START_BOTTOM := Color("#FFAE18")
 const START_LIP := Color("#E58B10")
 const START_DEPTH := 14.0
 const BUTTON_LIGHT_LIP := Color("#C3CCE3")   ## Canto de los botones blancos ("Orden").

@@ -46,7 +46,8 @@ const MAX_FAILURES := 2
 ## Poses "de pantalla" (lobby, intro, resumen, podio, celular): quieta,
 ## parpadeo, mira a los costados, feliz saludando (4 cuadros), triste.
 const SCREEN_POSES: Array[String] = ["idle@0", "blink@0", "look_l@0", "look_r@0", "idle@1",
-	"wave_0@1", "wave_1@1", "wave_2@1", "wave_3@1", "idle@2"]
+	"wave_0@1", "wave_1@1", "wave_2@1", "wave_3@1", "idle@2",
+	"hello@0", "hello@1"]
 ## u típico de las pantallas (tarjetas del lobby, resumen, podio).
 const SCREEN_U := 2.0
 ## Poses de juego sin caminata (juegos con mascotas grandes y quietas).
@@ -147,7 +148,8 @@ static func tier_for(u: float) -> int:
 
 ## Nombre de la pose que corresponde a un ánimo y a las claves de anim de
 ## PlayerAvatar.draw_mascot: "<base>@<ánimo>". Bases: idle, blink,
-## look_l/r/u/d, walk_{r,l,f}_0..7, wave_0..3, greet_0..1, defeat, danceK_0..3.
+## look_l/r/u/d, walk_{r,l,f}_0..7, wave_0..3, greet_0..1, hello (una mano
+## bien arriba, quieta, con el ánimo pedido), defeat, danceK_0..3.
 ## Ejemplo: caminando hacia la derecha a mitad de paso, feliz → "walk_r_4@1".
 static func pose_for(p_mood: int, anim: Dictionary, p_style: int = 0) -> String:
 	var t := float(anim.get("t", 0.0))
@@ -163,6 +165,8 @@ static func pose_for(p_mood: int, anim: Dictionary, p_style: int = 0) -> String:
 	if walk >= 0.0:
 		var dir := "r" if look.x > 0.35 else ("l" if look.x < -0.35 else "f")
 		return "walk_%s_%d@%d" % [dir, int(fposmod(walk, 1.0) * WALK_FRAMES) % WALK_FRAMES, m]
+	if float(anim.get("hello", 0.0)) > 0.35:
+		return "hello@%d" % m
 	if float(anim.get("greet", 0.0)) > 0.35:
 		return "greet_%d@%d" % [int(fposmod(t, GREET_PERIOD) / GREET_PERIOD * 2.0) % 2, PlayerAvatar.Mood.HAPPY]
 	if float(anim.get("defeat", 0.0)) > 0.5:
@@ -200,11 +204,14 @@ static func pose_def(pose: String, p_style: int = 0) -> Dictionary:
 	var base := parts[0]
 	var anim := {"fx": false, "in_place": true}
 	var frame := int(base.get_slice("_", base.get_slice_count("_") - 1)) if base.get_slice_count("_") > 1 else 0
-	if base == "idle" or base == "defeat" or base == "blink":
+	if base == "idle" or base == "defeat" or base == "blink" or base == "hello":
 		if base == "blink":
 			anim["blink"] = true
 		elif base == "defeat":
 			anim["defeat"] = 1.0
+		elif base == "hello":  # Un solo cuadro (quieta, como la maqueta): la mano a mitad del vaivén.
+			anim["hello"] = 1.0
+			anim["t"] = _safe_t(0.25 * Mascot3D.HELLO_PERIOD, Mascot3D.HELLO_PERIOD, p_style)
 	elif base.begins_with("look_") and base.length() == 6:
 		var d: Variant = {"l": Vector2(-1, 0), "r": Vector2(1, 0), "u": Vector2(0, -1), "d": Vector2(0, 1)}.get(base[5])
 		if d == null:
@@ -242,7 +249,7 @@ static func fallbacks(pose: String) -> Array[String]:
 	var out: Array[String] = []
 	if base.begins_with("walk_r") or base.begins_with("walk_l"):
 		out.append("look_%s@%s" % [base[5], m])
-	if base.begins_with("wave_") or base.begins_with("dance") or base.begins_with("greet_"):
+	if base.begins_with("wave_") or base.begins_with("dance") or base.begins_with("greet_") or base == "hello":
 		out.append("wave_0@%s" % m)
 	if base != "idle":
 		out.append("idle@" + m)
