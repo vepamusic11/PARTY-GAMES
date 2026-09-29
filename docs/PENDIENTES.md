@@ -48,6 +48,7 @@ No quedó ningún agente trabajando: todo lo del 27/09 está integrado en la ram
 
 - **Siguiente:** *Bombas de mascotas* (tipo Bomberman; estrena el joystick + A/B), *Tanquecitos* (tipo Battle City, 2 contra 2 cuidando la base), *Víboras*, *Come-come*.
 - Regla nueva: no todos los juegos necesitan la mascota entera; alcanza el color del jugador **con** etiqueta 1P–4P y patrón propio ("Cómo se ve cada jugador" en JUEGOS.md).
+- **Idea del dueño (29/09): ayuda de los eliminados.** En los juegos con eliminación, el que ya perdió puede ayudar a uno que sigue jugando, sacrificando puntos de su total ([MODOS.md §11](MODOS.md#11-ayuda-de-los-eliminados-a-cambio-de-puntos)). Empezar por Esquivar (escudo) y Empujones (salvavidas).
 - Máximo de jugadores: **4** (confirmado). Juegos por competencia: **sin límite** (confirmado).
 
 ## 4b. Música (ver [ADR 0017](adr/0017-estilos-de-musica.md))

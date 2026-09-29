@@ -178,7 +178,7 @@ Investigación del 27/09/2026 sobre las referencias que el público ya conoce. L
 1. **Cero espera.** Todos juegan a la vez, siempre. *Ejemplo:* en el Tablero los cuatro tiran el dado juntos; nadie mira tres turnos ajenos.
 2. **Se entiende en 5 segundos.** Un verbo por juego ("tocá", "esquivá", "tirá"). *Ejemplo:* Desenfunde se explica con una palabra: "¡Ya!".
 3. **Perder es gracioso.** La animación del que pierde tiene que hacer reír. *Ejemplo:* en Sillas musicales, la mascota que se queda sin silla se sienta en el piso con cara de ofendida.
-4. **Nadie "ya perdió".** Alcance sutil, rondas que valen más al final, fantasmas que siguen jugando. *Ejemplo:* Gran final ×2 en Partida rápida.
+4. **Nadie "ya perdió".** Alcance sutil, rondas que valen más al final, fantasmas que siguen jugando. *Ejemplo:* Gran final ×2 en Partida rápida. También: los eliminados pueden **ayudar** a los que siguen a cambio de sus propios puntos (ver "Ayuda de los eliminados" en [MODOS.md](MODOS.md#11-ayuda-de-los-eliminados-a-cambio-de-puntos)).
 5. **El celular es más que un joystick.** Es una pantalla privada: se puede elegir, votar o dibujar en secreto. *Ejemplo:* en Tres puertas nadie sabe qué puerta eligió Pablo hasta que la TV las abre.
 
 ## Modos de juego
@@ -195,6 +195,7 @@ Hoy hay un solo modo: **Competencia** (una ronda de N juegos con puntos 100 / 70
 | **Cooperativo contra la TV** | 4 desafíos contra la Nube Gruñona con 3 corazones compartidos; medalla | `CoopMode`; `coop_score` en el resultado | No | M-L | Medio |
 | **Handicap ("Ayuda")** | La TV le da ayuda visible a un jugador (ej. estrellas desde más lejos) | `assist` en cada jugador | No | M | Bajo-medio |
 | **Eliminación con fantasmas** | Sale el último de cada juego y sigue como fantasma; final 1 contra 1 | `EliminationMode`; `ghost` en cada jugador | No | M-L | Medio |
+| **Ayuda de los eliminados** | En los juegos con eliminación, el que ya perdió puede ayudar a uno que sigue (escudo, salvavidas, pista…) **pagando puntos de su total**; ayudar al primero cuesta el doble | `HELP` + `apply_help` en `MiniGame`; `Tournament.spend` | No | M | Medio |
 | **Fiesta infinita** | Juegos sin fin, se entra y sale entre juegos, corona de los últimos 5 | `EndlessMode`; cola en `HostServer` | No (cola con `wait`) | M | Medio |
 | **Desafío del día** | Un juego con una variante y una meta, igual en todas las TVs por la fecha | Semilla por fecha; `modifiers` | No | M | Bajo |
 | **Espectador** | Del 5° en adelante: alentar y votar qué juego sigue | Público separado de `MAX_PLAYERS` | **Sí** (ADR) | M-L | Medio |

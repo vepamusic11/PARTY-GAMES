@@ -235,6 +235,41 @@ MiniGame ◄── setup(players) — cada jugador puede traer: team, assist, bo
 
 ---
 
+## 11. Ayuda de los eliminados (a cambio de puntos)
+
+**Cómo se juega.** En los juegos donde se queda afuera a mitad de la partida (Esquivar, Empujones, Memoria de colores, ¡Que no te deje la cámara!, y después Bombas de mascotas), el que ya perdió **no se queda mirando**: puede ayudar a alguien que sigue jugando, pero cada ayuda **le cuesta puntos de su total de la competencia**. Se activa desde el lobby ("Ayudas: Sí/No"); por defecto está prendido.
+
+**Concepto: *sacrificio con decisión*.** La ayuda no es gratis: el que ayuda baja en la tabla para que otro suba. Eso convierte la eliminación en una decisión social ("¿ayudo a Sofi para que no gane Pablo, aunque yo pierda 10 puntos?"), genera alianzas y charla en el sillón, y el eliminado sigue metido en la partida.
+
+*Ejemplo:* en Esquivar, Tomi queda aplastado a los 20 s. Su celular pasa a "Ayudar": con el joystick elige a quién (flechas hacia la mascota de cada uno que sigue vivo) y con el botón le regala un **escudo** que aguanta un bloque durante 3 s. En la TV aparece "Tomi ayudó a Sofi · −10" con la mascota de Tomi traslúcida soplándole una burbuja. Sofi sobrevive a un bloque que le iba a caer y termina segunda; Tomi pierde 10 puntos del total, pero Pablo (que iba primero en la competencia) ya no gana la ronda.
+
+**Qué hace la ayuda en cada juego** (una por juego, simple y visible):
+
+| Juego | Ayuda | Efecto |
+|---|---|---|
+| Esquivar | Escudo burbuja | Aguanta un bloque durante 3 s |
+| Empujones | Salvavidas | Si el ayudado se cae en los próximos 3 s, rebota de vuelta a la isla una vez |
+| Memoria de colores | Pista | Al ayudado se le ilumina 1 s el siguiente paso de la secuencia |
+| ¡Que no te deje la cámara! | Empujón | El ayudado avanza un tramo corto hacia adelante |
+| Bombas de mascotas *(futuro)* | Patada extra | Una bomba cercana al ayudado sale despedida lejos |
+
+**Reglas para que sea justo:**
+- **Costo en puntos del total** (sugerido: 10 por ayuda, ~⅓ de un 4.° puesto); si el total no alcanza, no se puede ayudar. Nunca baja de 0.
+- **Tope por juego:** como mucho 2 ayudas por eliminado y 3 s de espera entre una y otra; un mismo jugador no puede recibir más de una ayuda a la vez.
+- **Contra el "hacedor de reyes":** ayudar al que va **primero** en la competencia cuesta el doble. Así ayudar sirve más para emparejar que para decidir quién gana.
+- **Se ve todo:** cada ayuda aparece en la TV (quién a quién y cuánto costó) y en el resumen de la ronda ("Tomi −10 por ayudar a Sofi"). Nada secreto.
+- **Bots:** un bot eliminado también puede ayudar (al que va último, si le alcanzan los puntos), así en modo solo pasa lo mismo.
+
+| Arquitectura | Detalle |
+|---|---|
+| Modo | Independiente del modo: funciona en la competencia normal y combina con Eliminación con fantasmas (el fantasma puede ser el que ayuda) |
+| Tournament | `spend(helper_id, points, reason)` y un registro de ayudas en `history`; los totales nunca bajan de 0; la lógica sigue siendo pura y testeada |
+| MiniGame | `HELP` en `get_info()` (nombre, costo, duración) y `apply_help(helper_id, target_id) -> bool` (el juego valida que el ayudante esté eliminado, el objetivo vivo, el tope y la espera); los juegos sin ayuda no cambian |
+| Protocolo | **Ninguno**: el eliminado recibe el layout de joystick con `hint` "Elegí a quién ayudar" y manda `axis` (elegir) y `btn` (ayudar). La TV decide todo |
+| UI | En la TV: mascota traslúcida del ayudante, burbuja/efecto sobre el ayudado y cartel "Tomi ayudó a Sofi · −10"; en el resumen, la línea de ayudas; en el celular, la mascota de cada candidato con su 1P–4P |
+
+**Esfuerzo:** M (base + Esquivar y Empujones) y S por cada juego más. **Riesgo:** medio: balance del costo (medirlo con `tools/simulate.gd` y bots) y que la ayuda no tape el juego en la TV.
+
 ## Resumen de impacto en la arquitectura
 
 | Modo | `GameMode` | MiniGame | Protocolo | Pantallas nuevas | Esfuerzo | Riesgo |
@@ -248,6 +283,7 @@ MiniGame ◄── setup(players) — cada jugador puede traer: team, assist, bo
 | Fiesta infinita | EndlessMode | — | No (cola con `wait`) | Fila y corona | M | Medio |
 | Desafío del día | DailyMode | `modifiers` | No | Tarjeta y récords | M | Bajo |
 | Espectador | (todos) | — | **Sí** (`role`, `cheer`) | Burbujas y voto | M-L | Medio |
+| Ayuda de los eliminados | (todos) | `HELP`, `apply_help`; `Tournament.spend` | No | Cartel de ayuda, línea en el resumen | M | Medio |
 | Tablero | BoardMode | Monedas por puesto | No | `BoardScreen` | XL | Alto |
 
 Regla que se mantiene en todos: **la TV decide**. Los celulares siguen mandando solo `axis` y `btn` (más `cheer` del público, que no afecta resultados). Dados, votos, ayudas y bots los resuelve la TV.
