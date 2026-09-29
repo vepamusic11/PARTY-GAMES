@@ -1,6 +1,6 @@
 # Pendientes para retomar
 
-Estado al **27/09/2026** (rama `claude/laughing-ramanujan-tfi3ps`, [PR #1](https://github.com/vepamusic11/PARTY-GAMES/pull/1)). Lo hecho está en el PR y en [PLAN.md](PLAN.md); acá va solo **lo que falta**, ordenado para retomar sin buscar.
+Estado al **29/09/2026** (rama `claude/laughing-ramanujan-tfi3ps`, [PR #1](https://github.com/vepamusic11/PARTY-GAMES/pull/1)). Lo hecho está en el PR y en [PLAN.md](PLAN.md); acá va solo **lo que falta**, ordenado para retomar sin buscar.
 
 ## Cómo retomar (5 minutos)
 
@@ -23,7 +23,12 @@ Estado al **27/09/2026** (rama `claude/laughing-ramanujan-tfi3ps`, [PR #1](https
 
 ## 2. Trabajo en curso
 
-No quedó ningún agente trabajando: todo lo del 27/09 está integrado en la rama (mascotas y piezas 3D, APK de prueba, estilos de música).
+Dos agentes quedaron trabajando el 29/09 en copias aisladas (`.claude/worktrees/`). Si al retomar ya no están (el contenedor se recicla), **se vuelven a lanzar con el mismo pedido**; lo integrado está a salvo en la rama.
+
+| Agente | Qué hace | Dónde quedó |
+|---|---|---|
+| **Dirección de arte, vuelta 3** (con Fable) | Pasar a 2.5D / escenario 3D los juegos que siguen planos (Karts, Carrera de obstáculos, Desenfunde, Memoria, ¡Que no te deje la cámara!, Empujones, Carrera de toques, Reloj exacto, Ping Pong); Pool: bolas tapadas por la banda de adelante; Esquivar: bloques que no pasen detrás del marcador; mascotas con brazos más gruesos y ojos más grandes | Karts en 2.5D hecho (commit WIP en su worktree) |
+| **Ayuda de los eliminados** en Esquivar y Empujones ([MODOS.md §11](MODOS.md#11-ayuda-de-los-eliminados-a-cambio-de-puntos)) | `Tournament.spend`, `MiniGame.apply_help`, escudo y salvavidas, selector "Elegí a quién ayudar" en el celular, cartel en la TV, opción en el lobby, bots, tests, ADR | Base hecha (puntos, regla y ambos juegos); faltaban lobby, celular, efectos, bots, tests y docs |
 
 ## 3. Diseño (pedido: "3D como la maqueta o mejor")
 
