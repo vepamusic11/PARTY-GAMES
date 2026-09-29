@@ -211,11 +211,15 @@ static func bake(host: Node, view: BoardView25D) -> Image:
 	var t_blur := Time.get_ticks_usec()
 	var board_root := Board25DScene.build(view, Board25DScene.LAYER_BOARD)
 	var t_build_board := Time.get_ticks_usec()
-	var board := await _render(host, view, board_root, size, UiTheme.BOARD25D_SUPERSAMPLE, UiTheme.BOARD25D_TILES)
-	if board == null:
-		return null
-	var t_board := Time.get_ticks_usec()
-	img.blend_rect(board, Rect2i(Vector2i.ZERO, size), Vector2i.ZERO)
+	var t_board := t_build_board
+	if board_root.get_child_count() == 0:
+		board_root.free()  # Receta sin tablero (la sala sola, "stage"): solo el entorno.
+	else:
+		var board := await _render(host, view, board_root, size, UiTheme.BOARD25D_SUPERSAMPLE, UiTheme.BOARD25D_TILES)
+		if board == null:
+			return null
+		t_board = Time.get_ticks_usec()
+		img.blend_rect(board, Rect2i(Vector2i.ZERO, size), Vector2i.ZERO)
 	img.convert(Image.FORMAT_RGB8)
 	Board25DScene.release_build_caches()
 	var t_end := Time.get_ticks_usec()

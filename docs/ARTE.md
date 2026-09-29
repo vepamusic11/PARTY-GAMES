@@ -334,3 +334,41 @@ Para que sean de la misma familia que el lobby: el título del juego en el resum
 Comparaciones: `docs/img/lobby_comparacion.png` (maqueta · vuelta 1 · ahora), `docs/img/pintar_25d_comparacion.png` (maqueta · ahora, con el detalle de la mascota de adelante a la misma escala), capturas en `docs/img/` (`game_intro.png`, `round_summary.png`, `final.png`). Rendimiento en [PERFORMANCE.md](PERFORMANCE.md#revisión-de-dirección-de-arte-vuelta-2-2909).
 
 **Qué queda distinto de la maqueta (a propósito o pendiente):** las mascotas siguen dibujándose de frente en el tablero 2.5D; el fondo de la maqueta de Pintar tiene más juguetes fuera de foco (banderín, bloques con botones) de los que entran en el horneado actual; los dioramas de la maqueta no tienen mascotas (los nuestros sí, chicas, para que se vea de qué es cada juego); en las tarjetas del lobby el "1P" de la maqueta va más adentro de la esquina.
+
+## Revisión de dirección de arte, vuelta 3 (29/09/2026)
+
+Pedido del dueño: todo el juego al nivel de las maquetas o mejor. Ya estaban lobby, Pintar el piso, Arena, Esquivar y Pool; faltaban los nueve juegos que seguían planos, dos detalles del 2.5D y un ajuste de las mascotas. Mismo método: medir (PIL por zonas o proporciones), corregir, capturar, comparar, repetir.
+
+### Qué tratamiento le tocó a cada juego
+
+| Juego | Cómo se ve | Tratamiento | Comparación |
+|---|---|---|---|
+| Karts de mascotas | tablero visto de arriba | **2.5D horneado**, receta `karts`: la pista entera en 3D (asfalto y marcas planas del mismo color que el dibujo plano, cordones de bloques arcoíris con volumen a los dos lados, turbos como bloques con flechas, charcos, largada y grilla) y árboles, matas y flores como esferas de plástico; karts, mascotas, flechas que se prenden y chispas en 2D proyectados | `docs/img/karts_25d_comparacion.png` |
+| Ping Pong | mesa vista de arriba | **2.5D horneado**, receta `pingpong`: la mesa es la pieza (tapa azul gruesa con canto, rodapié, líneas blancas, red con volumen y postes; sin marco de bloques); paletas acostadas con un canto, pelota a su altura con la sombra debajo, mascotas paradas a un costado (la de adelante un poco más grande) | `docs/img/pingpong_25d_comparacion.png` |
+| Carrera de toques | carriles vistos de arriba | **2.5D horneado**, receta `tap_race` (carriles): baldosas, división punteada entre carriles y meta a cuadros en el escenario; una vista por cantidad de jugadores; mascotas paradas en su punto | `docs/img/tap_race_25d_comparacion.png` |
+| Carrera de obstáculos | carriles con scroll lateral | **2.5D horneado**, receta `hurdles` (carriles con división entera). Lo que pasa por cada carril se sigue armando en plano y se lleva a la pantalla con la transformación del piso en la línea del suelo del carril (exacta a lo largo del carril); vallas, escalones, plataformas, meta y matas van de frente en su punto del suelo, más chicos atrás; lo que asoma por los costados lo tapa el propio escenario horneado (`draw_board_25d_cover`) | `docs/img/hurdles_25d_comparacion.png` |
+| Memoria de colores, Reloj exacto, ¡Que no te deje la cámara! | pantalla fija / campo con scroll | **Sala de juguetes 3D horneada como cielo** (receta `stage`, la usa `MiniGame.draw_sky()` en todos los juegos sin tablero 2.5D): piso en perspectiva y bloques de plástico fuera de foco en vez del escenario pintado a mano de 480×270 | capturas `docs/img/memory.png`, `stop_clock.png`, `scroller.png` |
+| Desenfunde | pueblo del oeste (escena propia) | sin cambios (tiene su propio escenario; ver pendientes) | — |
+| Empujones | isla redonda sobre el agua | sin cambios en esta vuelta (la isla se achica: no se puede hornear; y otro agente toca su lógica; ver pendientes) | — |
+
+### Detalles del 2.5D que quedaban
+
+- **Pool**: las bolas y mascotas pegadas a la banda de adelante se dibujaban encima de ella. Ahora la banda de adelante se vuelve a pintar encima con el propio escenario horneado, por tramos entre las troneras (`Pool._draw_front_cushion` → `MiniGame.draw_board_25d_cover`): una bola que cae en una tronera de adelante se sigue viendo. Cuesta 1 draw call (la misma textura).
+- **Esquivar**: los bloques que caían en la fila de atrás pasaban por detrás del marcador. La capa de los bloques en el aire va con `z_index` por delante del marcador mientras caen (`UiTheme.BOARD25D_AIR_Z`); apoyados, vuelven al orden de siempre.
+
+### Mascotas: brazos y ojos
+
+Medido sobre la hoja `--compare` de `tools/mascot3d_sheet.gd` (recortes de la maqueta contra el 3D, misma escala) con `measure_mascot.py` (en la sesión): cabeza / cuerpo con brazos al 88 % del alto y ojos como % del área de la cara (píxeles oscuros sobre blancos de la mitad de arriba).
+
+| Medida | Maqueta | Antes (vuelta 2) | Ahora |
+|---|---:|---:|---:|
+| Cabeza / cuerpo con brazos | 1,37–1,46 | 1,56–1,63 | **1,49–1,53** |
+| Ojos: % de la cara | 27–32 % | 26–30 % | **29–33 %** |
+
+Qué cambió (`Mascot3D`): `ARM_R` 0,6 → 0,7 y `HAND_R` 0,68 → 0,76 (mangas y manoplas más gordas: la silueta cuerpo+brazos se acerca a la de la maqueta), `EYE_R` 0,6×1,1 → 0,66×1,2. La manopla del saludo "¡hola!" pisa un poco más el borde de la cabeza (`HAND_R × 0,2` en vez de 0,4) para que la pose siga entrando en la celda del atlas (`test_mascot_atlas_framing`). Comparación: `docs/img/mascotas_3d_comparacion.png`.
+
+### Colores del 2.5D contra el dibujo plano (Karts)
+
+Con la pista en 3D, las marcas planas (asfalto, líneas, charcos) van con color por vértice sin luz: miden lo mismo que en plano (asfalto #6A7295 contra #6C7497). El pasto y las copas de los árboles son plástico con luz y, vistos de arriba, con el aclarado de las baldosas (`BOARD25D_LIGHT` 0,26) quedaban lavados (pasto #9DD38A, saturación 0,35 contra 0,55 del token): `_plastic` tiene ahora un parámetro `light` y Karts usa `BOARD25D_KARTS_LIGHT` 0,06 (pasto #85C26F, saturación 0,43; copa #53AC5C contra #489E51 del plano).
+
+**Qué queda distinto de la maqueta (a propósito o pendiente):** Desenfunde conserva su pueblo pintado; Empujones sigue plano; las marcas planas de la pista se hornean con supermuestreo 2× (las líneas blancas finas se ven un poco dentadas de cerca); en Carrera de obstáculos los ladrillos del piso quedan acostados y las vallas de frente (dos lenguajes en el mismo carril, como en un diorama de juguete).

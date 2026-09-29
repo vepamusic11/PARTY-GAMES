@@ -57,7 +57,7 @@ const BODY_R := Vector3(1.72, 1.3, 1.48)  ## Semiejes aproximados del cuerpo (pa
 ## la cabeza; antes ~55 %): más afuera, más abajo y más gordos.
 const SHOULDER := Vector3(1.6, 0.42, 0.28)
 const ARM_LEN := 1.35                      ## Del hombro al centro de la mano.
-const ARM_R := 0.6                         ## Radio del brazo (la manga).
+const ARM_R := 0.7                         ## Radio del brazo (la manga; vuelta 3: más gorda, como la maqueta).
 const ARM_REST := 0.36                     ## Ángulo del brazo colgando (rad desde la vertical).
 ## Saludo con una mano bien arriba (lobby, como la maqueta): el brazo se
 ## estira como en los dibujos animados y la mano queda al costado de la
@@ -65,14 +65,14 @@ const ARM_REST := 0.36                     ## Ángulo del brazo colgando (rad de
 const HELLO_REACH := 4.4
 const HELLO_ANGLE := 2.35                  ## Radianes desde "colgando" (PI = derecho hacia arriba).
 const HELLO_PERIOD := 0.9                  ## Segundos de un vaivén de la mano (2 cuadros horneados).
-const HAND_R := 0.68
+const HAND_R := 0.76
 const INK_W := 0.19                        ## Contorno de piezas grandes (~2 u).
 const INK_W_SMALL := 0.15                  ## Contorno de piezas chicas.
 const EYE_X := 1.28
 const EYE_Y := -0.78
 ## Ojo normal: semiejes (ancho, alto, profundidad). La maqueta: óvalo alto
 ## (alto ≈ 1,7 × ancho) que mide ~0,4 del alto de la cara.
-const EYE_R := Vector3(0.6, 1.1, 0.4)
+const EYE_R := Vector3(0.66, 1.2, 0.42)
 const MOUTH_Y := -2.12
 
 ## Colores propios de la cara 3D (la 2D usa los de PlayerAvatar).
@@ -860,9 +860,10 @@ func _aim_arm(i: int, side: float, angle: float, fwd: float, dy: float, hello :=
 		# por delante, como en la maqueta (la manopla tapa un poco el borde).
 		var hy := HEAD_C.y - 0.6
 		var half := HEAD_R.x * sqrt(maxf(0.0, 1.0 - pow((hy - HEAD_C.y) / HEAD_R.y, 2.0)))
-		# La manopla (más grande desde la vuelta 2) pisa un poco más el borde de la
-		# cabeza: así entra en la celda del atlas (test_mascot_atlas_framing).
-		target = target.lerp(Vector3(side * (half + HAND_R * 0.4), hy, HEAD_R.z * 0.92), hello)
+		# La manopla (más grande desde la vuelta 2, y más desde la vuelta 3) pisa
+		# un poco más el borde de la cabeza: así entra en la celda del atlas
+		# (test_mascot_atlas_framing).
+		target = target.lerp(Vector3(side * (half + HAND_R * 0.2), hy, HEAD_R.z * 0.92), hello)
 	# Si la mano cae dentro de la cabeza o del cuerpo (vistos de frente), va por delante.
 	var need := _front_z(Vector2(target.x, target.y)) + HAND_R * 0.8
 	if target.z < need:

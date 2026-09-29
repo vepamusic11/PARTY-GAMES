@@ -23,6 +23,19 @@ extends MiniGame
 ## es un scissor, sin draw calls extra). Ladrillos, vallas y meta se
 ## precalculan como plantillas y en cada frame solo se ubican
 ## (TriBatch.template). Carteles de carril y rieles: draw_static (una vez).
+##
+## Escenario 2.5D (ADR 0019): con render, los carriles (baldosas y
+## divisiones) y la sala de juguetes son una escena 3D horneada con cámara
+## en perspectiva, una por cantidad de jugadores. Lo que pasa por cada
+## carril se sigue armando en las coordenadas planas de siempre y se lleva a
+## la pantalla con la transformación del piso en la línea del suelo de ese
+## carril (`_lane_xf`: a lo largo del carril la proyección es exacta; los
+## ladrillos y pozos quedan acostados en perspectiva) y lo que está parado
+## (vallas, escalones, plataformas, meta, matas, mascotas) como cartel de
+## frente en su punto del suelo, más chico atrás. Como el recorte de un
+## Control es un rectángulo, en 2.5D la capa no recorta: lo que asoma por
+## los costados del tablero se tapa con el propio escenario horneado
+## (MiniGame.draw_board_25d_cover). Sin render, se dibuja plano como siempre.
 
 enum Kind { HURDLE, PIT, BLOCK, PLATFORM }
 
@@ -135,6 +148,36 @@ var _world: Control                # Capa recortada al tablero con lo que pasa p
 var _batch := GameArt.TriBatch.new()
 static var _templates: Dictionary = {}  # clave -> [puntos, colores] en coordenadas locales
 
+## Vistas 2.5D por cantidad de carriles y si este cuadro se dibuja con una.
+static var _board_views: Dictionary = {}
+var _v25 := false
+
+
+## Alto de cada carril y tablero para `n` jugadores (centrado en la pantalla).
+static func lane_height(n: int) -> float:
+	return clampf(LANES_SPACE / maxi(n, 1), LANE_H_MIN, LANE_H_MAX)
+
+
+static func board_rect(n: int) -> Rect2:
+	var h := lane_height(n) * maxi(n, 1)
+	return Rect2(BOARD_X, (SCREEN.y - h) / 2.0 + 40.0, BOARD_W, h)
+
+
+## Cámara y proyección del escenario 2.5D para `n` carriles (el campo
+## encuadrado como el de Pintar el piso, BoardView25D.make_fit).
+static func board_view(n: int = 4) -> BoardView25D:
+	n = clampi(n, 1, Protocol.MAX_PLAYERS)
+	if not _board_views.has(n):
+		var v := BoardView25D.make_fit(board_rect(n), lane_height(n) / 2.0, Board25DScene.RECIPE_HURDLES)
+		v.extras = {"rows": n, "lane_h": lane_height(n), "divider": 4.0, "dash": []}
+		_board_views[n] = v
+	return _board_views[n]
+
+
+## Durante la intro: el escenario 2.5D de esta cantidad de jugadores.
+static func prewarm_art(host: Node, p_players: Array = []) -> void:
+	Board25DBaker.request(host, board_view(maxi(p_players.size(), 1)))
+
 
 static func get_info() -> Dictionary:
 	return {
@@ -156,9 +199,8 @@ func setup(p_players: Array[Dictionary]) -> void:
 	for p in players:
 		_runners[p.id] = Runner.new()
 	var n := maxi(players.size(), 1)
-	_lane_h = clampf(LANES_SPACE / n, LANE_H_MIN, LANE_H_MAX)
-	var h := _lane_h * n
-	_board = Rect2(BOARD_X, (SCREEN.y - h) / 2.0 + 40.0, BOARD_W, h)
+	_lane_h = lane_height(n)
+	_board = board_rect(n)
 	_world = Control.new()
 	_world.name = "Course"
 	_world.position = _board.position
@@ -503,9 +545,21 @@ func _lane_top(i: int) -> float:
 
 func _draw() -> void:
 	_ensure_course()
-	draw_sky()
-	draw_play_field(_board, _lane_h / 2.0)
+	var v25 := draw_board_25d(board_view(players.size()))
+	if v25 != _v25:
+		_v25 = v25
+		# En 2.5D la capa de los carriles dibuja en px de pantalla y no recorta
+		# (el recorte de un Control es un rectángulo; lo que asoma por los
+		# costados lo tapa el escenario, ver abajo).
+		_world.clip_contents = not v25
+		_world.position = Vector2.ZERO if v25 else _board.position
+		_world.queue_redraw()
+	if not _v25:
+		draw_sky()
+		draw_play_field(_board, _lane_h / 2.0)
 	draw_static(_paint_lanes)
+	if _v25:
+		_draw_side_cover()
 	var mascot_x := _board.position.x + CAM_X
 	var tags: Array = []
 	var marks := GameArt.TriBatch.new()
@@ -517,43 +571,54 @@ func _draw() -> void:
 		var anim := mascot_anim(p.id, Vector2(1, 0))
 		anim["squash"] = r.squash
 		anim["wave"] = mood == PlayerAvatar.Mood.HAPPY
+		# Pies en el suelo del carril, en pantalla, y escala por profundidad.
+		var base := _screen(Vector2(mascot_x, ground))
+		var d := _depth(Vector2(mascot_x, ground))
 		if r.fall > 0.0:
 			# Se hunde de golpe hasta la cintura y se sacude, trabada en el pozo; el
 			# frente del pozo (después) le tapa las piernas.
 			var k := 1.0 - r.fall / PIT_SEC
-			var s := lerpf(1.0, 0.85, k)
-			var sink := PIT_SINK * minf(k * 5.0, 1.0)
-			var xform := Transform2D(sin(k * TAU * 2.0) * 0.18, Vector2(s, s), 0.0, Vector2(mascot_x, ground + sink))
+			var s := lerpf(1.0, 0.85, k) * d
+			var sink := PIT_SINK * minf(k * 5.0, 1.0) * d
+			var xform := Transform2D(sin(k * TAU * 2.0) * 0.18, Vector2(s, s), 0.0, base + Vector2(0, sink))
 			draw_set_transform_matrix(xform)
 			PlayerAvatar.draw_mascot(self, Vector2.ZERO, MASCOT_SCALE, p.color, PlayerAvatar.style_of(p), mood,
 				0.0, 0.0, false, {"t": anim.t, "look": Vector2(0, 1), "xform": xform})
 			draw_set_transform(Vector2.ZERO)
-			_add_pit_front(marks, r, i)
-			marks.flush(self)
-			tags.append([p, Vector2(mascot_x, ground + sink), MASCOT_SCALE * s, -1.0])
+			var front := GameArt.TriBatch.new()
+			_add_pit_front(front, r, i)
+			if _v25:
+				front.points = _lane_xf(i) * front.points
+			front.flush(self)
+			tags.append([p, base + Vector2(0, sink), MASCOT_SCALE * s, -1.0])
 			continue
-		var feet := Vector2(mascot_x, ground - r.floor_h)
-		var lift := r.y - r.floor_h
+		var feet := base - Vector2(0, r.floor_h * d)
+		var lift := (r.y - r.floor_h) * d
 		if r.stumble > 0.0:
 			# Tropezón: se va para adelante y vuelve.
 			var k := 1.0 - r.stumble / STUMBLE_SEC
 			var xform := Transform2D(sin(minf(k * 2.0, 1.0) * PI) * 0.45, feet - Vector2(0, lift))
 			draw_set_transform_matrix(xform)
 			anim["xform"] = xform
-			PlayerAvatar.draw_mascot(self, Vector2(0, lift), MASCOT_SCALE, p.color, PlayerAvatar.style_of(p), mood,
+			PlayerAvatar.draw_mascot(self, Vector2(0, lift), MASCOT_SCALE * d, p.color, PlayerAvatar.style_of(p), mood,
 				0.0, lift, false, anim)
 			draw_set_transform(Vector2.ZERO)
 		else:
-			PlayerAvatar.draw_mascot(self, feet, MASCOT_SCALE, p.color, PlayerAvatar.style_of(p), mood, 0.0, lift, false, anim)
-		tags.append([p, feet - Vector2(0, lift), MASCOT_SCALE, -1.0])
+			PlayerAvatar.draw_mascot(self, feet, MASCOT_SCALE * d, p.color, PlayerAvatar.style_of(p), mood, 0.0, lift, false, anim)
+		tags.append([p, feet - Vector2(0, lift), MASCOT_SCALE * d, -1.0])
 	# Marcador de cada riel (dónde va cada uno respecto de la meta).
 	for i in players.size():
 		var p: Dictionary = players[i]
 		var rail := _rail_rect(i)
 		var c := Vector2(rail.position.x + rail.size.x * clampf((_runners[p.id] as Runner).x / COURSE_LEN, 0.0, 1.0), rail.get_center().y)
-		marks.circle(c, 13.0, UiTheme.INK, 16)
-		marks.circle(c, 9.5, p.color, 16)
-		marks.circle(c + Vector2(-3, -3), 3.0, Color(1, 1, 1, 0.6), 8)
+		var d := 1.0
+		if _v25:
+			var xf := _top_xf(i)
+			c = xf * (c - _board.position)
+			d = xf.x.length()
+		marks.circle(c, 13.0 * d, UiTheme.INK, 16)
+		marks.circle(c, 9.5 * d, p.color, 16)
+		marks.circle(c + Vector2(-3, -3) * d, 3.0 * d, Color(1, 1, 1, 0.6), 8)
 	marks.flush(self)
 	draw_player_tags(tags)
 	draw_hud(meters(), clock_text(DURATION_SEC - _elapsed), "clock")
@@ -565,16 +630,80 @@ func _draw() -> void:
 		draw_text_centered(_end_text, SCREEN / 2.0, 200, UiTheme.ACCENT, 20)
 
 
-## Frente del pozo delante de la mascota que cayó: le tapa los pies.
+## Frente del pozo delante de la mascota que cayó: le tapa los pies. En
+## coordenadas del tablero (0,0 = esquina): en 2.5D se lleva a la pantalla
+## con la transformación del carril.
 func _add_pit_front(b: GameArt.TriBatch, r: Runner, lane: int) -> void:
 	var cam := r.x - CAM_X
-	var ground := _lane_top(lane) + _lane_h - GROUND_H
-	var x0 := maxf(_board.position.x + r.pit_x0 - cam, _board.position.x)
-	var x1 := minf(_board.position.x + r.pit_x1 - cam, _board.end.x)
+	var ground := _lane_h * lane + _lane_h - GROUND_H
+	var x0 := maxf(r.pit_x0 - cam, 0.0)
+	var x1 := minf(r.pit_x1 - cam, _board.size.x)
 	if x1 <= x0:
 		return
-	b.quad_colors(Vector2(x0, ground + 6.0), Vector2(x1, ground + 6.0), Vector2(x1, ground + GROUND_H), Vector2(x0, ground + GROUND_H),
+	var o := Vector2.ZERO if _v25 else _board.position
+	b.quad_colors(o + Vector2(x0, ground + 6.0), o + Vector2(x1, ground + 6.0), o + Vector2(x1, ground + GROUND_H), o + Vector2(x0, ground + GROUND_H),
 		UiTheme.HURDLES_PIT, UiTheme.HURDLES_PIT, UiTheme.HURDLES_PIT_DEEP, UiTheme.HURDLES_PIT_DEEP)
+
+
+# --- 2.5D: de las coordenadas del tablero a la pantalla ------------------------------
+
+## Dónde se dibuja un punto del plano (px de la pantalla del dibujo plano):
+## proyectado en 2.5D, igual en plano.
+func _screen(p: Vector2) -> Vector2:
+	return board_view(players.size()).project(p) if _v25 else p
+
+
+## Escala de lo que está parado en `p`: más chico atrás en 2.5D; 1 en plano.
+func _depth(p: Vector2) -> float:
+	if not _v25:
+		return 1.0
+	return clampf(board_view(players.size()).scale_at(p), UiTheme.BOARD25D_SCALE_MIN, UiTheme.BOARD25D_SCALE_MAX)
+
+
+## Transformación que lleva las coordenadas del tablero (0,0 = esquina) a
+## la pantalla acostadas en el piso del carril `i`, tomada en la línea del
+## suelo: a lo largo del carril es exacta; los ladrillos del piso (40 px de
+## alto) quedan a menos de 1 px. Identidad (más el origen del tablero) en plano.
+func _lane_xf(i: int) -> Transform2D:
+	var ground := _lane_top(i) + _lane_h - GROUND_H
+	return _floor_xf(Vector2(_board.get_center().x, ground))
+
+
+## Lo mismo, tomada arriba del carril (carteles y rieles).
+func _top_xf(i: int) -> Transform2D:
+	return _floor_xf(Vector2(_board.get_center().x, _lane_top(i) + 36.0))
+
+
+func _floor_xf(at: Vector2) -> Transform2D:
+	if not _v25:
+		return Transform2D(0.0, _board.position)
+	return board_view(players.size()).floor_xform(at) * Transform2D(0.0, _board.position)
+
+
+## Cartel de frente (valla, escalón, meta) apoyado en `(x, ground)` del
+## tablero: en 2.5D, en su punto del suelo proyectado y escalado por la
+## profundidad del carril (sin acostarlo); en plano, solo el traslado.
+func _stand_xf(lane: int, x: float, ground: float) -> Transform2D:
+	if not _v25:
+		return Transform2D(0.0, Vector2(x, ground))
+	var xf := _lane_xf(lane)
+	var d := xf.x.length()
+	return Transform2D(0.0, Vector2(d, d), 0.0, xf * Vector2(x, ground))
+
+
+## Tapa con el escenario horneado lo que asoma por los costados del tablero
+## (la capa de los carriles no recorta en 2.5D): dos polígonos, del borde de
+## la pantalla al borde del tablero (que en perspectiva es una línea inclinada).
+func _draw_side_cover() -> void:
+	var v := board_view(players.size())
+	var q := v.quad(_board)
+	var pad := 6.0
+	var top := q[0].y - pad
+	var bottom := q[3].y + pad
+	draw_board_25d_cover(v, [
+		PackedVector2Array([Vector2(0, top), Vector2(q[0].x + 1.0, top), Vector2(q[3].x + 1.0, bottom), Vector2(0, bottom)]),
+		PackedVector2Array([Vector2(q[1].x - 1.0, top), Vector2(SCREEN.x, top), Vector2(SCREEN.x, bottom), Vector2(q[2].x - 1.0, bottom)]),
+	])
 
 
 ## Riel de progreso de un carril (arriba a la derecha).
@@ -593,29 +722,51 @@ func _paint_lanes(ci: CanvasItem) -> void:
 	for i in players.size():
 		var col: Color = players[i].color
 		var tag := _tag_rect(i)
-		b.feather_capsule(tag.grow(4.0).grow_side(SIDE_BOTTOM, 3.0), UiTheme.INK)
-		b.capsule(tag.grow(4.0).grow_side(SIDE_BOTTOM, 3.0), UiTheme.INK)
-		b.capsule(tag, col.darkened(0.3))
-		b.capsule(Rect2(tag.position, tag.size - Vector2(0, 6.0)), col)
-		b.capsule(Rect2(tag.position + Vector2(14.0, 4.0), Vector2(tag.size.x * 0.6, 12.0)), Color(1, 1, 1, 0.3))
-		b.capsule(Rect2(tag.position + Vector2(7.0, 8.0), Vector2(52.0, tag.size.y - 20.0)), UiTheme.CHIP_DARK)
+		# En 2.5D: cartel de frente (legible) en su lugar proyectado; el riel,
+		# acostado en el carril; la banderita, de frente en la punta del riel.
+		var tag_xf := _bill_xf(i, tag.get_center())
+		var tb := GameArt.TriBatch.new()
+		var t := Rect2(-tag.size / 2.0, tag.size)
+		tb.feather_capsule(t.grow(4.0).grow_side(SIDE_BOTTOM, 3.0), UiTheme.INK)
+		tb.capsule(t.grow(4.0).grow_side(SIDE_BOTTOM, 3.0), UiTheme.INK)
+		tb.capsule(t, col.darkened(0.3))
+		tb.capsule(Rect2(t.position, t.size - Vector2(0, 6.0)), col)
+		tb.capsule(Rect2(t.position + Vector2(14.0, 4.0), Vector2(t.size.x * 0.6, 12.0)), Color(1, 1, 1, 0.3))
+		tb.capsule(Rect2(t.position + Vector2(7.0, 8.0), Vector2(52.0, t.size.y - 20.0)), UiTheme.CHIP_DARK)
+		b.template(tb.points, tb.colors, tag_xf)
 		var rail := _rail_rect(i)
-		b.capsule(rail, UiTheme.HURDLES_RAIL)
+		var rb := GameArt.TriBatch.new()
+		rb.capsule(Rect2(rail.position - _board.position, rail.size), UiTheme.HURDLES_RAIL)
+		b.template(rb.points, rb.colors, _top_xf(i))
 		# Banderita a cuadros al final del riel.
 		var pole := Vector2(rail.end.x + 18.0, rail.get_center().y + 14.0)
-		b.rect(Rect2(pole.x - 3.0, pole.y - 44.0, 6.0, 44.0), UiTheme.INK)
-		b.rect(Rect2(pole.x + 1.0, pole.y - 44.0, 36.0, 24.0), UiTheme.INK)
+		var fb := GameArt.TriBatch.new()
+		fb.rect(Rect2(-3.0, -44.0, 6.0, 44.0), UiTheme.INK)
+		fb.rect(Rect2(1.0, -44.0, 36.0, 24.0), UiTheme.INK)
 		for cy in 2:
 			for cx in 3:
-				b.rect(Rect2(pole.x + 3.0 + cx * 11.0, pole.y - 42.0 + cy * 10.0, 11.0, 10.0),
-					UiTheme.PAPER if (cx + cy) % 2 == 0 else UiTheme.CHIP_DARK)
+				fb.rect(Rect2(3.0 + cx * 11.0, -42.0 + cy * 10.0, 11.0, 10.0), UiTheme.PAPER if (cx + cy) % 2 == 0 else UiTheme.CHIP_DARK)
+		b.template(fb.points, fb.colors, _bill_xf(i, pole))
 	b.flush(ci)
 	for i in players.size():
 		var p: Dictionary = players[i]
 		var tag := _tag_rect(i)
-		UiTheme.draw_text(ci, UiTheme.player_tag(p.slot), Vector2(tag.position.x + 33.0, tag.get_center().y - 3.0), 24, UiTheme.PAPER)
-		UiTheme.draw_text_left(ci, p.name, Vector2(tag.position.x + 70.0, tag.get_center().y - 3.0), 24,
-			UiTheme.text_on(p.color), tag.end.x - 16.0 - (tag.position.x + 70.0))
+		var xf := _bill_xf(i, tag.get_center())
+		var d := xf.x.length()
+		var left := xf * Vector2(-tag.size.x / 2.0, -3.0)
+		UiTheme.draw_text(ci, UiTheme.player_tag(p.slot), left + Vector2(33.0, 0) * d, roundi(24 * d), UiTheme.PAPER)
+		UiTheme.draw_text_left(ci, p.name, left + Vector2(70.0, 0) * d, roundi(24 * d),
+			UiTheme.text_on(p.color), (tag.size.x - 16.0 - 70.0) * d)
+
+
+## Cartel de frente centrado en `at` (px del dibujo plano) arriba del carril
+## `i`: en 2.5D, proyectado con _top_xf y escalado; en plano, solo el traslado.
+func _bill_xf(i: int, at: Vector2) -> Transform2D:
+	if not _v25:
+		return Transform2D(0.0, at)
+	var xf := _top_xf(i)
+	var d := xf.x.length()
+	return Transform2D(0.0, Vector2(d, d), 0.0, xf * (at - _board.position))
 
 
 ## Lo que pasa por los carriles, en coordenadas de `_world` (0,0 = esquina
@@ -631,55 +782,75 @@ func _draw_world() -> void:
 		var top := _lane_h * i
 		var ground := top + _lane_h - GROUND_H
 		var cam := r.x - CAM_X
-		b.template(bush_tpl[0], bush_tpl[1], Transform2D(0.0, Vector2(-fposmod(cam * BUSH_PARALLAX, BUSH_PERIOD), ground)))
-		b.template(ground_tpl[0], ground_tpl[1], Transform2D(0.0, Vector2(-fposmod(cam, PERIOD), ground)))
+		# Plano: todo en un lote en coordenadas del tablero. 2.5D: lo acostado
+		# (matas de fondo, piso, largada, pozos) se arma igual y se lleva a la
+		# pantalla con la transformación del carril; lo parado va de frente
+		# (ver _stand_xf) directo en el lote de pantalla.
+		var flat := GameArt.TriBatch.new() if _v25 else b
+		flat.template(bush_tpl[0], bush_tpl[1], Transform2D(0.0, Vector2(-fposmod(cam * BUSH_PARALLAX, BUSH_PERIOD), ground)))
+		if _v25:
+			flat.points = _lane_xf(i) * flat.points
+			b.points.append_array(flat.points)
+			b.colors.append_array(flat.colors)
+			flat = GameArt.TriBatch.new()
+		flat.template(ground_tpl[0], ground_tpl[1], Transform2D(0.0, Vector2(-fposmod(cam, PERIOD), ground)))
 		# Largada: raya blanca en el piso.
 		if cam < 10.0 and cam > -w:
-			b.rect(Rect2(-cam - 4.0, ground, 8.0, GROUND_H), UiTheme.HURDLES_POST)
+			flat.rect(Rect2(-cam - 4.0, ground, 8.0, GROUND_H), UiTheme.HURDLES_POST)
 		var k := maxi(_starts.bsearch(cam - GRID * 7.0), 0)
+		var stand := GameArt.TriBatch.new() if _v25 else b
 		while k < _course.size() and _starts[k] < cam + w + GRID:
-			_add_obstacle(b, _course[k], k, r, cam, ground)
+			_add_obstacle(flat, stand, _course[k], k, r, cam, ground, i)
 			k += 1
 		var fx := COURSE_LEN - cam
 		if fx > -CHECK * 3.0 and fx < w + CHECK * 3.0:
 			var tpl := _finish_template(ground - (top + FINISH_TOP))
-			b.template(tpl[0], tpl[1], Transform2D(0.0, Vector2(fx, ground)))
-		# Filete de tinta entre carriles.
-		if i < players.size() - 1:
+			stand.template(tpl[0], tpl[1], _stand_xf(i, fx, ground))
+		if _v25:
+			b.points.append_array(_lane_xf(i) * flat.points)
+			b.colors.append_array(flat.colors)
+			b.points.append_array(stand.points)
+			b.colors.append_array(stand.colors)
+		elif i < players.size() - 1:
+			# Filete de tinta entre carriles (en 2.5D va horneado en el escenario).
 			b.rect(Rect2(0.0, top + _lane_h - 2.0, w, 4.0), UiTheme.INK)
 	b.flush(_world)
 
 
-func _add_obstacle(b: GameArt.TriBatch, o: Dictionary, index: int, r: Runner, cam: float, ground: float) -> void:
+## Un obstáculo: los pozos, acostados en el piso (`flat`, coordenadas del
+## tablero); vallas, escalones y plataformas, parados (`stand`, ubicados con
+## _stand_xf). En plano `flat` y `stand` son el mismo lote.
+func _add_obstacle(flat: GameArt.TriBatch, stand: GameArt.TriBatch, o: Dictionary, index: int, r: Runner, cam: float,
+		ground: float, lane: int) -> void:
 	var x := float(o.x) - cam
 	var ow := float(o.w)
 	var h := float(o.h)
 	match int(o.kind):
 		Kind.PIT:
-			b.rect(Rect2(x, ground - 3.0, ow, 3.0), UiTheme.HURDLES_PIT)
-			b.quad_colors(Vector2(x, ground), Vector2(x + ow, ground), Vector2(x + ow, ground + GROUND_H), Vector2(x, ground + GROUND_H),
+			flat.rect(Rect2(x, ground - 3.0, ow, 3.0), UiTheme.HURDLES_PIT)
+			flat.quad_colors(Vector2(x, ground), Vector2(x + ow, ground), Vector2(x + ow, ground + GROUND_H), Vector2(x, ground + GROUND_H),
 				UiTheme.HURDLES_PIT, UiTheme.HURDLES_PIT, UiTheme.HURDLES_PIT_DEEP, UiTheme.HURDLES_PIT_DEEP)
 			# Paredes del pozo: la de la derecha, iluminada; la de la izquierda, en sombra.
-			b.rect(Rect2(x, ground - 3.0, 4.0, GROUND_H + 3.0), UiTheme.INK)
-			b.rect(Rect2(x + ow - 10.0, ground, 10.0, GROUND_H), UiTheme.HURDLES_PIT.lightened(0.18))
-			b.rect(Rect2(x + ow - 4.0, ground - 3.0, 4.0, GROUND_H + 3.0), UiTheme.INK)
+			flat.rect(Rect2(x, ground - 3.0, 4.0, GROUND_H + 3.0), UiTheme.INK)
+			flat.rect(Rect2(x + ow - 10.0, ground, 10.0, GROUND_H), UiTheme.HURDLES_PIT.lightened(0.18))
+			flat.rect(Rect2(x + ow - 4.0, ground - 3.0, 4.0, GROUND_H + 3.0), UiTheme.INK)
 		Kind.BLOCK:
 			var tpl := _block_template(ow, h, index % UiTheme.BRICKS.size())
-			b.template(tpl[0], tpl[1], Transform2D(0.0, Vector2(x, ground)))
+			stand.template(tpl[0], tpl[1], _stand_xf(lane, x, ground))
 		Kind.PLATFORM:
 			var tpl := _platform_template(ow)
-			b.template(tpl[0], tpl[1], Transform2D(0.0, Vector2(x, ground - h)))
+			stand.template(tpl[0], tpl[1], _stand_xf(lane, x, ground) * Transform2D(0.0, Vector2(0, -h)))
 		Kind.HURDLE:
 			var tpl := _hurdle_template(UiTheme.BRICKS[index % UiTheme.BRICKS.size()])
-			var base := Vector2(x, ground)
+			var base := _stand_xf(lane, x, ground)
 			if r.knocked.has(index):
 				# Valla tirada: cae para adelante girando sobre la pata de adelante.
 				var k := clampf((_elapsed - float(r.knocked[index])) / 0.22, 0.0, 1.0)
 				var pivot := Vector2(26.0, 0.0)
-				var xf := Transform2D(0.0, base + pivot) * Transform2D(k * 1.25, Vector2.ZERO) * Transform2D(0.0, -pivot)
-				b.template(tpl[0], tpl[1], xf)
+				var xf := base * Transform2D(0.0, pivot) * Transform2D(k * 1.25, Vector2.ZERO) * Transform2D(0.0, -pivot)
+				stand.template(tpl[0], tpl[1], xf)
 			else:
-				b.template(tpl[0], tpl[1], Transform2D(0.0, base))
+				stand.template(tpl[0], tpl[1], base)
 
 
 # --- Plantillas (triángulos locales con color, se arman una vez) -------------------------

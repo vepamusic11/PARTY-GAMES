@@ -32,6 +32,7 @@ const FIXED_DT := 1.0 / 60.0
 # --- Pista ----------------------------------------------------------------------
 ## Pasto dentro del marco de bloques (el marco va por fuera, como en los demás juegos).
 const FIELD := Rect2(150, 150, 1620, 850)
+const GRASS_STRIPE := 90.0          ## Ancho de las franjas del pasto (y celda de la vista 2.5D).
 ## Puntos de control del centro de la pista (sentido horario, se suavizan con
 ## Catmull-Rom). La largada queda en la recta de abajo, yendo a la derecha.
 const TRACK_POINTS: Array[Vector2] = [
@@ -272,6 +273,76 @@ static func track() -> Track:
 	if _track == null:
 		_track = Track.new(TRACK_POINTS, SAMPLE_STEP, START_AT)
 	return _track
+
+
+# --- Escenario 2.5D (ADR 0019) ------------------------------------------------------
+#
+# Con render, el pasto, la pista entera (asfalto, cordones de bloques con
+# volumen, turbos, charcos, largada), los árboles y el marco son una escena
+# 3D horneada una vez con cámara en perspectiva (receta "karts" de
+# Board25DScene, con la geometría de la pista en `view.extras`); los karts,
+# las mascotas, los efectos y las flechas que se prenden se dibujan en 2D
+# proyectados encima. La física sigue en las coordenadas planas de FIELD.
+# Sin render (--headless) o mientras se hornea, se dibuja plano como siempre.
+
+static var _board_view: BoardView25D
+var _v25 := false
+
+
+## Cámara y proyección del escenario 2.5D: el campo encuadrado como el de
+## Pintar el piso (BoardView25D.make_fit) y la pista para la receta.
+static func board_view() -> BoardView25D:
+	if _board_view == null:
+		var v := BoardView25D.make_fit(FIELD, GRASS_STRIPE, Board25DScene.RECIPE_KARTS)
+		v.extras = scene_extras()
+		_board_view = v
+	return _board_view
+
+
+## Durante la intro: el escenario 2.5D se lee del disco o se hornea.
+static func prewarm_art(host: Node, _players: Array = []) -> void:
+	Board25DBaker.request(host, board_view())
+
+
+## Geometría de la pista para la escena 3D (Board25DScene, receta "karts"),
+## en coordenadas del plano: puntos y normales del centro, anchos, turbos
+## [x, y, ángulo], charcos [x, y, radio, ángulo], grilla de largada, línea
+## de largada y decorado. Entra en la firma de la caché: si cambia la
+## pista, se vuelve a hornear.
+static func scene_extras() -> Dictionary:
+	var tr := track()
+	var pads: Array[Vector3] = []
+	for i in PADS.size():
+		var xf := _pad_frame(i)
+		pads.append(Vector3(xf.origin.x, xf.origin.y, xf.get_rotation()))
+	var puddles: Array = []
+	for i in PUDDLES.size():
+		var c := _puddle_center(i)
+		puddles.append([c.x, c.y, PUDDLES[i].z, (tr.frame_at(PUDDLES[i].x * tr.length)[1] as Vector2).angle()])
+	var grid: Array[Vector3] = []
+	for spot in GRID:
+		var g := tr.point_at(-spot.x, spot.y)
+		grid.append(Vector3(g.x, g.y, (tr.frame_at(-spot.x)[1] as Vector2).angle()))
+	var f := tr.frame_at(0.0)
+	return {
+		"pts": tr.pts, "nrm": tr.nrm, "half_width": HALF_WIDTH, "curb": CURB, "curb_samples": CURB_SAMPLES,
+		"pad_size": PAD_SIZE, "pads": pads, "puddles": puddles, "grid": grid, "grid_len": KART_LEN,
+		"start": Vector3((f[0] as Vector2).x, (f[0] as Vector2).y, (f[1] as Vector2).angle()), "decor": decor_layout(),
+	}
+
+
+## Dónde se dibuja un punto del plano: proyectado sobre el escenario 2.5D, o
+## igual si se dibuja plano.
+func _screen(p: Vector2) -> Vector2:
+	return board_view().project(p) if _v25 else p
+
+
+## Escala de lo que está parado en `p` (mascota, medalla): más chico atrás
+## en 2.5D (con tope, UiTheme.BOARD25D_SCALE_*); 1 en plano.
+func _depth(p: Vector2) -> float:
+	if not _v25:
+		return 1.0
+	return clampf(board_view().scale_at(p), UiTheme.BOARD25D_SCALE_MIN, UiTheme.BOARD25D_SCALE_MAX)
 
 
 var _karts: Dictionary = {}         # player_id -> Kart
@@ -736,13 +807,15 @@ func _update_effects(dt: float) -> void:
 # --- Dibujo ------------------------------------------------------------------------
 
 func _draw() -> void:
-	draw_static(_paint_scene)
+	_v25 = draw_board_25d(board_view())
+	if not _v25:
+		draw_static(_paint_scene)
 	_refresh_tabs()
 	var t := anim_time
 	var fx := GameArt.TriBatch.new()
 	for i in PADS.size():
 		_add_pad_lights(fx, i, t)
-	fx.flush(self)
+	_to_screen(fx).flush(self)
 	# Karts de arriba hacia abajo: el de más abajo tapa al de más arriba.
 	var sorted := players.duplicate()
 	sorted.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
@@ -752,10 +825,13 @@ func _draw() -> void:
 	var leader: int = order[0] if not order.is_empty() else -1
 	for p: Dictionary in sorted:
 		var k: Kart = _karts[p.id]
+		# El kart se arma acostado en el plano y, en 2.5D, se proyecta vértice
+		# por vértice (exacto: queda apoyado en el asfalto en perspectiva).
 		var body := GameArt.TriBatch.new()
 		_add_kart(body, k, p.color, t)
-		body.flush(self)
-		var feet := k.pos + Vector2(0, SEAT_OFFSET)
+		_to_screen(body).flush(self)
+		var d := _depth(k.pos)
+		var feet := _screen(k.pos + Vector2(0, SEAT_OFFSET))
 		var mood := PlayerAvatar.Mood.NORMAL
 		if k.finished() or (_phase == Phase.ENDING and leader == k.pid):
 			mood = PlayerAvatar.Mood.HAPPY
@@ -763,23 +839,32 @@ func _draw() -> void:
 			mood = PlayerAvatar.Mood.SURPRISED
 		var anim := mascot_anim(p.id, Vector2.from_angle(k.heading))
 		anim["wave"] = mood == PlayerAvatar.Mood.HAPPY
-		PlayerAvatar.draw_mascot(self, feet, MASCOT_SCALE, p.color, PlayerAvatar.style_of(p), mood, 0.0, 0.0, false, anim)
+		PlayerAvatar.draw_mascot(self, feet, MASCOT_SCALE * d, p.color, PlayerAvatar.style_of(p), mood, 0.0, 0.0, false, anim)
 		var rim := GameArt.TriBatch.new()
-		_add_cockpit(rim, feet, p.color)
+		_add_cockpit(rim, feet, p.color, d)
 		rim.flush(self)
-		tags.append([p, feet, MASCOT_SCALE, NAME_OFFSET])
+		tags.append([p, feet, MASCOT_SCALE * d, NAME_OFFSET])
 	draw_player_tags(tags)
 	_draw_effects()
 	for p: Dictionary in sorted:
 		var k: Kart = _karts[p.id]
+		var d := _depth(k.pos)
 		if k.finished():
 			var place := _finish_order.find(k.pid) + 1
-			UiTheme.draw_medal(self, k.pos + Vector2(52, -46), MEDAL_R, place)
+			UiTheme.draw_medal(self, _screen(k.pos) + Vector2(52, -46) * d, MEDAL_R * d, place)
 		elif k.wrong_way >= WRONG_WAY_SEC and fmod(anim_time, 0.6) < 0.4:
-			UiTheme.draw_text(self, "¡Al revés!", k.pos + Vector2(0, 50), HINT_SIZE, UiTheme.PAPER, 8, UiTheme.DANGER)
+			UiTheme.draw_text(self, "¡Al revés!", _screen(k.pos) + Vector2(0, 50) * d, roundi(HINT_SIZE * d), UiTheme.PAPER, 8, UiTheme.DANGER)
 	_draw_banners()
 	var center := _hud_center()
 	draw_hud(places(), center[0], center[1])
+
+
+## Triángulos armados en coordenadas del plano -> pantalla: en 2.5D, cada
+## vértice por la homografía (las rectas siguen rectas); plano, igual.
+func _to_screen(b: GameArt.TriBatch) -> GameArt.TriBatch:
+	if _v25:
+		b.points = board_view().project_points(b.points)
+	return b
 
 
 ## Números del marcador como puesto ("1°", "2°"…): el número de cada
@@ -823,10 +908,12 @@ func _draw_effects() -> void:
 	for e in _effects:
 		var k: float = e.t / SPARK_SEC
 		var power: float = e.power
+		var d := _depth(e.pos)
+		var at0 := _screen(e.pos)
 		for i in 5:
 			var a := TAU * i / 5.0 + (e.pos as Vector2).x * 0.01
-			var at: Vector2 = (e.pos as Vector2) + Vector2.from_angle(a) * lerpf(10.0, 40.0 + 30.0 * power, k)
-			b.star(at, (7.0 + 7.0 * power) * (1.0 - k * 0.8), UiTheme.GOLD, k * 2.0, 3.0)
+			var at: Vector2 = at0 + Vector2.from_angle(a) * lerpf(10.0, 40.0 + 30.0 * power, k) * d
+			b.star(at, (7.0 + 7.0 * power) * (1.0 - k * 0.8) * d, UiTheme.GOLD, k * 2.0, 3.0)
 	b.flush(self)
 
 
@@ -892,12 +979,12 @@ func _kart_template(col: Color) -> Array:
 
 ## Borde del asiento delante de la mascota (siempre derecho, en pantalla):
 ## tapa los pies y la hace ver sentada adentro del kart.
-func _add_cockpit(b: GameArt.TriBatch, feet: Vector2, col: Color) -> void:
-	var r := Rect2(feet + Vector2(-27, -12), Vector2(54, 20))
-	b.capsule(r.grow(3.0), UiTheme.INK)
+func _add_cockpit(b: GameArt.TriBatch, feet: Vector2, col: Color, d: float = 1.0) -> void:
+	var r := Rect2(feet + Vector2(-27, -12) * d, Vector2(54, 20) * d)
+	b.capsule(r.grow(3.0 * d), UiTheme.INK)
 	b.capsule(r, col.darkened(0.3))
-	b.capsule(Rect2(r.position, r.size - Vector2(0, 5)), col)
-	b.capsule(Rect2(r.position + Vector2(10, 3), Vector2(r.size.x - 20, 4)), Color(1, 1, 1, 0.4))
+	b.capsule(Rect2(r.position, r.size - Vector2(0, 5) * d), col)
+	b.capsule(Rect2(r.position + Vector2(10, 3) * d, Vector2(r.size.x - 20 * d, 4 * d)), Color(1, 1, 1, 0.4))
 
 
 ## Flechas del turbo que se prenden en secuencia (lo fijo está en la escena).
@@ -1021,7 +1108,7 @@ func _add_frame_corners(b: GameArt.TriBatch, rect: Rect2, pieces: Array) -> void
 
 ## Pasto cortado en franjas (cada píxel se pinta una vez) con matitas.
 func _add_grass(b: GameArt.TriBatch, rect: Rect2) -> void:
-	var stripe := 90.0
+	var stripe := GRASS_STRIPE
 	var x := rect.position.x
 	var k := 0
 	while x < rect.end.x - 0.5:
@@ -1032,8 +1119,24 @@ func _add_grass(b: GameArt.TriBatch, rect: Rect2) -> void:
 
 
 ## Árboles, matas, flores y pilas de bloques en el pasto, lejos de la pista.
-## Lugares al azar pero siempre los mismos (semilla fija).
+## Lugares al azar pero siempre los mismos (semilla fija): decor_layout().
 func _add_decor(b: GameArt.TriBatch) -> void:
+	for d: Array in decor_layout():
+		match d[0]:
+			"tree": _add_tree(b, d[1], d[2])
+			"bush": _add_bush(b, d[1], d[2])
+			_: _add_flower(b, d[1], d[3])
+
+
+static var _decor: Array = []
+
+
+## Dónde va cada árbol, mata y flor del pasto: [tipo, centro, radio, índice
+## de color] (una vez por proceso). Lo comparten el dibujo plano y la
+## escena 2.5D horneada, así el decorado es el mismo en los dos.
+static func decor_layout() -> Array:
+	if not _decor.is_empty():
+		return _decor
 	var tr := track()
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 11
@@ -1059,10 +1162,8 @@ func _add_decor(b: GameArt.TriBatch) -> void:
 			continue
 		placed.append(Vector3(p.x, p.y, r))
 		kinds[kind] = int(kinds[kind]) + 1
-		match kind:
-			"tree": _add_tree(b, p, r)
-			"bush": _add_bush(b, p, r)
-			_: _add_flower(b, p, rng.randi() % UiTheme.BRICKS.size())
+		_decor.append([kind, p, r, rng.randi() % UiTheme.BRICKS.size() if kind == "flower" else 0])
+	return _decor
 
 
 func _add_tree(b: GameArt.TriBatch, c: Vector2, r: float) -> void:

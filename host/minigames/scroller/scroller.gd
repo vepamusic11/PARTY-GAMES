@@ -693,7 +693,8 @@ func _in_danger(pid: int) -> bool:
 
 func _draw() -> void:
 	_ensure_course()
-	draw_static(_draw_static_art)  # Escenario, marco de la cámara y tribuna: fijos.
+	draw_sky()
+	draw_static(_draw_static_art)  # Marco de la cámara y tribuna: fijos.
 	var b := GameArt.TriBatch.new()
 	_add_view_overlay(b)
 	b.flush(self)
@@ -887,8 +888,6 @@ func _draw_rec() -> void:
 ## Lo fijo: escenario alrededor, marco de la cámara (con el borde izquierdo
 ## a rayas rojas: el que "te deja") y la tribuna con un banco por jugador.
 func _draw_static_art(ci: CanvasItem) -> void:
-	var f := UiTheme.BOARD_FRAME
-	GameArt.paint_stage(ci, VIEW.grow(f - 6.0))
 	var b := GameArt.TriBatch.new()
 	_add_frame(b, ci)
 	_add_tribune_panel(b)

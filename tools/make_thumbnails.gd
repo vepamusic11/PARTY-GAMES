@@ -155,7 +155,7 @@ func _make(info: Dictionary) -> void:
 	# Mascotas 3D horneadas (ADR 0012), como en la intro de la TV.
 	var scale: Variant = game.get_script().get_script_constant_map().get("MASCOT_SCALE", 0.8)
 	MascotAtlas.prewarm_game(game.players, float(scale))
-	game.get_script().call("prewarm_art", _viewport)  # Escenario 2.5D horneado (ADR 0019), si el juego lo usa.
+	game.get_script().call("prewarm_art", _viewport, game.players)  # Escenario 2.5D horneado (ADR 0019), si el juego lo usa.
 	await _atlas_idle()
 	var steps := roundi(float(shot.sec) / STEP)
 	var max_steps := steps + roundi(15.0 / STEP)  # Tope de la espera (`ball_in`, `wait`).

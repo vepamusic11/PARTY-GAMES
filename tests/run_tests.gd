@@ -5460,12 +5460,12 @@ func test_board25d_scene_builds() -> void:
 	Board25DScene.release_build_caches()
 
 
-## Arena, Esquivar y Pool en 2.5D (ADR 0019): cámara encuadrada como Pintar
-## el piso (make_fit), cada uno con su receta y su firma de caché.
+## Arena, Esquivar, Pool y Karts en 2.5D (ADR 0019): cámara encuadrada como
+## Pintar el piso (make_fit), cada uno con su receta y su firma de caché.
 func test_board25d_games_fit() -> void:
 	var paint_key := Board25DBaker.key_of((preload("res://host/minigames/paint/paint.gd") as GDScript).board_view())
 	var keys := {}
-	for id: String in ["arena", "dodge", "pool"]:
+	for id: String in ["arena", "dodge", "pool", "karts"]:
 		var v: BoardView25D = MiniGameRegistry._script(id).call("board_view")
 		var q := v.quad(v.plane.grow(UiTheme.BOARD25D_FRAME_W))
 		var screen := Rect2(Vector2.ZERO, v.screen)
@@ -5478,7 +5478,20 @@ func test_board25d_games_fit() -> void:
 		check(absf(w - 1593.7) < 25.0, "%s: mismo ancho en pantalla que Pintar el piso (%.0f px)" % [id, w])
 		keys[Board25DBaker.key_of(v)] = id
 	keys[paint_key] = "paint"
-	check(keys.size() == 4, "cada juego con su escenario (firmas distintas)")
+	# Ping Pong: la mesa (más angosta y más larga) con la misma cámara que
+	# Pintar el piso; la mesa con su canto y las mascotas de los costados entran.
+	var pp: GDScript = MiniGameRegistry._script("pingpong")
+	var pv: BoardView25D = pp.board_view()
+	var screen := Rect2(Vector2.ZERO, pv.screen)
+	var inside := true
+	for c in pv.quad(pv.plane.grow(UiTheme.BOARD25D_PP_EDGE)):
+		inside = inside and screen.has_point(c)
+	check(inside and pv.quad(pv.plane)[0].y > UiTheme.HUD_TOP + UiTheme.HUD_CLOCK_H, "pingpong: mesa entera en pantalla y bajo el marcador")
+	for top in [true, false]:
+		var feet := pv.project(pp._mascot_feet(top))
+		check(screen.grow(-UiTheme.SAFE_MARGIN).has_point(feet), "pingpong: mascota %s en pantalla (%s)" % ["de arriba" if top else "de abajo", feet])
+	keys[Board25DBaker.key_of(pv)] = "pingpong"
+	check(keys.size() == 6, "cada juego con su escenario (firmas distintas)")
 
 
 ## La mesa de pool se arma sin render: paño, bandas, 6 troneras con aro,
@@ -5504,9 +5517,38 @@ func test_board25d_pool_scene_builds() -> void:
 	Board25DScene.release_build_caches()
 
 
-## Arena, Esquivar y Pool con un escenario inyectado: dibujan en 2.5D sin
-## errores con todo lo que pasa en una partida (estrellas, bloques en el aire
-## y apoyados, eliminados, puntería, caídas y efectos) y vuelven al plano sin él.
+## La pista de Karts se arma sin render: pasto en franjas, marcas planas,
+## cordones a los dos lados (un bloque por tramo), 3 turbos, árboles y el
+## marco; nada fuera del marco. La geometría viene de Karts.scene_extras y
+## el decorado es el mismo que el del dibujo plano.
+func test_board25d_karts_scene_builds() -> void:
+	var karts: GDScript = MiniGameRegistry._script("karts")
+	var v: BoardView25D = karts.board_view()
+	check(v.recipe == Board25DScene.RECIPE_KARTS and (v.extras.pts as PackedVector2Array).size() > 100, "la vista lleva la pista en extras")
+	check(v.extras.decor == karts.decor_layout() and (v.extras.decor as Array).size() > 20, "el decorado es el del dibujo plano")
+	var board := Board25DScene.build(v, Board25DScene.LAYER_BOARD)
+	var meshes: Array[MeshInstance3D] = []
+	var stack: Array[Node] = [board]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		if n is MeshInstance3D:
+			meshes.append(n)
+		stack.append_array(n.get_children())
+	var curbs := 2 * ceili(float((v.extras.pts as PackedVector2Array).size()) / int(v.extras.curb_samples))
+	check(meshes.size() > curbs + v.cols + 40, "pasto, marcas, %d cordones, turbos, árboles y marco (%d piezas)" % [curbs, meshes.size()])
+	var half := Board25DScene.outer_half(v)
+	var outside := meshes.filter(func(m: MeshInstance3D) -> bool: return absf(m.position.x) > half.x + 60.0 or absf(m.position.z) > half.y + 60.0)
+	check(outside.is_empty(), "nada fuera del marco (%d)" % outside.size())
+	var raised := meshes.filter(func(m: MeshInstance3D) -> bool: return m.position.y > 2.0 and m.position.y < 8.0 and m.mesh is ArrayMesh)
+	check(raised.size() >= curbs, "los cordones y turbos sobresalen del pasto (%d)" % raised.size())
+	board.free()
+	Board25DScene.release_build_caches()
+
+
+## Arena, Esquivar, Pool y Karts con un escenario inyectado: dibujan en 2.5D
+## sin errores con todo lo que pasa en una partida (estrellas, bloques en el
+## aire y apoyados, eliminados, puntería, caídas, turbos, patinadas y
+## efectos) y vuelven al plano sin él.
 func test_board25d_games_draw_projected() -> void:
 	Board25DBaker.reset()
 	Board25DBaker.fake_render = true
@@ -5514,7 +5556,7 @@ func test_board25d_games_draw_projected() -> void:
 	var img := Image.create_empty(16, 9, false, Image.FORMAT_RGB8)
 	img.fill(UiTheme.SKY_TOP)
 	var tex := ImageTexture.create_from_image(img)
-	for id: String in ["arena", "dodge", "pool"]:
+	for id: String in ["arena", "dodge", "pool", "karts", "pingpong", "tap_race", "hurdles"]:
 		var v: BoardView25D = MiniGameRegistry._script(id).call("board_view")
 		Board25DBaker.inject(v, tex)
 		var game: Variant = MiniGameRegistry.create(id)
@@ -5537,16 +5579,54 @@ func test_board25d_games_draw_projected() -> void:
 				game._falls.append({"i": game._ball[2], "from": Vector2(1000, 600), "to": game.pockets()[5], "t": 0.1})
 				game._respawn[3] = 1.0
 				game._popups.append({"text": "+3", "pid": 1, "t": 0.2})
+			"karts":
+				game._phase = 1  # RACING
+				game._countdown = -1.0
+				game._karts[game.players[1].id].turbo = 0.8
+				game._karts[game.players[2].id].slip = 0.5
+				game._karts[game.players[3].id].finish_time = 12.0
+				game._finish_order.append(game.players[3].id)
+				game._karts[game.players[0].id].wrong_way = 2.0
+				game._effects.append({"pos": Vector2(900, 500), "t": 0.1, "power": 0.8})
+			"pingpong":
+				game._serve_delay = 0.0
+				game._since_hit = 0.05
+				game._trail = PackedVector2Array([Vector2(900, 700), Vector2(910, 680)])
+			"tap_race":
+				game._countdown = -1.0
+				game._taps[game.players[0].id] = 12
+			"hurdles":
+				game._countdown = -1.0
+				game.use_course(game.build_course(3))
+				game._runners[game.players[0].id].x = 1200.0
+				game._runners[game.players[1].id].fall = 0.5
+				game._runners[game.players[1].id].pit_x0 = 300.0
+				game._runners[game.players[1].id].pit_x1 = 420.0
+				game._runners[game.players[2].id].stumble = 0.5
+				game._runners[game.players[3].id].y = 60.0
+				game._world.queue_redraw()
 		game.queue_redraw()
 		await _frames(3)
-		check(game._v25 and game._backdrop_ops == [["board25d", tex]], "%s: dibuja en 2.5D sobre la textura horneada" % id)
+		# Ping Pong (globitos y nombres de los costados) y Carrera de obstáculos
+		# (carteles y rieles) suman una capa fija sobre la textura.
+		var ops: Array = game._backdrop_ops
+		check(game._v25 and ops[0] == ["board25d", tex] and ops.size() == (2 if id in ["pingpong", "hurdles"] else 1),
+			"%s: dibuja en 2.5D sobre la textura horneada" % id)
 		var pid: int = game.players[0].id
-		var at: Vector2 = game._pos[pid]
+		var at: Vector2
+		match id:
+			"pingpong": at = game._ball
+			"tap_race": at = game._feet_of(pid)
+			"hurdles": at = game._board.position + Vector2(game.CAM_X, game._lane_h)
+			_: at = game._pos[pid]
 		check(game._depth(at) != 1.0, "%s: mascotas escaladas por profundidad" % id)
 		Board25DBaker.enabled = false
 		game.queue_redraw()
 		await _frames(2)
-		check(not game._v25 and game._backdrop_ops[0][0] == "sky", "%s: sin escenario vuelve al plano" % id)
+		# Karts pinta su escenario fijo (escenario + pista) en una capa "static".
+		check(not game._v25 and game._backdrop_ops[0][0] == ("static" if id == "karts" else "sky"), "%s: sin escenario vuelve al plano" % id)
+		if id == "pingpong":
+			check(game._backdrop_ops.size() == 2 and game._backdrop_ops[1][0] == "static", "pingpong: plano, la mesa va en la capa fija")
 		check(game._depth(at) == 1.0, "%s: plano, sin escala" % id)
 		Board25DBaker.enabled = true
 		game.queue_free()

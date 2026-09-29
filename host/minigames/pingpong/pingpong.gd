@@ -2,6 +2,13 @@ extends MiniGame
 ## Ping Pong para 2: la mesa es vertical en el centro de la TV.
 ## El celular muestra un slider horizontal: la posición del dedo es la
 ## posición de la paleta (control absoluto, no velocidad).
+##
+## Escenario 2.5D (ADR 0019): con render, la mesa (tapa con canto, líneas y
+## red con volumen) y la sala de juguetes son una escena 3D horneada una
+## vez con cámara en perspectiva; encima, en 2D proyectado, las paletas
+## acostadas en la mesa, la pelota a su altura con la sombra debajo y las
+## mascotas paradas a un costado. La física sigue en TABLE. Sin render o
+## mientras se hornea, se dibuja plano como siempre.
 
 const POINTS_TO_WIN := 5
 const TABLE := Rect2(610, 130, 700, 900)
@@ -31,6 +38,23 @@ var _rng := RandomNumberGenerator.new()
 var _trail := PackedVector2Array()   # últimas posiciones de la pelota (la más nueva al final)
 var _trail_col: Color = UiTheme.PAPER  # color del último que le pegó
 var _since_hit := 1.0
+
+## Vista 2.5D de la mesa (una por proceso) y si este cuadro se dibuja con ella.
+static var _board_view: BoardView25D
+var _v25 := false
+
+
+## Cámara y proyección del escenario 2.5D: la misma cámara que Pintar el
+## piso (la mesa, más angosta y más larga, entra igual).
+static func board_view() -> BoardView25D:
+	if _board_view == null:
+		_board_view = BoardView25D.make(TABLE, TABLE.size.x / 10.0, Board25DScene.RECIPE_PINGPONG)
+	return _board_view
+
+
+## Durante la intro: el escenario 2.5D se lee del disco o se hornea.
+static func prewarm_art(host: Node, _players: Array = []) -> void:
+	Board25DBaker.request(host, board_view())
 
 
 static func get_info() -> Dictionary:
@@ -130,7 +154,7 @@ func _check_paddle(pid: int, y: float, dir: int) -> void:
 	var col: Color = player_by_id(pid).get("color", UiTheme.PAPER)
 	_trail_col = col
 	_since_hit = 0.0
-	juice().sparks(_ball, _vel)
+	juice().sparks(_ball_screen(_ball), _vel)
 	if speed >= BALL_START_SPEED * HITSTOP_SPEED:
 		hit_stop(0.05)
 
@@ -143,9 +167,9 @@ func _point(winner_id: int, next_dir: int) -> void:
 	# Efectos: estrellitas donde salió la pelota y "+1" sobre el que sumó.
 	var p := player_by_id(winner_id)
 	var out := Vector2(_ball.x, clampf(_ball.y, TABLE.position.y, TABLE.end.y))
-	juice().sparkles(out, UiTheme.GOLD, 10)
-	var feet := _mascot_feet(winner_id == _top_id)
-	juice().float_text("+1", feet + Vector2(0, -300), p.get("color", UiTheme.GOLD))
+	juice().sparkles(_ball_screen(out), UiTheme.GOLD, 10)
+	var feet := _feet_screen(winner_id == _top_id)
+	juice().float_text("+1", feet + Vector2(0, -300) * _mascot_depth(winner_id == _top_id), p.get("color", UiTheme.GOLD), _mascot_depth(winner_id == _top_id))
 	if _score[winner_id] >= POINTS_TO_WIN:
 		finish_after(result_from_scores(_score, "Primero a %d puntos" % POINTS_TO_WIN),
 			"¡Gana %s!" % UiTheme.player_tag(int(p.get("slot", 0))), {winner_id: feet})
@@ -162,23 +186,48 @@ func _reset_ball(dir: int) -> void:
 
 
 func _draw() -> void:
-	draw_sky()
-	draw_static(_draw_table)
+	_v25 = draw_board_25d(board_view())
+	if _v25:
+		draw_static(_draw_side_tags)
+	else:
+		draw_sky()
+		draw_static(_draw_table)
+	var v := board_view()
 	for pid: int in [_top_id, _bottom_id]:
 		var p := player_by_id(pid)
 		var top := pid == _top_id
 		var y := TABLE.position.y + PADDLE_MARGIN if top else TABLE.end.y - PADDLE_MARGIN
 		var rect := Rect2(Vector2(_paddle_x[pid] - PADDLE_SIZE.x / 2.0, y - PADDLE_SIZE.y / 2.0), PADDLE_SIZE)
-		UiTheme.draw_round_rect(self, rect.grow(4), UiTheme.INK, 14)
-		UiTheme.draw_round_rect(self, rect, p.color, 11)
+		if _v25:
+			# Paleta acostada en la mesa, con un canto: la base oscura al ras y
+			# la cara del color un poco más arriba (en pantalla).
+			var xf := v.floor_xform(rect.get_center())
+			draw_set_transform_matrix(xf)
+			UiTheme.draw_round_rect(self, rect.grow(4), UiTheme.INK, 14)
+			UiTheme.draw_round_rect(self, rect, p.color.darkened(0.35), 11)
+			draw_set_transform_matrix(Transform2D(0.0, Vector2(0, -UiTheme.BOARD25D_PP_PADDLE_RISE * xf.x.length())) * xf)
+			UiTheme.draw_round_rect(self, rect.grow(4), UiTheme.INK, 14)
+			UiTheme.draw_round_rect(self, rect, p.color, 11)
+			draw_set_transform(Vector2.ZERO)
+		else:
+			UiTheme.draw_round_rect(self, rect.grow(4), UiTheme.INK, 14)
+			UiTheme.draw_round_rect(self, rect, p.color, 11)
 		# Mascota y nombre al costado de su lado de la mesa
-		var side := _mascot_feet(top)
+		var side := _feet_screen(top)
+		var d := _mascot_depth(top)
 		# Siguen la pelota con la mirada.
-		var look := (_ball - (side + Vector2(0, -80))).normalized()
-		PlayerAvatar.draw_mascot(self, side, MASCOT_SCALE, p.color, PlayerAvatar.style_of(p),
+		var look := (_ball_screen(_ball) - (side + Vector2(0, -80) * d)).normalized()
+		PlayerAvatar.draw_mascot(self, side, MASCOT_SCALE * d, p.color, PlayerAvatar.style_of(p),
 			PlayerAvatar.Mood.HAPPY if _score[pid] > _score[_other(pid)] else PlayerAvatar.Mood.NORMAL,
 			0.0, celebrate_hop(pid), false, {"t": anim_time + p.slot, "look": look, "wave": is_celebrating(pid)})
-	UiTheme.draw_ellipse(self, _ball + Vector2(6, 10), BALL_RADIUS, BALL_RADIUS * 0.7, Color(0, 0, 0, 0.25))
+	var ball := _ball_screen(_ball)
+	var bd := _depth(_ball)
+	if _v25:  # Sombra acostada en la mesa, justo debajo de la pelota.
+		draw_set_transform_matrix(v.floor_xform(_ball))
+		UiTheme.draw_ellipse(self, _ball + Vector2(3, 4), BALL_RADIUS * 0.95, BALL_RADIUS * 0.95, Color(0, 0, 0, 0.25))
+		draw_set_transform(Vector2.ZERO)
+	else:
+		UiTheme.draw_ellipse(self, _ball + Vector2(6, 10), BALL_RADIUS, BALL_RADIUS * 0.7, Color(0, 0, 0, 0.25))
 	_draw_trail()
 	# Recién golpeada, la pelota se aplasta en la dirección del golpe y vuelve.
 	var squash := 0.0 if UiTheme.reduce_motion else maxf(0.0, 1.0 - _since_hit / SQUASH_SEC) * 0.3
@@ -187,15 +236,42 @@ func _draw() -> void:
 		# girar la imagen (el brillo queda siempre arriba a la izquierda).
 		var turn := Transform2D(_vel.angle(), Vector2.ZERO)
 		var squash_xf := turn * Transform2D(0.0, Vector2(1.0 + squash, 1.0 - squash), 0.0, Vector2.ZERO) * turn.affine_inverse()
-		draw_set_transform_matrix(Transform2D(0.0, _ball) * squash_xf)
+		draw_set_transform_matrix(Transform2D(0.0, ball) * squash_xf * Transform2D(0.0, Vector2(bd, bd), 0.0, Vector2.ZERO))
 		var br := BALL_RADIUS + 1.5
 		Props3D.draw(self, "ball", Rect2(-br, -br, br * 2.0, br * 2.0))
 	else:
-		draw_set_transform(_ball, _vel.angle(), Vector2(1.0 + squash, 1.0 - squash))
+		draw_set_transform(ball, _vel.angle(), Vector2(1.0 + squash, 1.0 - squash) * bd)
 		draw_circle(Vector2.ZERO, BALL_RADIUS + 3.0, UiTheme.INK)
 		draw_circle(Vector2.ZERO, BALL_RADIUS, Color.WHITE)
 	draw_set_transform(Vector2.ZERO)
 	draw_hud(_score, "Gana: %d" % POINTS_TO_WIN, "star")
+
+
+## Centro en pantalla de la pelota apoyada en `p` de la mesa: en 2.5D, a su
+## altura sobre la tapa; plano, en su lugar.
+func _ball_screen(p: Vector2) -> Vector2:
+	return board_view().project_up(p, BALL_RADIUS) if _v25 else p
+
+
+## Escala de lo que está parado en `p`: más chico atrás en 2.5D; 1 en plano.
+func _depth(p: Vector2) -> float:
+	if not _v25:
+		return 1.0
+	return clampf(board_view().scale_at(p), UiTheme.BOARD25D_SCALE_MIN, UiTheme.BOARD25D_SCALE_MAX)
+
+
+## Pies de la mascota de cada lado en pantalla (proyectados en 2.5D).
+func _feet_screen(top: bool) -> Vector2:
+	return board_view().project(_mascot_feet(top)) if _v25 else _mascot_feet(top)
+
+
+## Escala de las mascotas: en 2.5D nunca por debajo de 1 (así el cuadro
+## horneado a MASCOT_SCALE sirve para las dos; la de atrás queda igual y la
+## de adelante un poco más grande).
+func _mascot_depth(top: bool) -> float:
+	if not _v25:
+		return 1.0
+	return clampf(board_view().scale_at(_mascot_feet(top)), 1.0, UiTheme.BOARD25D_SCALE_MAX)
 
 
 ## Estela de la pelota: círculos cada vez más chicos y transparentes en las
@@ -207,7 +283,7 @@ func _draw_trail() -> void:
 	var batch := GameArt.TriBatch.new()
 	for i in n:
 		var k := float(i + 1) / (n + 1)   # 0 = la más vieja
-		batch.circle(_trail[i], BALL_RADIUS * lerpf(0.35, 0.9, k), Color(_trail_col, 0.45 * k), 12)
+		batch.circle(_ball_screen(_trail[i]), BALL_RADIUS * lerpf(0.35, 0.9, k) * _depth(_trail[i]), Color(_trail_col, 0.45 * k), 12)
 	batch.flush(self)
 
 
@@ -225,12 +301,20 @@ func _draw_table(ci: CanvasItem) -> void:
 	var net_y := TABLE.get_center().y
 	ci.draw_line(Vector2(TABLE.position.x - 24, net_y), Vector2(TABLE.end.x + 24, net_y), UiTheme.INK, 10.0)
 	ci.draw_line(Vector2(TABLE.position.x - 24, net_y), Vector2(TABLE.end.x + 24, net_y), UiTheme.PAPER, 5.0)
+	_draw_side_tags(ci)
+
+
+## Globito 1P–2P y nombre de cada mascota (no se mueven: van en la capa
+## fija). En 2.5D, en su lugar proyectado y a la escala de la mascota.
+func _draw_side_tags(ci: CanvasItem) -> void:
 	var tags: Array = []
 	for pid: int in [_top_id, _bottom_id]:
 		var p := player_by_id(pid)
-		var side := _mascot_feet(pid == _top_id)
-		tags.append([p.slot, p.color, p.name, side, 1.6, -1.0, 1.0])
-		UiTheme.draw_text(ci, p.name, side + Vector2(0, 40), 40, UiTheme.PAPER, 8, UiTheme.INK)
+		var top := pid == _top_id
+		var side := _feet_screen(top)
+		var d := _mascot_depth(top)
+		tags.append([p.slot, p.color, p.name, side, MASCOT_SCALE * d, -1.0, 1.0])
+		UiTheme.draw_text(ci, p.name, side + Vector2(0, 40) * d, roundi(40 * d), UiTheme.PAPER, 8, UiTheme.INK)
 	GameArt.draw_player_tags(ci, tags)
 
 

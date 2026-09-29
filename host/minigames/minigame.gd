@@ -576,8 +576,31 @@ static func clock_text(seconds: float) -> String:
 ## Fondo que usan todos los juegos: cielo con un escenario de bloques y
 ## juguetes desenfocado alrededor (coherente con el lobby).
 ## Se cachea (ver "Capas cacheadas"): llamarla al principio de _draw().
+## Con render, el escenario es la sala de juguetes en 3D horneada una vez
+## (receta "stage" del tablero 2.5D, ADR 0019: piso en perspectiva y
+## bloques de plástico fuera de foco), la misma textura de pantalla completa
+## para todos los juegos sin tablero 2.5D; mientras se hornea, sin render o
+## si falla, el escenario pintado de siempre (GameArt.stage_texture).
 func draw_sky() -> void:
-	_backdrop_request(["sky"])
+	var tex := Board25DBaker.texture_for(stage_view())
+	if tex == null:
+		if is_inside_tree():
+			Board25DBaker.request(self, stage_view())
+		_backdrop_request(["sky"])
+		return
+	_backdrop_request(["board25d", tex])
+	Board25DBaker.retain(stage_view(), self)
+
+
+static var _stage_view: BoardView25D
+
+
+## Vista de la sala de juguetes sin tablero (el "cielo" 3D de draw_sky):
+## los juguetes rodean un área del tamaño del tablero de Pintar el piso.
+static func stage_view() -> BoardView25D:
+	if _stage_view == null:
+		_stage_view = BoardView25D.make(UiTheme.BOARD25D_STAGE_AREA, UiTheme.BOARD25D_STAGE_AREA.size.x / 20.0, Board25DScene.RECIPE_STAGE)
+	return _stage_view
 
 
 ## Campo de juego: tablero con volumen (sombra proyectada, marco de bloques
@@ -613,9 +636,31 @@ func draw_board_25d(view: BoardView25D) -> bool:
 
 ## El host lo llama durante la intro "¿Cómo se juega?" de este juego (como el
 ## precalentado de mascotas): para preparar arte caro antes de jugar, ej.
-## Board25DBaker.request(host, board_view()). Por defecto nada.
-static func prewarm_art(_host: Node) -> void:
-	pass
+## Board25DBaker.request(host, board_view()). `players`: los que van a
+## jugar (un tablero que depende de cuántos son, como los carriles, lo
+## necesita). Por defecto, la sala de juguetes de draw_sky().
+static func prewarm_art(host: Node, _players: Array = []) -> void:
+	Board25DBaker.request(host, stage_view())
+
+
+## Tapa con la textura del escenario 2.5D los polígonos `polys` (en px de
+## pantalla): sirve para que lo que se dibuja encima del tablero quede
+## "detrás" de una parte del escenario horneado (la banda de adelante de la
+## mesa de pool, el marco a los costados de los carriles). La textura es de
+## pantalla completa, así que cualquier polígono se pinta con lo mismo que
+## hay debajo, en 1 draw call (todos comparten la textura).
+func draw_board_25d_cover(view: BoardView25D, polys: Array) -> void:
+	var tex := Board25DBaker.texture_for(view)
+	if tex == null:
+		return
+	for poly: PackedVector2Array in polys:
+		if poly.size() < 3:
+			continue
+		var uvs := PackedVector2Array()
+		uvs.resize(poly.size())
+		for i in poly.size():
+			uvs[i] = poly[i] / SCREEN
+		draw_polygon(poly, PackedColorArray([Color.WHITE]), uvs, tex)
 
 
 ## Dibujo fijo del juego que no cambia en toda la partida (la mesa de Ping

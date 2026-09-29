@@ -37,8 +37,28 @@ const LAYER_BOARD := "board"
 ##     centro, dentro del mismo marco de bloques. Usa `view.extras`:
 ##     "cushion" (ancho de las bandas), "pocket_r" (radio de las troneras) y
 ##     "pockets" (centros, en coordenadas del plano), los de la física del juego.
+##   - "karts": pasto en franjas con la pista entera horneada (asfalto y
+##     marcas planas, cordones de bloques con volumen, turbos, charcos,
+##     largada), árboles y matas como esferas de plástico. La geometría viene
+##     en `view.extras` (ver Karts.scene_extras).
 const RECIPE_DODGE := "dodge"
 const RECIPE_POOL := "pool"
+const RECIPE_KARTS := "karts"
+##   - "pingpong": mesa de ping pong (tapa azul con canto redondeado, línea
+##     blanca del borde y del medio, red con volumen y postes) sin marco de
+##     bloques, sobre la sala de juguetes.
+const RECIPE_PINGPONG := "pingpong"
+##   - "tap_race" y "hurdles" (carriles): el tablero de baldosas a cuadros
+##     con una división entre carril y carril y, si `view.extras` trae
+##     "finish", una meta a cuadros. Extras: "rows" (carriles), "lane_h",
+##     "divider" (ancho de la división; 0 = ninguna), "dash" ([largo, paso]
+##     para una división punteada, o []), "finish" ([x, ancho] en el plano).
+const RECIPE_TAP_RACE := "tap_race"
+const RECIPE_HURDLES := "hurdles"
+##   - "stage": solo la sala de juguetes (piso, bloques, bandera, estrellas),
+##     desenfocada entera y sin tablero: el cielo de los juegos sin tablero
+##     2.5D (MiniGame.draw_sky), en vez del escenario pintado a mano.
+const RECIPE_STAGE := "stage"
 
 static var _materials: Dictionary = {}
 
@@ -49,8 +69,17 @@ static func build(view: BoardView25D, layer: String) -> Node3D:
 	root.name = "Board25D_" + layer
 	if layer == LAYER_BOARD:
 		match view.recipe:
+			RECIPE_STAGE:
+				pass  # Sin tablero: la capa queda vacía (el baker la saltea).
 			RECIPE_POOL:
 				_pool(root, view)
+			RECIPE_KARTS:
+				_karts(root, view)
+			RECIPE_PINGPONG:
+				_pingpong(root, view)
+			RECIPE_TAP_RACE, RECIPE_HURDLES:
+				_board(root, view)
+				_lanes(root, view)
 			_:
 				_board(root, view)
 	else:
@@ -69,6 +98,11 @@ static func recipe_tokens(recipe: String) -> Array:
 	if recipe == RECIPE_POOL:
 		return [UiTheme.POOL_FELT, UiTheme.POOL_FELT_LIGHT, UiTheme.POOL_CUSHION, UiTheme.POOL_CUSHION_EDGE, UiTheme.POOL_MARK,
 			UiTheme.POOL_SIGHT, UiTheme.POOL_POCKET, UiTheme.POOL_POCKET_RIM]
+	if recipe == RECIPE_PINGPONG:
+		return [UiTheme.TABLE_BLUE, UiTheme.TABLE_BLUE_DARK, UiTheme.PAPER]
+	if recipe == RECIPE_KARTS:
+		return [UiTheme.KARTS_GRASS, UiTheme.KARTS_GRASS_ALT, UiTheme.KARTS_TREE, UiTheme.KARTS_ROAD, UiTheme.KARTS_ROAD_LIGHT,
+			UiTheme.KARTS_ROAD_LINE, UiTheme.KARTS_PUDDLE, UiTheme.KARTS_PUDDLE_SHINE, UiTheme.WARNING, UiTheme.PAPER, UiTheme.SHADOW]
 	return []
 
 
@@ -240,6 +274,324 @@ static func _pool(root: Node3D, view: BoardView25D) -> void:
 	_frame(root, half)
 
 
+# --- Pista de karts ------------------------------------------------------------------
+
+## Karts de mascotas: el plano es el pasto (Karts.FIELD) en franjas de dos
+## verdes (cajitas como las baldosas) y encima la pista entera, que no
+## cambia en toda la carrera: asfalto y marcas como figuras planas de color
+## por vértice (mismos colores que el dibujo plano), cordones de bloques
+## arcoíris con volumen y contorno a los dos lados, turbos como bloques
+## naranjas con flechas, charcos, línea de largada a cuadros y corchetes de
+## la grilla; árboles y matas como esferas de plástico con sombra. Todo sale
+## de `view.extras` (Karts.scene_extras): puntos y normales del centro de la
+## pista, anchos, turbos, charcos, grilla, largada y decorado.
+static func _karts(root: Node3D, view: BoardView25D) -> void:
+	var half := view.plane.size / 2.0
+	var base := UiTheme.BOARD25D_BASE
+	var tile_h := UiTheme.BOARD25D_TILE_H
+	var slab := _part(root, Props3DMeshes.rounded_box(Vector3(half.x * 2.0 + 4.0, base, half.y * 2.0 + 4.0), 4.0),
+		_plastic(UiTheme.KARTS_GRASS_ALT.darkened(0.2), 0.0, 0.0, 0.0))
+	slab.position = Vector3(0, -tile_h * 0.6 - base / 2.0, 0)
+	# Pasto en franjas: cajitas de todo el alto del campo, sin junta.
+	var lit := UiTheme.BOARD25D_KARTS_LIGHT
+	var grass := [_plastic(UiTheme.KARTS_GRASS, 0.0, 0.0, 0.0, lit), _plastic(UiTheme.KARTS_GRASS_ALT, 0.0, 0.0, 0.0, lit)]
+	var stripe := view.plane.size.x / view.cols
+	var strip_mesh := Props3DMeshes.rounded_box(Vector3(stripe + 0.5, tile_h, half.y * 2.0), 2.0)
+	for x in view.cols:
+		var t := _part(root, strip_mesh, grass[x % 2])
+		t.position = Vector3(-half.x + (x + 0.5) * stripe, -tile_h / 2.0, 0)
+	_edge_shade(root, half)
+	_frame(root, half)
+	var c := view.plane.get_center()
+	var pts: PackedVector2Array = view.extras.get("pts", PackedVector2Array())
+	var nrm: PackedVector2Array = view.extras.get("nrm", PackedVector2Array())
+	if pts.size() < 3 or nrm.size() != pts.size():
+		return
+	var hw: float = view.extras.get("half_width", 84.0)
+	var curb: float = view.extras.get("curb", 18.0)
+	var samples: int = maxi(int(view.extras.get("curb_samples", 4)), 1)
+	var outer := hw + curb
+	var y := UiTheme.BOARD25D_KARTS_MARK_Y
+	# Marcas planas (opacas, color por vértice; las transparencias del dibujo
+	# plano vienen ya mezcladas con el asfalto): tinta por fuera del cordón,
+	# asfalto, franja gastada del medio, líneas del costado, punteada del
+	# medio, largada y corchetes de la grilla.
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var road := UiTheme.KARTS_ROAD
+	var ink_band := UiTheme.BOARD25D_KARTS_INK_BAND
+	for side: float in [-1.0, 1.0]:
+		_track_band(st, pts, nrm, c, side * outer, side * (outer + ink_band), y, UiTheme.INK)
+	_track_band(st, pts, nrm, c, -hw, hw, y, road)
+	_track_band(st, pts, nrm, c, -hw * 0.55, hw * 0.55, y, UiTheme.KARTS_ROAD_LIGHT)
+	var line := road.lerp(Color(UiTheme.KARTS_ROAD_LINE, 1.0), UiTheme.KARTS_ROAD_LINE.a)
+	for side: float in [-1.0, 1.0]:
+		_track_band(st, pts, nrm, c, side * hw, side * (hw - 3.0), y, road.lerp(UiTheme.INK, 0.5))
+		_track_band(st, pts, nrm, c, side * (hw - 11.0), side * (hw - 15.0), y, line)
+	var m := pts.size()
+	var i := 6
+	while i < m - 4:
+		_track_band(st, pts, nrm, c, -2.5, 2.5, y, line, i, i + 2)
+		i += 5
+	# Largada a cuadros (dos filas) y corchetes de la grilla.
+	var start: Vector3 = view.extras.get("start", Vector3.ZERO)
+	var sxf := Transform2D(start.z, Vector2(start.x, start.y) - c)
+	var cols := 12
+	var sq := hw * 2.0 / cols
+	_flat_quad_2d(st, sxf, Rect2(-sq - 3.0, -hw, (sq + 3.0) * 2.0, hw * 2.0), y + 0.1, UiTheme.INK)
+	for r in 2:
+		for k in cols:
+			_flat_quad_2d(st, sxf, Rect2(-sq + r * sq, -hw + k * sq, sq, sq), y + 0.2, UiTheme.PAPER if (r + k) % 2 == 0 else UiTheme.INK)
+	var grid_len: float = view.extras.get("grid_len", 82.0)
+	var bracket := road.lerp(UiTheme.PAPER, 0.8)
+	for g: Vector3 in view.extras.get("grid", []):
+		var gxf := Transform2D(g.z, Vector2(g.x, g.y) - c)
+		_flat_quad_2d(st, gxf, Rect2(grid_len / 2.0 + 4.0, -28.0, 4.0, 56.0), y + 0.1, bracket)
+		_flat_quad_2d(st, gxf, Rect2(-grid_len / 2.0 + 4.0, -30.0, grid_len + 2.0, 4.0), y + 0.1, bracket)
+		_flat_quad_2d(st, gxf, Rect2(-grid_len / 2.0 + 4.0, 26.0, grid_len + 2.0, 4.0), y + 0.1, bracket)
+	# Charcos: tres lóbulos con contorno de tinta y dos brillos.
+	for pd: Array in view.extras.get("puddles", []):
+		var pc := Vector2(pd[0], pd[1]) - c
+		var r: float = pd[2]
+		var angle: float = pd[3]
+		var lobes := [Vector3(0, 0, 1.0), Vector3(-0.55, 0.25, 0.62), Vector3(0.5, -0.3, 0.6)]
+		for l: Vector3 in lobes:
+			_flat_ellipse_2d(st, pc + Vector2(l.x, l.y).rotated(angle) * r, Vector2(r * l.z * 1.2 + 4.0, r * l.z * 0.85 + 4.0), angle, y + 0.3, UiTheme.INK)
+		for l: Vector3 in lobes:
+			_flat_ellipse_2d(st, pc + Vector2(l.x, l.y).rotated(angle) * r, Vector2(r * l.z * 1.2, r * l.z * 0.85), angle, y + 0.4, UiTheme.KARTS_PUDDLE)
+		_flat_ellipse_2d(st, pc + Vector2(-r * 0.25, -r * 0.2), Vector2(r * 0.45, r * 0.18), angle, y + 0.5, UiTheme.KARTS_PUDDLE_SHINE)
+		_flat_ellipse_2d(st, pc + Vector2(r * 0.35, r * 0.2), Vector2(r * 0.18, r * 0.08), angle, y + 0.5, UiTheme.KARTS_PUDDLE_SHINE)
+	# Sombras de árboles y matas, acostadas en el pasto.
+	for d: Array in view.extras.get("decor", []):
+		var dc: Vector2 = d[1] - c
+		var r: float = d[2]
+		if d[0] == "tree":
+			_flat_ellipse_2d(st, dc + Vector2(6.0, r * 0.45), Vector2(r * 1.05, r * 0.6), 0.0, y, UiTheme.KARTS_GRASS_ALT.lerp(UiTheme.INK, 0.28))
+		elif d[0] == "bush":
+			_flat_ellipse_2d(st, dc + Vector2(4.0, r * 0.5), Vector2(r * 1.2, r * 0.45), 0.0, y, UiTheme.KARTS_GRASS_ALT.lerp(UiTheme.INK, 0.28))
+	var marks := MeshInstance3D.new()
+	marks.mesh = st.commit()
+	marks.material_override = _marks_material()
+	marks.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	root.add_child(marks)
+	# Cordones: un bloque arcoíris por tramo de `samples` puntos, a cada lado,
+	# orientado con la pista; canto redondeado y contorno fino.
+	var curb_h := UiTheme.BOARD25D_KARTS_CURB_H
+	var blocks := ceili(float(m) / samples)
+	for side: float in [-1.0, 1.0]:
+		for k in blocks:
+			var i0 := k * samples
+			var i1 := mini(i0 + samples, m)
+			var col: Color = UiTheme.BRICKS[(k * 3 + (0 if side < 0.0 else 5)) % UiTheme.BRICKS.size()]
+			var a := pts[i0] + nrm[i0] * side * (hw + curb / 2.0)
+			var b := pts[i1 % m] + nrm[i1 % m] * side * (hw + curb / 2.0)
+			var length := a.distance_to(b)
+			if length < 1.0:
+				continue
+			var mid := (a + b) / 2.0 - c
+			var blk := _part(root, Props3DMeshes.rounded_box(Vector3(length - 2.0, curb_h, curb - 2.0), UiTheme.BOARD25D_KARTS_CURB_ROUND, 3),
+				_plastic(col, UiTheme.BOARD25D_INK_THIN))
+			blk.position = Vector3(mid.x, curb_h / 2.0, mid.y)
+			blk.rotation = Vector3(0, -(b - a).angle(), 0)
+	# Turbos: bloque naranja con contorno y tres flechas claras arriba.
+	var pad_size: Vector2 = view.extras.get("pad_size", Vector2(92, 62))
+	var pad_h := UiTheme.BOARD25D_KARTS_PAD_H
+	var chev := SurfaceTool.new()
+	chev.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for pad: Vector3 in view.extras.get("pads", []):
+		var pc := Vector2(pad.x, pad.y) - c
+		var blk := _part(root, Props3DMeshes.rounded_box(Vector3(pad_size.x, pad_h, pad_size.y), 5.0, 3),
+			_plastic(UiTheme.WARNING, UiTheme.BOARD25D_INK_THIN, 0.22, 0.95, lit))
+		blk.position = Vector3(pc.x, pad_h / 2.0, pc.y)
+		blk.rotation = Vector3(0, -pad.z, 0)
+		var pxf := Transform2D(pad.z, pc)
+		var gold := UiTheme.GOLD.lightened(0.2)
+		for k in 3:
+			var xf := pxf * Transform2D(0.0, Vector2(-22.0 + k * 22.0, 0))
+			var s := 16.0
+			var th := 7.0
+			for side: float in [-1.0, 1.0]:
+				var pa := Vector2(-s * 0.5, side * s)
+				var pcn := Vector2(s * 0.5, 0)
+				_flat_tri_2d(chev, xf, pa, pcn, pcn + Vector2(-th, 0), pad_h + 0.3, gold)
+				_flat_tri_2d(chev, xf, pa, pcn + Vector2(-th, 0), pa + Vector2(-th, 0), pad_h + 0.3, gold)
+	var chevrons := MeshInstance3D.new()
+	chevrons.mesh = chev.commit()
+	chevrons.material_override = _marks_material()
+	chevrons.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	root.add_child(chevrons)
+	# Árboles (copa gorda con cinco bultos), matas (tres bolas) y flores
+	# (cinco pétalos y el centro dorado): esferas de plástico con contorno.
+	var leaf := UiTheme.KARTS_TREE
+	var tree_mat := _plastic(leaf, UiTheme.BOARD25D_INK_THIN, 0.24, 0.9, lit + 0.08)
+	var lobe_mat := _plastic(leaf.lightened(0.12), 0.0, 0.24, 0.9, lit + 0.08)
+	var bush_mat := _plastic(leaf.lightened(0.15), UiTheme.BOARD25D_INK_THIN, 0.24, 0.9, lit + 0.08)
+	var sink := UiTheme.BOARD25D_KARTS_TREE_SINK
+	var sphere := Props3DMeshes.sphere(12, 20)
+	for d: Array in view.extras.get("decor", []):
+		var dc: Vector2 = d[1] - c
+		var r: float = d[2]
+		match d[0]:
+			"tree":
+				_ball(root, sphere, tree_mat, Vector3(dc.x, r * (1.0 - sink), dc.y), r)
+				for a in 5:
+					var off := Vector2.from_angle(TAU * a / 5.0 + r) * r * 0.55
+					_ball(root, sphere, lobe_mat, Vector3(dc.x + off.x, r * (1.0 - sink) + r * 0.35, dc.y + off.y), r * 0.42)
+			"bush":
+				for off: Vector2 in [Vector2(-r * 0.55, 2), Vector2(r * 0.55, 2), Vector2(0, -r * 0.3)]:
+					_ball(root, sphere, bush_mat, Vector3(dc.x + off.x, r * 0.7 * (1.0 - sink), dc.y + off.y), r * 0.7)
+			_:
+				var petal := _plastic((UiTheme.BRICKS[int(d[3]) % UiTheme.BRICKS.size()] as Color).lightened(0.2), 0.0, 0.3, 0.9)
+				for a in 5:
+					var off := Vector2.from_angle(TAU * a / 5.0) * 5.5
+					_ball(root, sphere, petal, Vector3(dc.x + off.x, 3.5, dc.y + off.y), 4.5)
+				_ball(root, sphere, _plastic(UiTheme.GOLD, 0.0, 0.3, 0.9), Vector3(dc.x, 5.0, dc.y), 3.5)
+
+
+static func _ball(root: Node3D, mesh: Mesh, mat: Material, at: Vector3, r: float) -> void:
+	var b := _part(root, mesh, mat)
+	b.position = at
+	b.scale = Vector3.ONE * r
+
+
+## Franja a lo largo de la pista entre dos distancias laterales (como
+## Karts._band), a la altura `y`, con los puntos relativos al centro `c`.
+## `i0`/`i1`: solo ese tramo de puntos (por defecto toda la vuelta).
+static func _track_band(st: SurfaceTool, pts: PackedVector2Array, nrm: PackedVector2Array, c: Vector2, lat0: float, lat1: float,
+		y: float, col: Color, i0 := 0, i1 := -1) -> void:
+	var m := pts.size()
+	var last := m if i1 < 0 else i1
+	for i in range(i0, last):
+		var a := i % m
+		var b := (i + 1) % m
+		var p0 := pts[a] + nrm[a] * lat0 - c
+		var p1 := pts[b] + nrm[b] * lat0 - c
+		var p2 := pts[b] + nrm[b] * lat1 - c
+		var p3 := pts[a] + nrm[a] * lat1 - c
+		_quad(st, [Vector3(p0.x, y, p0.y), Vector3(p1.x, y, p1.y), Vector3(p2.x, y, p2.y), Vector3(p3.x, y, p3.y)], [col, col, col, col])
+
+
+## Rectángulo del plano (coordenadas locales `r` llevadas por `xf`) acostado a la altura `y`.
+static func _flat_quad_2d(st: SurfaceTool, xf: Transform2D, r: Rect2, y: float, col: Color) -> void:
+	var q := [xf * r.position, xf * Vector2(r.end.x, r.position.y), xf * r.end, xf * Vector2(r.position.x, r.end.y)]
+	_quad(st, q.map(func(p: Vector2) -> Vector3: return Vector3(p.x, y, p.y)), [col, col, col, col])
+
+
+static func _flat_tri_2d(st: SurfaceTool, xf: Transform2D, a: Vector2, b: Vector2, c: Vector2, y: float, col: Color) -> void:
+	for p: Vector2 in [xf * a, xf * c, xf * b]:
+		st.set_color(col)
+		st.set_normal(Vector3.UP)
+		st.add_vertex(Vector3(p.x, y, p.y))
+
+
+## Elipse del plano (centro, radios, giro) acostada a la altura `y`.
+static func _flat_ellipse_2d(st: SurfaceTool, c: Vector2, radii: Vector2, rotation: float, y: float, col: Color, segs := 24) -> void:
+	for i in segs:
+		var a := c + (Vector2.from_angle(TAU * i / segs) * radii).rotated(rotation)
+		var b := c + (Vector2.from_angle(TAU * (i + 1) / segs) * radii).rotated(rotation)
+		for v: Vector2 in [c, b, a]:
+			st.set_color(col)
+			st.set_normal(Vector3.UP)
+			st.add_vertex(Vector3(v.x, y, v.y))
+
+
+# --- Carriles (Carrera de toques, Carrera de obstáculos) ----------------------------------
+
+## Sobre el tablero de baldosas: la división entre carriles (una línea de
+## tinta, entera o punteada, acostada sobre las baldosas) y la meta a
+## cuadros (dos columnas de todo el alto, sobre una base de tinta).
+static func _lanes(root: Node3D, view: BoardView25D) -> void:
+	var half := view.plane.size / 2.0
+	var rows: int = maxi(int(view.extras.get("rows", 1)), 1)
+	var lane_h: float = view.extras.get("lane_h", view.plane.size.y / rows)
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var y := UiTheme.BOARD25D_LANE_MARK_Y
+	var w: float = view.extras.get("divider", 4.0)
+	var dash: Array = view.extras.get("dash", [])
+	var o := Transform2D()
+	var ink := UiTheme.BOARD25D_TILE_LIGHT.lerp(UiTheme.INK, UiTheme.BOARD25D_LANE_DIVIDER_ALPHA)
+	if w > 0.0:
+		for i in range(1, rows):
+			var ly := -half.y + lane_h * i
+			if dash.is_empty():
+				_flat_quad_2d(st, o, Rect2(-half.x, ly - w / 2.0, half.x * 2.0, w), y, ink)
+			else:
+				var x := -half.x
+				while x < half.x:
+					_flat_quad_2d(st, o, Rect2(x, ly - w / 2.0, minf(float(dash[0]), half.x - x), w), y, ink)
+					x += float(dash[1])
+	var finish: Array = view.extras.get("finish", [])
+	if finish.size() == 2:
+		var fx: float = finish[0] - view.plane.get_center().x
+		var fw: float = finish[1]
+		var cell := fw / 2.0
+		_flat_quad_2d(st, o, Rect2(fx - 4.0, -half.y, fw + 8.0, half.y * 2.0), y + 0.1, UiTheme.INK)
+		var fy := -half.y
+		var k := 0
+		while fy < half.y:
+			for c in 2:
+				_flat_quad_2d(st, o, Rect2(fx + c * cell, fy, cell, minf(cell, half.y - fy)), y + 0.2, UiTheme.INK if (k + c) % 2 == 0 else UiTheme.PAPER)
+			fy += cell
+			k += 1
+	var marks := MeshInstance3D.new()
+	marks.mesh = st.commit()
+	marks.material_override = _marks_material()
+	marks.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	root.add_child(marks)
+
+
+# --- Mesa de ping pong ------------------------------------------------------------------
+
+## Ping Pong: el plano es la mesa (PingPong.TABLE). Tapa azul gruesa con el
+## canto redondeado y contorno de tinta (sin marco de bloques: la mesa es la
+## pieza), un borde y una línea del medio blancos pintados en la tapa, y la
+## red cruzada en el medio, con volumen, postes y su sombra. La sala de
+## juguetes de siempre alrededor.
+static func _pingpong(root: Node3D, view: BoardView25D) -> void:
+	var half := view.plane.size / 2.0
+	var edge := UiTheme.BOARD25D_PP_EDGE
+	var depth := UiTheme.BOARD25D_PP_TOP_H
+	var top := _part(root, Props3DMeshes.rounded_box(Vector3(half.x * 2.0 + edge * 2.0, depth, half.y * 2.0 + edge * 2.0), UiTheme.BOARD25D_PP_ROUND),
+		_plastic(UiTheme.TABLE_BLUE, UiTheme.BOARD25D_INK, 0.2, 0.0, UiTheme.BOARD25D_PP_LIGHT))
+	top.position = Vector3(0, -depth / 2.0, 0)
+	# Rodapié oscuro debajo de la tapa (el canto grueso de la maqueta).
+	var skirt := _part(root, Props3DMeshes.rounded_box(Vector3(half.x * 2.0 + edge * 1.4, depth * 0.8, half.y * 2.0 + edge * 1.4), 6.0),
+		_plastic(UiTheme.TABLE_BLUE_DARK, 0.0, 0.0, 0.0))
+	skirt.position = Vector3(0, -depth - depth * 0.4 + 1.0, 0)
+	# Marcas blancas: borde, línea del medio (a lo largo) y sombra de la red.
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var y := 0.5
+	var line := UiTheme.BOARD25D_PP_LINE
+	var white := UiTheme.PAPER
+	var mid := UiTheme.TABLE_BLUE.lerp(UiTheme.PAPER, 0.5)
+	var o := Transform2D()
+	_flat_quad_2d(st, o, Rect2(-half.x, -half.y, half.x * 2.0, line), y, white)
+	_flat_quad_2d(st, o, Rect2(-half.x, half.y - line, half.x * 2.0, line), y, white)
+	_flat_quad_2d(st, o, Rect2(-half.x, -half.y, line, half.y * 2.0), y, white)
+	_flat_quad_2d(st, o, Rect2(half.x - line, -half.y, line, half.y * 2.0), y, white)
+	_flat_quad_2d(st, o, Rect2(-1.5, -half.y, 3.0, half.y * 2.0), y + 0.1, mid)
+	_flat_quad_2d(st, o, Rect2(-half.x - 24.0, 3.0, half.x * 2.0 + 48.0, UiTheme.BOARD25D_PP_NET_H * 0.45), y + 0.2,
+		UiTheme.TABLE_BLUE.lerp(UiTheme.INK, 0.35))
+	var marks := MeshInstance3D.new()
+	marks.mesh = st.commit()
+	marks.material_override = _marks_material()
+	marks.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	root.add_child(marks)
+	# Red: una pared fina blanca con contorno, un cordón oscuro arriba y dos
+	# postes de tinta que sobresalen de la mesa.
+	var net_h := UiTheme.BOARD25D_PP_NET_H
+	var net := _part(root, Props3DMeshes.rounded_box(Vector3(half.x * 2.0 + 48.0, net_h, 4.0), 1.5, 2),
+		_plastic(UiTheme.PAPER, UiTheme.BOARD25D_INK_THIN, 0.1, 0.0, 0.05))
+	net.position = Vector3(0, net_h / 2.0, 0)
+	var cord := _part(root, Props3DMeshes.rounded_box(Vector3(half.x * 2.0 + 48.0, 6.0, 7.0), 2.5, 2), _plastic(UiTheme.INK.lightened(0.2), 0.0, 0.2, 0.9))
+	cord.position = Vector3(0, net_h - 1.0, 0)
+	for sx: float in [-1.0, 1.0]:
+		var post := _part(root, Props3DMeshes.rounded_box(Vector3(10.0, net_h + 8.0, 10.0), 3.0, 2), _plastic(UiTheme.INK.lightened(0.2), 0.0, 0.2, 0.9))
+		post.position = Vector3(sx * (half.x + 24.0), (net_h + 8.0) / 2.0, 0)
+
+
 ## Elipse plana a la altura `y` (xz), de `inner` en el centro a `outer` en el borde.
 static func _flat_ellipse(st: SurfaceTool, c: Vector2, radii: Vector2, y: float, inner: Color, outer: Color, segs := 48) -> void:
 	for i in segs:
@@ -298,13 +650,14 @@ static func _back(root: Node3D, view: BoardView25D) -> void:
 			var t := _part(root, ground, ga if posmod(xi + zi, 2) == 0 else gb)
 			t.position = Vector3(xi * g, floor_y - 10.0, zi * g)
 	# Sombra del tablero sobre el piso (se desenfoca con el resto).
-	var shadow := MeshInstance3D.new()
-	var box := BoxMesh.new()
-	box.size = Vector3(o.x * 2.0 + 60.0, 1.0, o.y * 2.0 + 50.0)
-	shadow.mesh = box
-	shadow.material_override = _flat_material(UiTheme.BOARD25D_SHADOW)
-	shadow.position = Vector3(26.0, floor_y + 0.8, 34.0)
-	root.add_child(shadow)
+	if view.recipe != RECIPE_STAGE:
+		var shadow := MeshInstance3D.new()
+		var box := BoxMesh.new()
+		box.size = Vector3(o.x * 2.0 + 60.0, 1.0, o.y * 2.0 + 50.0)
+		shadow.mesh = box
+		shadow.material_override = _flat_material(UiTheme.BOARD25D_SHADOW)
+		shadow.position = Vector3(26.0, floor_y + 0.8, 34.0)
+		root.add_child(shadow)
 	# Juguetes: mayoría azules y celestes (como la maqueta) con toques de
 	# color. Posiciones relativas al borde del tablero (sirven para tableros
 	# de otro tamaño); los de los costados quedan cortados por el borde de la
@@ -409,8 +762,11 @@ static func _quad(st: SurfaceTool, pts: Array, cols: Array) -> void:
 ## en unidades del mundo (0 = sin contorno); `coat`: brillo ancho de barniz;
 ## `spec`: reflejo nítido (0 en las caras planas grandes: con la normal
 ## constante, el reflejo "pintado" prendería baldosas enteras de blanco).
-static func _plastic(col: Color, ink: float, coat := 0.22, spec := 0.95) -> Material:
-	var key := "p|%s|%.2f|%.2f|%.2f" % [col.to_html(), ink, coat, spec]
+## `light`: cuánto se aclara la cara iluminada (por defecto BOARD25D_LIGHT;
+## menos en superficies grandes vistas de arriba, como el pasto, para que
+## queden del tono del token y no lavadas).
+static func _plastic(col: Color, ink: float, coat := 0.22, spec := 0.95, light := -1.0) -> Material:
+	var key := "p|%s|%.2f|%.2f|%.2f|%.2f" % [col.to_html(), ink, coat, spec, light]
 	if _materials.has(key):
 		return _materials[key]
 	var lum := col.get_luminance()
@@ -418,7 +774,8 @@ static func _plastic(col: Color, ink: float, coat := 0.22, spec := 0.95) -> Mate
 	var low := col.lightened(0.02) if dark else col.darkened(0.42 if lum < 0.8 else 0.16)
 	low = low.lerp(UiTheme.MASCOT_SHADE_TINT, 0.14)
 	var mid := col.lightened(0.1) if dark else col
-	var high := col.lightened(0.45 if dark else (0.08 if lum > 0.85 else UiTheme.BOARD25D_LIGHT))
+	var lit := UiTheme.BOARD25D_LIGHT if light < 0.0 else light
+	var high := col.lightened(0.45 if dark else (0.08 if lum > 0.85 else lit))
 	var m := ShaderMaterial.new()
 	m.shader = SHADER_TOY
 	var params := {"low_color": low, "mid_color": mid, "high_color": high, "bounce_color": mid.lightened(0.18),
@@ -467,6 +824,19 @@ static func _flat_material(col: Color) -> Material:
 		m.albedo_color = col
 		_materials[key] = m
 	return _materials[key]
+
+
+## Color por vértice opaco (marcas planas de la pista de Karts): sin
+## transparencia, así el orden lo decide la profundidad y no el centro de
+## cada malla (las transparentes se ordenan entre sí por distancia).
+static func _marks_material() -> Material:
+	if not _materials.has("marks"):
+		var m := StandardMaterial3D.new()
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.vertex_color_use_as_albedo = true
+		m.cull_mode = BaseMaterial3D.CULL_DISABLED
+		_materials["marks"] = m
+	return _materials["marks"]
 
 
 ## Color por vértice con transparencia (degradés: sombra del marco).

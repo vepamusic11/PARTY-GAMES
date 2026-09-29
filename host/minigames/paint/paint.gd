@@ -133,7 +133,7 @@ static func board_view() -> BoardView25D:
 
 
 ## Durante la intro: el escenario 2.5D se lee del disco o se hornea.
-static func prewarm_art(host: Node) -> void:
+static func prewarm_art(host: Node, _players: Array = []) -> void:
 	Board25DBaker.request(host, board_view())
 
 

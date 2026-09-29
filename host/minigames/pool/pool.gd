@@ -156,7 +156,7 @@ static func board_view() -> BoardView25D:
 
 
 ## Durante la intro: el escenario 2.5D se lee del disco o se hornea.
-static func prewarm_art(host: Node) -> void:
+static func prewarm_art(host: Node, _players: Array = []) -> void:
 	Board25DBaker.request(host, board_view())
 
 
@@ -532,6 +532,8 @@ func _draw() -> void:
 	var best := _best_score()
 	for p in order:
 		_draw_player(p, best)
+	if _v25:
+		_draw_front_cushion()
 	# Globitos 1P–4P y nombres; los que esperan reaparecer, transparentes en su lugar.
 	var tags: Array = []
 	for p in order:
@@ -875,6 +877,25 @@ func _draw_effects() -> void:
 		var at: Vector2 = _pos.get(p.pid, Vector2.ZERO)
 		UiTheme.draw_text(self, p.text, _feet_at(at) - Vector2(0, 120.0 + 50.0 * k) * _depth(at), 48,
 			Color(UiTheme.GOLD, 1.0 - k * k), 10, Color(UiTheme.INK, 1.0 - k * k))
+
+
+## En 2.5D, la banda de adelante (la más cercana a la cámara) tiene que
+## tapar a las bolas y mascotas que ruedan pegadas a ella: se vuelve a
+## pintar encima con el propio escenario horneado, por tramos entre las
+## troneras (así una bola que cae en una tronera de adelante se sigue
+## viendo). Cada tramo: de la arista de arriba de la banda (a su altura)
+## hasta el borde del paño.
+func _draw_front_cushion() -> void:
+	var v := board_view()
+	var h := UiTheme.BOARD25D_POOL_CUSHION_H
+	var gap := POCKET_R + UiTheme.BOARD25D_POOL_POCKET_GAP
+	var y0 := PLAY.end.y
+	var y1 := FELT.end.y + 12.0
+	var polys: Array = []
+	for seg: Array in [[PLAY.position.x + gap, PLAY.get_center().x - gap], [PLAY.get_center().x + gap, PLAY.end.x - gap]]:
+		polys.append(PackedVector2Array([v.project_up(Vector2(seg[0], y0), h), v.project_up(Vector2(seg[1], y0), h),
+			v.project(Vector2(seg[1], y1)), v.project(Vector2(seg[0], y1))]))
+	draw_board_25d_cover(v, polys)
 
 
 ## Anillo de efecto (tronera, bola que vuelve): un anillo unitario

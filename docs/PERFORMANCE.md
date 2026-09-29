@@ -346,6 +346,30 @@ Misma técnica, con su receta de escenario cada uno (Arena: el tablero de Pintar
 - **Memoria**: una textura de 6,2 MB (RGB, 8,3 MB como RGBA) por juego, solo mientras se juega y 2 s después (nunca dos a la vez salvo en ese margen). **Disco**: un PNG por receta en `user://board25d/` (≈ 0,65 MB cada uno; los 4 juegos ≈ 2,6 MB).
 - **Cámara**: `BoardView25D.make_fit` aleja la cámara para Arena y Esquivar (campo de 1600 px, distancia × 1,08) y la acerca para Pool (paño de 1420 px, × 0,96): el tablero ocupa en pantalla lo mismo que Pintar el piso. Mascotas: escala por profundidad 0,86–0,99 en Arena/Esquivar y 0,96–1,12 en Pool, siempre en el mismo tamaño de horneado del atlas.
 
+#### Karts, Ping Pong, carreras y la sala como cielo en 2.5D (29/09, vuelta 3)
+
+Karts (receta `karts`: pista, cordones, turbos y árboles en 3D), Ping Pong (`pingpong`: la mesa como pieza), Carrera de toques y Carrera de obstáculos (`tap_race`/`hurdles`: carriles, una vista por cantidad de jugadores) en 2.5D horneado; la sala de juguetes 3D (`stage`) como cielo de los juegos sin tablero; Pool tapa las bolas con la banda de adelante y en Esquivar los bloques caen por delante del marcador. `tools/benchmark.gd -- --only=karts,pingpong,tap_race,hurdles,pool,dodge,memory,stop_clock,scroller,sumo --board=both`: plano y 2.5D **en la misma corrida** (una corrida con el candado de Godot tomado, xvfb + llvmpipe, 300 frames, 4 jugadores; "antes" es la punta sin el cambio, `d1d59fb`, medida antes de empezar):
+
+| Escena | Scripts prom. (ms) antes → plano → **2.5D** | Scripts p95 (ms) | Draw calls | Render (ms) |
+|---|---:|---:|---:|---:|
+| karts | 3,62 → 3,51 → **3,42** | 5,62 → 5,68 → **5,92** | 43 → 44 → **39** | 41,1 → 39,1 → **20,2** |
+| pingpong | 1,13 → 0,99 → **0,96** | 1,77 → 1,53 → **1,63** | 37 → 37 → **34** | 29,4 → 26,9 → **18,0** |
+| tap_race | 1,34 → 1,28 → **1,22** | 1,92 → 1,93 → **1,86** | 36 → 35 → **30** | 28,3 → 26,4 → **19,9** |
+| hurdles | 3,52 → 3,74 → **4,45** | 5,24 → 5,49 → **6,90** | 36 → 35 → **35** | 38,5 → 39,1 → **34,0** |
+| pool | 3,80 → 3,29 → **3,39** | 6,24 → 5,05 → **5,83** | 30 → 35 → **33** | 23,7 → 35,8 → **22,6** |
+| dodge | 1,79 → 2,06 → **2,11** | 3,58 → 3,15 → **3,69** | 32 → 52 → **34** | 22,2 → 29,3 → **23,1** |
+| memory (sala 3D como cielo) | 2,12 → **2,43** | 3,50 → **3,95** | 37 → **36** | 37,7 → **39,9** |
+| stop_clock (ídem) | 1,40 → **1,24** | 2,17 → **1,84** | 61 → **61** | 34,6 → **32,7** |
+| scroller (ídem) | 2,05 → **2,59** | 3,27 → **4,05** | 64 → **65** | 35,3 → **41,3** |
+| sumo (control, sin cambios) | 2,81 → **2,50** | 3,91 → **3,86** | 91 → **91** | 43,8 → **39,4** |
+
+- **Todo dentro del presupuesto** (p95 ≤ 8 ms, ≤ 150 draw calls). Karts, Ping Pong y Carrera de toques cuestan lo mismo o menos que planos (menos draw calls y ~30–50 % menos render: el fondo es una textura y la pista/mesa/carriles ya no se pintan en lotes).
+- **Carrera de obstáculos es el único que sube** (+0,7 ms de scripts, p95 5,5 → 6,9 ms): en 2.5D lo que pasa por cada carril se transforma por carril (`Transform2D * PackedVector2Array` en C++) y los obstáculos parados se ubican uno por uno; sigue lejos de los 8 ms. Si en la TV hiciera falta, cachear la transformación de cada carril entre cuadros (hoy se recalcula por cuadro: 4 `floor_xform`).
+- **Sala 3D como cielo** (Memoria, Reloj exacto, ¡Que no te deje la cámara!): igual que el escenario pintado (±0,5 ms, ruido de la máquina; el control `sumo` varió lo mismo). Es una textura de pantalla completa en la capa cacheada, como antes.
+- **Horneado** (primera vez, llvmpipe): Karts 1,3–1,9 s (~700 piezas: 170 cordones con contorno, 47 esferas, marcas), Carrera de obstáculos 1,0–1,3 s, Carrera de toques 0,8–1,1 s, Ping Pong 0,5–0,9 s, sala 0,4–0,6 s (sin tablero). **Del disco**: 37–56 ms (30–46 ms leer en un hilo + 4–9 ms subir).
+- **Memoria**: 6,2 MB por textura (RGB; 8,3 MB como RGBA) mientras se juega; en los juegos sin tablero, la de la sala (una sola para todos). **Disco**: un PNG por receta y, en carriles, por cantidad de jugadores (`user://board25d/`, ≈ 0,65 MB cada uno; con los 13 juegos y 4 cantidades de carriles, ≈ 10 MB como máximo).
+- **Atlas de mascotas**: sin cambio (los brazos y ojos más grandes no cambian la celda; la manopla del saludo entra ajustando su posición).
+
 ### Revisión de dirección de arte (29/09)
 
 Colores más vivos (tokens de `UiTheme`), mascotas con la cara de la maqueta, pose "¡hola!" en el lobby y tarjetas con la cabeza adentro. `tools/benchmark.gd -- --only=lobby,dodge,sumo`, la punta sin el cambio (`699f795`, desplegada en el mismo worktree) y con el cambio, una corrida de cada una con el candado de Godot tomado (xvfb + llvmpipe):

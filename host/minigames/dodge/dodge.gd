@@ -110,7 +110,7 @@ static func board_view() -> BoardView25D:
 
 
 ## Durante la intro: el escenario 2.5D se lee del disco o se hornea.
-static func prewarm_art(host: Node) -> void:
+static func prewarm_art(host: Node, _players: Array = []) -> void:
 	Board25DBaker.request(host, board_view())
 
 
@@ -328,10 +328,11 @@ func _draw() -> void:
 	var v25 := draw_board_25d(board_view())
 	if v25 != _v25:
 		_v25 = v25
-		# En 2.5D los bloques caen desde arriba de la pantalla (detrás del
-		# marcador), no desde el borde del campo.
+		# En 2.5D los bloques caen desde arriba de la pantalla, por delante
+		# del marcador (como algo que cae de verdad), no desde el borde del campo.
 		if _air != null:
 			_air.clip_contents = not _v25
+			_air.z_index = UiTheme.BOARD25D_AIR_Z if _v25 else 0
 	if _v25:
 		_draw_25d()
 		return

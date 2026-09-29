@@ -1894,8 +1894,10 @@ const BOARD25D_FIT_WIDTH := 1480.0
 ## las sombras y el aviso de los bloques se leen igual de bien).
 const BOARD25D_DODGE_TILE_LIGHT := Color("#F7F4FD")
 const BOARD25D_DODGE_TILE_DARK := Color("#E4DDF4")
-## Esquivar: alto de un bloque de juguete (fracción de su lado).
+## Esquivar: alto de un bloque de juguete (fracción de su lado) y z de la
+## capa de los bloques en el aire (por delante del marcador mientras caen).
 const BOARD25D_BLOCK_RISE := 0.75
+const BOARD25D_AIR_Z := 1
 ## Pool: alto y canto de las bandas, aro de las troneras, lugar entre la
 ## tronera y la banda, miras, marcas del paño y sombra de las bandas sobre el paño.
 const BOARD25D_POOL_CUSHION_H := 20.0
@@ -1947,3 +1949,45 @@ const HELP_BANNER_TAG := Vector2(62, 42)
 const HELP_BANNER_COST := Color("#E5484D")   ## "−10" (lo que costó).
 ## Resumen de la ronda: línea "Tomi −10 por ayudar a Sofi".
 const HELP_SUMMARY_FONT := 28
+
+
+# --- Tablero 2.5D de Karts (agente, ADR 0019) ---
+## Karts: la pista entera va horneada en 3D con el pasto (franjas), el
+## asfalto y las marcas planas, los cordones de bloques con volumen, los
+## turbos como bloques con flechas, los charcos y los árboles como esferas
+## de plástico. Medidas en unidades del mundo (px del plano).
+const BOARD25D_KARTS_CURB_H := 11.0       ## Alto de los bloques del cordón (ancho: Karts.CURB).
+const BOARD25D_KARTS_CURB_ROUND := 4.0    ## Canto de los bloques del cordón.
+const BOARD25D_KARTS_PAD_H := 7.0         ## Alto del bloque del turbo.
+const BOARD25D_KARTS_TREE_SINK := 0.12    ## Cuánto se hunde la copa (fracción del radio): apoya en el pasto.
+const BOARD25D_KARTS_MARK_Y := 0.6        ## Altura de las marcas planas sobre el pasto (asfalto, líneas, charcos).
+const BOARD25D_KARTS_INK_BAND := 5.0      ## Tinta por fuera del cordón.
+## Cuánto se aclara la cara de arriba del pasto, los turbos y las copas 3D
+## (menos que BOARD25D_LIGHT: vistos de arriba son casi todo cara iluminada
+## y con el valor de las baldosas quedaban lavados; así quedan del tono de
+## los tokens KARTS_* del dibujo plano).
+const BOARD25D_KARTS_LIGHT := 0.06
+
+# --- Sala de juguetes 3D como cielo de los juegos sin tablero (agente, ADR 0019) ---
+## Área que rodean los juguetes en la receta "stage" (MiniGame.draw_sky):
+## el tablero de Pintar el piso, así el fondo queda como en los juegos 2.5D.
+const BOARD25D_STAGE_AREA := Rect2(220, 133, 1480, 814)
+
+# --- Carriles 2.5D de Carrera de toques y de obstáculos (agente, ADR 0019) ---
+## Altura de las marcas planas sobre las baldosas y opacidad de la
+## división entre carriles (tinta mezclada con la baldosa clara).
+const BOARD25D_LANE_MARK_Y := 0.6
+const BOARD25D_LANE_DIVIDER_ALPHA := 0.45
+
+# --- Mesa 2.5D de Ping Pong (agente, ADR 0019) ---
+## La mesa es la pieza (sin marco de bloques): cuánto sobresale la tapa del
+## área de juego, grosor y canto de la tapa, ancho de la línea blanca, alto
+## de la red, cuánto se levanta la cara de la paleta sobre su base y cuánto
+## se aclara la tapa (vista de arriba, casi toda cara iluminada).
+const BOARD25D_PP_EDGE := 18.0
+const BOARD25D_PP_TOP_H := 30.0
+const BOARD25D_PP_ROUND := 12.0
+const BOARD25D_PP_LINE := 6.0
+const BOARD25D_PP_NET_H := 34.0
+const BOARD25D_PP_PADDLE_RISE := 6.0
+const BOARD25D_PP_LIGHT := 0.08

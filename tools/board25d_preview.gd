@@ -15,7 +15,7 @@ extends SceneTree
 ##                   (ej. --compare=res://docs/img/pintar_25d_comparacion.png)
 ##   --flat          también captura el mismo estado dibujado plano (antes)
 ##   --game=ID       otro juego con tablero 2.5D en un estado fijo: arena,
-##                   dodge o pool. Con --compare arma la comparación
+##                   dodge, pool, karts, pingpong, tap_race o hurdles. Con --compare arma la comparación
 ##                   antes (plano) | ahora (2.5D) y abajo dos detalles a
 ##                   tamaño real (ej. --compare=res://docs/img/pool_25d_comparacion.png)
 ## Guarda <juego>_25d.png (y <juego>_plano.png) a 1920×1080 e imprime los tiempos del horneado.
@@ -28,6 +28,10 @@ const DETAILS := {
 	"arena": [[Vector2i(0, 540), "Ahora, detalle: marco, mascota y estrellas"], [Vector2i(760, 150), "Ahora, detalle: atrás, más chico"]],
 	"dodge": [[Vector2i(300, 200), "Ahora, detalle: bloques cayendo y sombras"], [Vector2i(960, 540), "Ahora, detalle: bloque apoyado"]],
 	"pool": [[Vector2i(120, 80), "Ahora, detalle: puntería y guía de tiro"], [Vector2i(960, 520), "Ahora, detalle: troneras y bandas"]],
+	"karts": [[Vector2i(760, 540), "Ahora, detalle: largada, cordones y karts"], [Vector2i(60, 120), "Ahora, detalle: curva de atrás y árboles"]],
+	"pingpong": [[Vector2i(480, 360), "Ahora, detalle: red, pelota y paleta"], [Vector2i(900, 500), "Ahora, detalle: mascota y canto de la mesa"]],
+	"tap_race": [[Vector2i(0, 200), "Ahora, detalle: carteles y carriles de atrás"], [Vector2i(900, 520), "Ahora, detalle: meta y mascotas de adelante"]],
+	"hurdles": [[Vector2i(0, 160), "Ahora, detalle: carril de atrás"], [Vector2i(700, 540), "Ahora, detalle: vallas y pozo de adelante"]],
 }
 ## Jugadores como en la maqueta: [nombre, color (Protocol.MASCOT_COLORS), estilo].
 const PLAYERS := [["Pablo", 0, 4], ["Sofi", 1, 1], ["Tomi", 2, 2], ["Juli", 3, 3]]
@@ -174,7 +178,7 @@ func _compare(shot: Image, before: Image, path: String) -> void:
 func _run_game(id: String, compare: String) -> int:
 	var script: GDScript = MiniGameRegistry._script(id)
 	if script == null or not DETAILS.has(id):
-		printerr("--game: arena, dodge o pool")
+		printerr("--game: arena, dodge, pool, karts, pingpong, tap_race o hurdles")
 		return 1
 	var players := _players()
 	MascotAtlas.prewarm_game(players, MiniGameRegistry.mascot_scale(id), MiniGameRegistry.mascot_prewarm(id))
@@ -213,6 +217,14 @@ func _capture_game(script: GDScript, id: String, players: Array[Dictionary]) -> 
 			_dodge_state(game)
 		"pool":
 			_pool_state(game)
+		"karts":
+			_karts_state(game)
+		"pingpong":
+			_pingpong_state(game)
+		"tap_race":
+			_tap_race_state(game)
+		"hurdles":
+			_hurdles_state(game)
 	for i in 40:
 		await process_frame
 	await RenderingServer.frame_post_draw
@@ -278,8 +290,9 @@ func _pool_state(game: Node2D) -> void:
 		game._pos[pid] = at[pid]
 	game._aim[1] = {"dir": Vector2(0.86, 0.5).normalized(), "power": 0.85, "t": 19.9}
 	game._aim[2] = {"dir": Vector2(-1, -0.35).normalized(), "power": 0.5, "t": 19.9}
+	# La última, pegada a la banda de adelante: la tapa la banda (vuelta 3).
 	var spots: Array[Vector2] = [play.get_center(), play.get_center() + Vector2(60, -40), play.position + Vector2(640, 420),
-		play.position + Vector2(900, 250), play.position + Vector2(180, 380), play.end - Vector2(120, 90), play.position + Vector2(1230, 330)]
+		play.position + Vector2(900, 250), play.position + Vector2(180, 380), play.end - Vector2(120, 90), play.end - Vector2(470, 22)]
 	for k in game._golds.size():
 		game._phys.place(game._golds[k], spots[k % spots.size()])
 	game._score = {1: 6, 2: 3, 3: 2, 4: 5}
@@ -287,6 +300,82 @@ func _pool_state(game: Node2D) -> void:
 	game._phys.on_table[game._ball[3]] = 0
 	game._effects.append({"kind": "pocket", "pos": game.pockets()[4], "t": 0.15, "power": 1.0})
 	game._effects.append({"kind": "hit", "pos": play.position + Vector2(640, 420) + Vector2(-20, 10), "t": 0.1, "power": 0.8})
+
+
+## Karts: a mitad de carrera, el pelotón repartido por la pista (uno con
+## turbo, otro patinando en un charco), vuelta 2/3.
+func _karts_state(game: Node2D) -> void:
+	game._phase = 1  # RACING
+	game._countdown = -5.0
+	game._elapsed = 24.0
+	game.anim_time = 24.0
+	var tr: RefCounted = game.track()
+	var spots := {1: [0.12, -30.0, 0.0, 0.0], 2: [0.155, 20.0, 0.9, 0.0], 3: [0.30, 24.0, 0.0, 0.6], 4: [0.62, -20.0, 0.0, 0.0]}
+	for pid: int in spots:
+		var k: RefCounted = game._karts[pid]
+		var s: float = spots[pid][0] * tr.length
+		k.pos = tr.point_at(s, spots[pid][1])
+		k.heading = (tr.frame_at(s)[1] as Vector2).angle()
+		k.vel = Vector2.from_angle(k.heading) * 300.0
+		k.turbo = spots[pid][2]
+		k.slip = spots[pid][3]
+		k.dist = tr.length * (1.0 + spots[pid][0])
+		k.steer = 0.3 if pid == 1 else 0.0
+	game._effects.append({"pos": (game._karts[4] as RefCounted).pos + Vector2(20, -10), "t": 0.12, "power": 0.7})
+
+
+## Ping Pong: la pelota recién golpeada por el de abajo, con estela, 3 a 2.
+func _pingpong_state(game: Node2D) -> void:
+	var t: Rect2 = game.TABLE
+	game._ball = t.position + Vector2(300, 520)
+	game._vel = Vector2(-0.35, -1.0).normalized() * 700.0
+	game._serve_delay = 0.0
+	game._since_hit = 0.3
+	game._trail_col = (game.players[1] as Dictionary).color
+	var trail := PackedVector2Array()
+	for k in 7:
+		trail.append(game._ball - game._vel * 0.016 * (7 - k))
+	game._trail = trail
+	game._paddle_x[game.players[0].id] = t.position.x + 260.0
+	game._paddle_x[game.players[1].id] = t.position.x + 330.0
+	game._score = {game.players[0].id: 2, game.players[1].id: 3}
+	game.anim_time = 6.0
+
+
+## Carrera de toques: a mitad de carrera, cada uno en un punto distinto.
+func _tap_race_state(game: Node2D) -> void:
+	game._countdown = -5.0
+	var taps := {1: 22, 2: 31, 3: 12, 4: 27}
+	for pid: int in taps:
+		game._taps[pid] = taps[pid]
+	game.anim_time = 9.0
+
+
+## Carrera de obstáculos: cada uno en otro tramo (uno saltando una valla,
+## otro sobre un escalón, otro caído en un pozo, otro corriendo).
+func _hurdles_state(game: Node2D) -> void:
+	game._countdown = -5.0
+	game._elapsed = 14.0
+	game.anim_time = 14.0
+	game.use_course(game.build_course(7))
+	var xs := {1: 2300.0, 2: 3100.0, 3: 1700.0, 4: 2650.0}
+	for pid: int in xs:
+		var r: RefCounted = game._runners[pid]
+		r.x = xs[pid]
+		r.speed = 380.0
+	(game._runners[1] as RefCounted).y = 70.0
+	(game._runners[1] as RefCounted).vy = 120.0
+	(game._runners[1] as RefCounted).grounded = false
+	# 3P: cayó en un pozo justo delante (se hunde y se tapa con el frente del pozo).
+	var course: Array = game._course
+	for o: Dictionary in course:
+		if int(o.kind) == 1 and float(o.x) > 1400.0:  # PIT
+			var r3: RefCounted = game._runners[3]
+			r3.x = float(o.x) + float(o.w) * 0.5
+			r3.fall = 0.6
+			r3.pit_x0 = float(o.x)
+			r3.pit_x1 = float(o.x) + float(o.w)
+			break
 
 
 ## Comparación genérica: 2 × 2 paneles de 960 × 540 con título (los que
