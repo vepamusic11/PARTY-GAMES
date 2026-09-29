@@ -249,14 +249,24 @@ func _card_band(crop: Rect2) -> Rect2:
 func _count_in_band(shot: Dictionary, game: MiniGame, crop: Rect2) -> Vector2:
 	var band := _card_band(crop)
 	var n := Vector2.ZERO
-	for p in _player_positions(game):
+	for q in _player_positions(game):
+		var p := _on_tv(game, q)
 		# La mascota se dibuja hacia arriba de los pies (≈ 90 px) y el nombre abajo.
 		if band.grow_individual(-30, -85, -30, -30).has_point(p) and _visible_in_card(band, p - Vector2(0, 40)):
 			n.x += 1
-	for item in _items(shot, game):
+	for q in _items(shot, game):
+		var item := _on_tv(game, q)
 		if band.grow(-30).has_point(item) and _visible_in_card(band, item):
 			n.y += 1
 	return n
+
+
+## Dónde se ve en la TV un punto del campo: en los juegos con tablero 2.5D
+## (ADR 0019) que ya lo dibujan así, proyectado; si no, igual.
+func _on_tv(game: MiniGame, p: Vector2) -> Vector2:
+	if game.get("_v25") == true and game.has_method("board_view"):
+		return (game.call("board_view") as BoardView25D).project(p)
+	return p
 
 
 func _visible_in_card(band: Rect2, p: Vector2) -> bool:

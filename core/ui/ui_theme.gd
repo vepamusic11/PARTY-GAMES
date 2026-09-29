@@ -1880,3 +1880,28 @@ const BOARD25D_GROUND_BACK := 150.0
 ## Baldosas del tablero a cuadros (claras y grises, como la maqueta).
 const BOARD25D_TILE_LIGHT := Color("#F6F8FC")
 const BOARD25D_TILE_DARK := Color("#DDE3EE")
+
+# --- Tablero 2.5D de Arena, Esquivar y Pool (agente, ADR 0019) ---
+## Ancho del plano que la cámara encuadra como la maqueta (el de Pintar el
+## piso): BoardView25D.make_fit aleja la cámara para un campo más ancho
+## (Arena y Esquivar, 1600 px) y la acerca para uno más angosto (Pool, 1420 px).
+const BOARD25D_FIT_WIDTH := 1480.0
+## Esquivar: baldosas lila (se distingue de Arena, que tiene el mismo campo;
+## las sombras y el aviso de los bloques se leen igual de bien).
+const BOARD25D_DODGE_TILE_LIGHT := Color("#F7F4FD")
+const BOARD25D_DODGE_TILE_DARK := Color("#E4DDF4")
+## Esquivar: alto de un bloque de juguete (fracción de su lado).
+const BOARD25D_BLOCK_RISE := 0.75
+## Pool: alto y canto de las bandas, aro de las troneras, lugar entre la
+## tronera y la banda, miras, marcas del paño y sombra de las bandas sobre el paño.
+const BOARD25D_POOL_CUSHION_H := 20.0
+const BOARD25D_POOL_CUSHION_ROUND := 7.0
+const BOARD25D_POOL_RIM := 6.0
+const BOARD25D_POOL_POCKET_GAP := 4.0
+const BOARD25D_POOL_SIGHT_R := 5.5
+const BOARD25D_POOL_MARK_DOT := 7.0
+const BOARD25D_POOL_MARK_RING := 141.0
+const BOARD25D_POOL_SHADE_W := 22.0
+## Pool: cuánto se aclara el paño 3D (la luz de arriba del plástico lo
+## oscurece; así queda del tono del paño plano, POOL_FELT).
+const BOARD25D_POOL_FELT_LIFT := 0.12

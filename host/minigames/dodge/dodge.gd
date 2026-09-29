@@ -14,11 +14,21 @@ extends MiniGame
 ##   1. este nodo: cielo, campo, sombras, bloques apoyados, mascotas en pie, HUD
 ##   2. _ghosts (CanvasGroup semitransparente): mascotas eliminadas
 ##   3. _air (Control recortado al campo): bloques en el aire
+##
+## Escenario 2.5D (ADR 0019, como Pintar el piso): si hay render, el tablero
+## (baldosas lila, receta "dodge") y los juguetes de alrededor son una escena
+## 3D horneada con cámara en perspectiva, y el juego se dibuja encima
+## proyectado: sombras y avisos acostados en el piso, bloques de juguete con
+## alto (tapa y costados) que caen desde arriba de la pantalla, y mascotas y
+## bloques apoyados ordenados de atrás hacia adelante. Las reglas, los choques
+## y los bots siguen en las coordenadas planas de FIELD. Sin render
+## (--headless) o mientras se hornea, se dibuja plano como siempre.
 
 const DURATION_SEC := 45.0
 const COUNTDOWN_SEC := 3.0
 const GO_SEC := 0.8               ## Cuánto se ve "¡YA!" después del 1.
 const FIELD := Rect2(160, 140, 1600, 860)
+const CELL := 80.0                ## Baldosas del tablero (solo dibujo).
 const SPEED := 620.0              ## Igual que Arena.
 const MASCOT_SCALE := 0.8
 ## Poses extra que se hornean en la intro (MascotAtlas.prewarm_game): cara de
@@ -68,6 +78,10 @@ var _ghosts: CanvasGroup
 var _ghost_drawer: Node2D
 var _air: Control
 
+## Vista 2.5D del campo (una por proceso) y si este cuadro se dibuja con ella.
+static var _board_view: BoardView25D
+var _v25 := false
+
 
 static func get_info() -> Dictionary:
 	return {
@@ -81,6 +95,19 @@ static func get_info() -> Dictionary:
 		"accent": UiTheme.BRICKS[0],
 		"score_label": "segundos",
 	}
+
+
+## Cámara y proyección del escenario 2.5D (ADR 0019): el campo encuadrado
+## como el de Pintar el piso (BoardView25D.make_fit), con su propia receta.
+static func board_view() -> BoardView25D:
+	if _board_view == null:
+		_board_view = BoardView25D.make_fit(FIELD, CELL, Board25DScene.RECIPE_DODGE)
+	return _board_view
+
+
+## Durante la intro: el escenario 2.5D se lee del disco o se hornea.
+static func prewarm_art(host: Node) -> void:
+	Board25DBaker.request(host, board_view())
 
 
 func _ready() -> void:
@@ -166,7 +193,7 @@ func _move_players(delta: float) -> void:
 		p.x = clampf(p.x, FIELD.position.x + MOVE_MARGIN_X, FIELD.end.x - MOVE_MARGIN_X)
 		p.y = clampf(p.y, FIELD.position.y + MOVE_MARGIN_TOP, FIELD.end.y - MOVE_MARGIN_BOTTOM)
 		_pos[pid] = p
-		juice().stop_dust(pid, (_axis[pid] as Vector2).length(), p)
+		juice().stop_dust(pid, (_axis[pid] as Vector2).length(), _screen(p))
 
 
 ## 0 al empezar, 1 a los RAMP_SEC segundos.
@@ -225,7 +252,7 @@ func _check_hits() -> void:
 				# Alcanzado: pausa de impacto, sacudida leve y estrellitas.
 				hit_stop(0.08)
 				juice().shake(0.8)
-				juice().sparkles(feet + Vector2(0, -50), UiTheme.GOLD, 10, 420.0)
+				juice().sparkles(_screen(feet) + Vector2(0, -50) * _depth(feet), UiTheme.GOLD, 10, 420.0)
 
 
 func _check_end() -> void:
@@ -245,7 +272,7 @@ func _end(alive: Array[int]) -> void:
 	# Festejo antes del resumen: "¡Tiempo!" o "¡Último en pie!" y confeti.
 	var party := {}
 	for pid in alive:
-		party[pid] = _pos[pid]
+		party[pid] = _screen(_pos[pid])
 	finish_after(result, "¡Tiempo!" if _elapsed >= DURATION_SEC else ("¡Último en pie!" if not alive.is_empty() else "¡Fin!"), party)
 	_redraw()
 
@@ -254,8 +281,8 @@ func _end(alive: Array[int]) -> void:
 func _land_fx(b: Dictionary) -> void:
 	var r := _ground_rect(b)
 	var y := r.end.y - 6.0
-	juice().dust(Vector2(r.position.x + 8.0, y), 2, Vector2(-1, -0.3), 12.0)
-	juice().dust(Vector2(r.end.x - 8.0, y), 2, Vector2(1, -0.3), 12.0)
+	juice().dust(_screen(Vector2(r.position.x + 8.0, y)), 2, Vector2(-1, -0.3), 12.0)
+	juice().dust(_screen(Vector2(r.end.x - 8.0, y)), 2, Vector2(1, -0.3), 12.0)
 	play_sfx("thud", _rng.randf_range(0.85, 1.15))
 
 
@@ -291,6 +318,16 @@ func _redraw() -> void:
 
 
 func _draw() -> void:
+	var v25 := draw_board_25d(board_view())
+	if v25 != _v25:
+		_v25 = v25
+		# En 2.5D los bloques caen desde arriba de la pantalla (detrás del
+		# marcador), no desde el borde del campo.
+		if _air != null:
+			_air.clip_contents = not _v25
+	if _v25:
+		_draw_25d()
+		return
 	draw_sky()
 	draw_play_field(FIELD)
 	# Sombras de los bloques en el aire: crecen y se oscurecen al bajar.
@@ -306,27 +343,84 @@ func _draw() -> void:
 	# Bloques apoyados (al final se desvanecen).
 	for b in _blocks:
 		if b.t >= b.fall:
-			var fade := clampf(1.0 - (b.t - b.fall - LINGER_SEC) / FADE_SEC, 0.0, 1.0)
-			_draw_block(self, _ground_rect(b), b.color, fade)
+			_draw_block(self, _ground_rect(b), b.color, _fade(b))
 	# Mascotas en pie: de arriba hacia abajo (la de más abajo queda adelante).
-	var order := players.filter(func(p: Dictionary) -> bool: return not _out_time.has(p.id))
-	order.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return (_pos[a.id] as Vector2).y < (_pos[b.id] as Vector2).y)
-	for p in order:
-		var feet: Vector2 = _pos[p.id]
-		var party := is_finished() or is_celebrating(p.id)
-		var mood := PlayerAvatar.Mood.HAPPY if party else PlayerAvatar.Mood.NORMAL
-		# Si un bloque está por caer muy cerca, pone cara de susto.
-		if mood == PlayerAvatar.Mood.NORMAL and not in_finale() and _danger_near(feet):
-			mood = PlayerAvatar.Mood.SURPRISED
-		var anim := mascot_anim(p.id, _axis[p.id])
-		anim["wave"] = party
-		PlayerAvatar.draw_mascot(self, feet, MASCOT_SCALE, p.color, PlayerAvatar.style_of(p), mood, 0.0, celebrate_hop(p.id), false, anim)
+	for p in _standing():
+		_draw_standing(p)
 	# Globitos y nombres de todos, también de los eliminados y a opacidad
 	# completa: la mascota va translúcida (capa _ghosts), pero quién es tiene
 	# que seguir leyéndose.
 	draw_player_tags(players.map(func(p: Dictionary) -> Array: return [p, _pos[p.id], MASCOT_SCALE, NAME_OFFSET]))
 	draw_hud(_live_scores(), clock_text(DURATION_SEC - _elapsed), "clock")
 	draw_countdown(_countdown, GO_SEC)
+
+
+## Mismo cuadro en 2.5D: sombras y avisos acostados en el piso; bloques
+## apoyados y mascotas de atrás hacia adelante (un bloque adelante tapa a
+## la mascota de atrás y al revés).
+func _draw_25d() -> void:
+	var v := board_view()
+	var shadows := GameArt.TriBatch.new()
+	for b in _blocks:
+		if b.t < b.fall:
+			var k: float = clampf(b.t / b.fall, 0.0, 1.0) if b.fall > 0.0 else 1.0
+			var r := _ground_rect(b)
+			var outline := GameArt.round_rect_outline(r.size * lerpf(0.5, 1.0, k), BLOCK_RADIUS, 4)
+			shadows.polygon(Transform2D(0.0, r.get_center()) * outline, Color(UiTheme.SHADOW, lerpf(0.12, 0.42, k)))
+	shadows.points = v.project_points(shadows.points)
+	shadows.flush(self)
+	for b in _blocks:
+		if b.t < b.fall and b.fall > 0.0 and b.t / b.fall > 0.4:
+			var k: float = b.t / b.fall
+			var blink := 0.75 + 0.25 * sin(_anim * lerpf(10.0, 36.0, k))
+			v.draw_dashed_rect(self, _ground_rect(b), Color(UiTheme.DANGER, (k - 0.4) / 0.6 * blink), 4.0, 12.0, 8.0)
+	# Bloques apoyados y mascotas en pie, por su lugar en el piso.
+	var items: Array = []
+	for b in _blocks:
+		if b.t >= b.fall:
+			items.append([(b.ground as Vector2).y, b])
+	for p in _standing():
+		items.append([(_pos[p.id] as Vector2).y, p])
+	items.sort_custom(func(a: Array, c: Array) -> bool: return a[0] < c[0])
+	var blocks := GameArt.TriBatch.new()
+	for it: Array in items:
+		var d: Dictionary = it[1]
+		if d.has("ground"):
+			_add_block_25d(blocks, _ground_rect(d), d.color, _fade(d), 0.0, 1.0)
+		else:
+			blocks.flush(self)
+			_draw_standing(d)
+	blocks.flush(self)
+	draw_player_tags(players.map(func(p: Dictionary) -> Array:
+		var dp := _depth(_pos[p.id])
+		return [p, _screen(_pos[p.id]), MASCOT_SCALE * dp, NAME_OFFSET * dp]))
+	draw_hud(_live_scores(), clock_text(DURATION_SEC - _elapsed), "clock")
+	draw_countdown(_countdown, GO_SEC)
+
+
+## Mascotas en pie, de atrás hacia adelante.
+func _standing() -> Array:
+	var order := players.filter(func(p: Dictionary) -> bool: return not _out_time.has(p.id))
+	order.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return (_pos[a.id] as Vector2).y < (_pos[b.id] as Vector2).y)
+	return order
+
+
+func _draw_standing(p: Dictionary) -> void:
+	var feet: Vector2 = _pos[p.id]
+	var party := is_finished() or is_celebrating(p.id)
+	var mood := PlayerAvatar.Mood.HAPPY if party else PlayerAvatar.Mood.NORMAL
+	# Si un bloque está por caer muy cerca, pone cara de susto.
+	if mood == PlayerAvatar.Mood.NORMAL and not in_finale() and _danger_near(feet):
+		mood = PlayerAvatar.Mood.SURPRISED
+	var anim := mascot_anim(p.id, _axis[p.id])
+	anim["wave"] = party
+	PlayerAvatar.draw_mascot(self, _screen(feet), MASCOT_SCALE * _depth(feet), p.color, PlayerAvatar.style_of(p), mood, 0.0,
+		celebrate_hop(p.id), false, anim)
+
+
+## Opacidad de un bloque apoyado: al final se desvanece.
+static func _fade(b: Dictionary) -> float:
+	return clampf(1.0 - (b.t - b.fall - LINGER_SEC) / FADE_SEC, 0.0, 1.0)
 
 
 ## ¿Hay un bloque a punto de caer (último 40 % de la caída) cerca de estos pies?
@@ -344,7 +438,8 @@ func _draw_ghosts() -> void:
 		if not _out_time.has(p.id):
 			continue
 		var feet: Vector2 = _pos[p.id]
-		PlayerAvatar.draw_mascot(_ghost_drawer, feet, MASCOT_SCALE, p.color, PlayerAvatar.style_of(p), PlayerAvatar.Mood.SAD)
+		PlayerAvatar.draw_mascot(_ghost_drawer, _screen(feet), MASCOT_SCALE * _depth(feet), p.color, PlayerAvatar.style_of(p),
+			PlayerAvatar.Mood.SAD)
 
 
 ## Bloques en el aire, en coordenadas de pantalla (la capa está corrida).
@@ -353,6 +448,17 @@ func _draw_air() -> void:
 	var falling := _blocks.filter(func(b: Dictionary) -> bool: return b.t < b.fall)
 	# Los más altos (más lejos del piso) primero.
 	falling.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a.t / a.fall < b.t / b.fall)
+	if _v25:
+		# 2.5D: bajan por la vertical de la pantalla desde justo arriba del
+		# borde de la pantalla hasta su sombra, acelerando.
+		var batch := GameArt.TriBatch.new()
+		for b in falling:
+			var k: float = clampf(b.t / b.fall, 0.0, 1.0)
+			var r := _ground_rect(b)
+			var start := board_view().project(Vector2(r.get_center().x, r.end.y)).y + 8.0
+			_add_block_25d(batch, r, b.color, 1.0, start * (1.0 - k * k), lerpf(1.15, 1.0, k))
+		batch.flush(_air)
+		return
 	for b in falling:
 		var k: float = clampf(b.t / b.fall, 0.0, 1.0)
 		var r := _ground_rect(b)
@@ -371,3 +477,47 @@ static func _draw_block(ci: CanvasItem, r: Rect2, col: Color, alpha: float) -> v
 	UiTheme.draw_round_rect(ci, body, Color(col, alpha), BLOCK_RADIUS)
 	var shine := Rect2(body.position + Vector2(10, 8), Vector2(body.size.x - 20, body.size.y * 0.22))
 	UiTheme.draw_round_rect(ci, shine, Color(col.lightened(0.35), alpha), shine.size.y / 2.0)
+
+
+## Bloque de juguete en 2.5D: la huella redondeada en el piso (`r`, del
+## plano) con alto BOARD25D_BLOCK_RISE × lado; costados más oscuros, tapa
+## del color con brillo y contorno de tinta. `lift`: px de pantalla que está
+## levantado (en el aire); `grow`: más grande cuanto más alto (como el plano).
+## La tapa y la base se ubican con la transformación local del piso en su
+## centro (ver BoardView25D.floor_xform): 3 proyecciones por bloque.
+func _add_block_25d(b: GameArt.TriBatch, r: Rect2, col: Color, alpha: float, lift: float, grow: float) -> void:
+	var v := board_view()
+	var c := r.get_center()
+	var half := r.size / 2.0
+	var h := r.size.x * UiTheme.BOARD25D_BLOCK_RISE
+	var base := v.project(c)
+	var screen := Transform2D(0.0, Vector2(grow, grow), 0.0, base - Vector2(0, lift)) * Transform2D(0.0, -base)
+	var bottom := screen * v.floor_xform(c) * Transform2D(0.0, c)
+	var o := v.project_up(c, h)
+	var top := screen * Transform2D((v.project_up(c + Vector2(half.x, 0), h) - o) / half.x,
+		(v.project_up(c + Vector2(0, half.y), h) - o) / half.y, o)
+	var outline := GameArt.round_rect_outline(r.size, BLOCK_RADIUS, 4)
+	var lid := top * outline
+	var hull := Geometry2D.convex_hull(bottom * outline + lid)
+	hull.remove_at(hull.size() - 1)  # convex_hull repite el primer punto al final.
+	var ink := Geometry2D.offset_polygon(hull, 4.0)
+	if not ink.is_empty():
+		b.polygon(ink[0], Color(UiTheme.INK, alpha))
+	b.polygon(hull, Color(col.darkened(0.3), alpha))
+	b.polygon(lid, Color(col, alpha))
+	var shine := Vector2(r.size.x - 20.0, (r.size.y - BLOCK_DEPTH) * 0.22)
+	var at := Vector2(0, -half.y + 8.0 + shine.y / 2.0)
+	b.polygon(top * Transform2D(0.0, at) * GameArt.round_rect_outline(shine, shine.y / 2.0, 3), Color(col.lightened(0.35), alpha))
+
+
+## Dónde se dibuja un punto del campo: proyectado sobre el tablero 2.5D, o
+## igual si se dibuja plano.
+func _screen(p: Vector2) -> Vector2:
+	return board_view().project(p) if _v25 else p
+
+
+## Escala de lo que está parado en `p`: más chico atrás en 2.5D; 1 en plano.
+func _depth(p: Vector2) -> float:
+	if not _v25:
+		return 1.0
+	return clampf(board_view().scale_at(p), UiTheme.BOARD25D_SCALE_MIN, UiTheme.BOARD25D_SCALE_MAX)

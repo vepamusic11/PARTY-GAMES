@@ -326,6 +326,24 @@ Pintar el piso con el escenario 3D horneado (tablero en perspectiva, marco con v
 - **Después, del disco**: `user://board25d/board_paint_<firma>.png` se lee en un hilo en **~37–45 ms** (32 ms leer + 4–8 ms subir a la placa): no traba la intro.
 - **Memoria**: la textura es de 1920 × 1080 RGB = **6,2 MB** (8,3 MB si el driver la guarda como RGBA), mientras se juega a Pintar el piso y 2 s después (`Board25DBaker.retain`). Transitorio del horneado ≈ 35 MB (render de 1920 × 1080 con profundidad, el achicado y las imágenes intermedias), que se suelta al terminar.
 
+#### Arena, Esquivar y Pool loco en 2.5D (29/09)
+
+Misma técnica, con su receta de escenario cada uno (Arena: el tablero de Pintar; Esquivar: baldosas lila; Pool: mesa de paño con bandas, troneras y miras en 3D). `tools/benchmark.gd -- --only=paint,arena,dodge,pool --board=both` y `--only=arena,dodge,pool --board=both`, dos corridas con el candado de Godot tomado (xvfb + llvmpipe, 300 frames, 4 jugadores):
+
+| Escena | Scripts prom. (ms) | Scripts p95 (ms) | Draw calls | Render (ms) |
+|---|---:|---:|---:|---:|
+| arena plano → **2.5D** | 1,37 · 1,53 → **1,32 · 1,27** | 2,35 · 2,33 → **1,92 · 2,09** | 35 → **30–31** | 25,2 · 25,8 → **19,2 · 18,4** |
+| dodge plano → **2.5D** | 1,74 · 1,75 → **1,91 · 1,74** | 2,61 · 2,77 → **3,11 · 2,83** | 49 → **33–34** | 27,2 · 27,7 → **21,2 · 21,1** |
+| pool plano → **2.5D** | 2,68 · 2,51 → **3,54 · 2,99** | 4,10 · 3,65 → **6,04 · 5,37** | 35 → **31** | 33,8 · 32,6 → **22,8 · 21,1** |
+| paint plano → 2.5D (control) | 2,27 → 1,78 | 4,48 → 2,94 | 51 → 50 | 32,8 → 24,7 |
+
+- **Dentro del presupuesto** (p95 ≤ 8 ms, ≤ 150 draw calls) los tres, con menos draw calls y ~25–35 % menos render que el plano (el fondo es una textura).
+- **Pool cuesta ~0,5 ms más de scripts** en 2.5D: la guía de tiro, las sombras y los anillos se arman en coordenadas de la mesa y se proyectan vértice por vértice (`project_points`, exacto aunque la guía mida 800 px), y cada bola se ubica a su altura (`project_up`) y se escala (`scale_at`). Si hiciera falta, se puede guardar la proyección de cada bola una vez por cuadro.
+- **Esquivar**: cada bloque con alto son 3 proyecciones, un casco convexo y un contorno (`Geometry2D`, en C++), todos en un lote; bloques apoyados y mascotas se ordenan de atrás hacia adelante (un lote de bloques entre mascota y mascota: +0–3 draw calls).
+- **Horneado** (primera vez, llvmpipe): 0,76–0,93 s cada uno (armar ~70 ms, entorno ~170 ms, desenfoque ~145 ms, tablero ~320–425 ms, componer ~45 ms). **Del disco**: 40–55 ms (32–47 ms leer en un hilo + 5–7 ms subir).
+- **Memoria**: una textura de 6,2 MB (RGB, 8,3 MB como RGBA) por juego, solo mientras se juega y 2 s después (nunca dos a la vez salvo en ese margen). **Disco**: un PNG por receta en `user://board25d/` (≈ 0,65 MB cada uno; los 4 juegos ≈ 2,6 MB).
+- **Cámara**: `BoardView25D.make_fit` aleja la cámara para Arena y Esquivar (campo de 1600 px, distancia × 1,08) y la acerca para Pool (paño de 1420 px, × 0,96): el tablero ocupa en pantalla lo mismo que Pintar el piso. Mascotas: escala por profundidad 0,86–0,99 en Arena/Esquivar y 0,96–1,12 en Pool, siempre en el mismo tamaño de horneado del atlas.
+
 ### Revisión de dirección de arte (29/09)
 
 Colores más vivos (tokens de `UiTheme`), mascotas con la cara de la maqueta, pose "¡hola!" en el lobby y tarjetas con la cabeza adentro. `tools/benchmark.gd -- --only=lobby,dodge,sumo`, la punta sin el cambio (`699f795`, desplegada en el mismo worktree) y con el cambio, una corrida de cada una con el candado de Godot tomado (xvfb + llvmpipe):

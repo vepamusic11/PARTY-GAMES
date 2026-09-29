@@ -5108,3 +5108,100 @@ func test_board25d_scene_builds() -> void:
 	check(back.get_child_count() > 40, "entorno: piso de la sala, sombra y juguetes (%d)" % back.get_child_count())
 	back.free()
 	Board25DScene.release_build_caches()
+
+
+## Arena, Esquivar y Pool en 2.5D (ADR 0019): cámara encuadrada como Pintar
+## el piso (make_fit), cada uno con su receta y su firma de caché.
+func test_board25d_games_fit() -> void:
+	var paint_key := Board25DBaker.key_of((preload("res://host/minigames/paint/paint.gd") as GDScript).board_view())
+	var keys := {}
+	for id: String in ["arena", "dodge", "pool"]:
+		var v: BoardView25D = MiniGameRegistry._script(id).call("board_view")
+		var q := v.quad(v.plane.grow(UiTheme.BOARD25D_FRAME_W))
+		var screen := Rect2(Vector2.ZERO, v.screen)
+		var inside := true
+		for c in q:
+			inside = inside and screen.has_point(c)
+		check(inside, "%s: tablero con marco entero en pantalla (%s)" % [id, q])
+		check(v.quad(v.plane)[0].y > UiTheme.HUD_TOP + UiTheme.HUD_CLOCK_H, "%s: deja lugar al marcador" % id)
+		var w := v.quad(v.plane)[2].x - v.quad(v.plane)[3].x
+		check(absf(w - 1593.7) < 25.0, "%s: mismo ancho en pantalla que Pintar el piso (%.0f px)" % [id, w])
+		keys[Board25DBaker.key_of(v)] = id
+	keys[paint_key] = "paint"
+	check(keys.size() == 4, "cada juego con su escenario (firmas distintas)")
+
+
+## La mesa de pool se arma sin render: paño, bandas, 6 troneras con aro,
+## miras y el marco; nada fuera del marco.
+func test_board25d_pool_scene_builds() -> void:
+	var pool: GDScript = MiniGameRegistry._script("pool")
+	var v: BoardView25D = pool.board_view()
+	check(v.extras.pockets == pool.pockets(), "las troneras 3D están donde las de la física")
+	var board := Board25DScene.build(v, Board25DScene.LAYER_BOARD)
+	var meshes: Array[MeshInstance3D] = []
+	var stack: Array[Node] = [board]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		if n is MeshInstance3D:
+			meshes.append(n)
+		stack.append_array(n.get_children())
+	var rims := meshes.filter(func(m: MeshInstance3D) -> bool: return m.mesh is TorusMesh)
+	check(rims.size() == 6, "6 troneras con aro (%d)" % rims.size())
+	var half := Board25DScene.outer_half(v)
+	var outside := meshes.filter(func(m: MeshInstance3D) -> bool: return absf(m.position.x) > half.x + 60.0 or absf(m.position.z) > half.y + 60.0)
+	check(outside.is_empty() and meshes.size() > 60, "mesa y marco dentro del tablero (%d piezas)" % meshes.size())
+	board.free()
+	Board25DScene.release_build_caches()
+
+
+## Arena, Esquivar y Pool con un escenario inyectado: dibujan en 2.5D sin
+## errores con todo lo que pasa en una partida (estrellas, bloques en el aire
+## y apoyados, eliminados, puntería, caídas y efectos) y vuelven al plano sin él.
+func test_board25d_games_draw_projected() -> void:
+	Board25DBaker.reset()
+	Board25DBaker.fake_render = true
+	Board25DBaker.release_after_sec = 0.05
+	var img := Image.create_empty(16, 9, false, Image.FORMAT_RGB8)
+	img.fill(UiTheme.SKY_TOP)
+	var tex := ImageTexture.create_from_image(img)
+	for id: String in ["arena", "dodge", "pool"]:
+		var v: BoardView25D = MiniGameRegistry._script(id).call("board_view")
+		Board25DBaker.inject(v, tex)
+		var game: Variant = MiniGameRegistry.create(id)
+		root.add_child(game)
+		game.setup(_fake_players(4))
+		game.set_physics_process(false)
+		match id:
+			"dodge":
+				game._countdown = -1.0
+				game._spawn_block(Vector2(600, 500), 110.0, 1.0)
+				game._blocks[0].t = 0.7
+				game._spawn_block(Vector2(1200, 700), 100.0, 0.0)
+				game._blocks[1].t = 0.1
+				game._out_time[game.players[3].id] = 3.0
+			"pool":
+				game._aim[1] = {"dir": Vector2.RIGHT, "power": 0.9, "t": 0.0}
+				game._effects.append({"kind": "pocket", "pos": game.pockets()[0], "t": 0.1, "power": 1.0})
+				game._effects.append({"kind": "hit", "pos": Vector2(900, 500), "t": 0.1, "power": 1.0})
+				game._falls.append({"i": game._golds[0], "from": Vector2(700, 300), "to": game.pockets()[0], "t": 0.1})
+				game._falls.append({"i": game._ball[2], "from": Vector2(1000, 600), "to": game.pockets()[5], "t": 0.1})
+				game._respawn[3] = 1.0
+				game._popups.append({"text": "+3", "pid": 1, "t": 0.2})
+		game.queue_redraw()
+		await _frames(3)
+		check(game._v25 and game._backdrop_ops == [["board25d", tex]], "%s: dibuja en 2.5D sobre la textura horneada" % id)
+		var pid: int = game.players[0].id
+		var at: Vector2 = game._pos[pid]
+		check(game._depth(at) != 1.0, "%s: mascotas escaladas por profundidad" % id)
+		Board25DBaker.enabled = false
+		game.queue_redraw()
+		await _frames(2)
+		check(not game._v25 and game._backdrop_ops[0][0] == "sky", "%s: sin escenario vuelve al plano" % id)
+		check(game._depth(at) == 1.0, "%s: plano, sin escala" % id)
+		Board25DBaker.enabled = true
+		game.queue_free()
+		await _frames(2)
+	await create_timer(0.15).timeout
+	Board25DBaker.fake_render = false
+	Board25DBaker.release_after_sec = 2.0
+	Board25DBaker.reset()

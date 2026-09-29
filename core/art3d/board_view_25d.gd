@@ -53,6 +53,9 @@ var target := Vector2.ZERO
 ## Receta del escenario (colores, entorno): la usa Board25DBaker y entra en
 ## la firma de la caché. Ver Board25DScene.
 var recipe := "board"
+## Datos propios de la receta (ej. Pool: ancho de las bandas y troneras).
+## Entran en la firma de la caché solo si hay alguno.
+var extras: Dictionary = {}
 
 var _cam: Transform3D
 var _proj: Projection
@@ -75,6 +78,18 @@ static func make(p_plane: Rect2, p_cell: float, p_recipe: String = "board") -> B
 	v.distance = UiTheme.BOARD25D_DISTANCE
 	v.target = UiTheme.BOARD25D_TARGET
 	v.recipe = p_recipe
+	v.update()
+	return v
+
+
+## Como `make`, pero con la cámara alejada o acercada para que el plano
+## ocupe en pantalla el mismo ancho que el tablero de Pintar el piso
+## (UiTheme.BOARD25D_FIT_WIDTH): así un campo más ancho (Arena, 1600 px) o
+## más angosto (Pool, 1420 px) se ve encuadrado igual que la maqueta.
+## Ejemplo: Arena -> distancia × 1,08 (las mascotas atrás ~0,86, adelante ~0,99).
+static func make_fit(p_plane: Rect2, p_cell: float, p_recipe: String) -> BoardView25D:
+	var v := make(p_plane, p_cell, p_recipe)
+	v.distance = UiTheme.BOARD25D_DISTANCE * p_plane.size.x / UiTheme.BOARD25D_FIT_WIDTH
 	v.update()
 	return v
 
@@ -126,7 +141,10 @@ func project_3d(w: Vector3) -> Vector2:
 	return Vector2(c.x, c.y) / c.w
 
 
-## Varios puntos del plano a la vez (bordes de un área, una polilínea).
+## Varios puntos del plano a la vez (bordes de un área, una polilínea, o
+## los vértices de triángulos armados en coordenadas del plano con un
+## GameArt.TriBatch: las rectas siguen rectas, así que un triángulo proyectado
+## es exacto aunque sea largo, como la guía de tiro de Pool).
 func project_points(pts: PackedVector2Array) -> PackedVector2Array:
 	var out := PackedVector2Array()
 	out.resize(pts.size())
@@ -167,6 +185,12 @@ func cell_xform(c: Vector2i) -> Transform2D:
 	return _cells[clampi(c.y, 0, rows - 1) * cols + clampi(c.x, 0, cols - 1)]
 
 
+## Punto del plano a `height` sobre el piso -> pantalla (una bola de pool
+## en su centro, una estrella que flota).
+func project_up(p: Vector2, height: float) -> Vector2:
+	return project_3d(to_world(p, height))
+
+
 ## Esquinas de un rectángulo del plano en pantalla (sentido horario).
 func quad(r: Rect2) -> PackedVector2Array:
 	return project_points(PackedVector2Array([r.position, Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y)]))
@@ -189,7 +213,10 @@ func draw_dashed_rect(ci: CanvasItem, r: Rect2, col: Color, width: float, dash: 
 
 ## Datos que definen el escenario horneado: si cambia algo, se vuelve a hornear.
 func signature_parts() -> Array:
-	return [plane, cell, screen, pitch_deg, fov_deg, distance, target, recipe]
+	var parts: Array = [plane, cell, screen, pitch_deg, fov_deg, distance, target, recipe]
+	if not extras.is_empty():
+		parts.append(extras)
+	return parts
 
 
 ## Parámetros de la Camera3D del horneado (misma cámara que las cuentas).

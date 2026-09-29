@@ -20,6 +20,16 @@ extends MiniGame
 ## La física es propia y determinista (pool_physics.gd: pasos fijos, choques
 ## elásticos, fricción); las reglas de tiro y de crédito son funciones
 ## estáticas (`track_aim`, `shot_speed`, `credited`) para testearlas.
+##
+## Escenario 2.5D (ADR 0019, como Pintar el piso): si hay render, la mesa
+## (paño, bandas, troneras con aro, miras) y los juguetes de alrededor son
+## una escena 3D horneada (receta "pool" de Board25DScene) con cámara en
+## perspectiva, y el juego se dibuja encima proyectado: sombras, guía de
+## tiro, flecha y anillos acostados en el paño (cada vértice por la
+## homografía: la guía larga queda derecha y exacta), bolas a su altura
+## sobre el paño y mascotas arriba de su bola, más chicas atrás. La física,
+## las reglas y los bots siguen en las coordenadas planas de PLAY. Sin render
+## (--headless) o mientras se hornea, se dibuja plano como siempre.
 
 const Physics := preload("res://host/minigames/pool/pool_physics.gd")
 
@@ -115,6 +125,10 @@ var _rng := RandomNumberGenerator.new()
 static var _ring_unit := PackedVector2Array()  # anillo de radio 1 (ver _add_ring)
 static var _tpl: Dictionary = {}  # clave -> [puntos, colores] (ver "Formas armadas una vez")
 
+## Vista 2.5D de la mesa (una por proceso) y si este cuadro se dibuja con ella.
+static var _board_view: BoardView25D
+var _v25 := false
+
 
 static func get_info() -> Dictionary:
 	return {
@@ -128,6 +142,22 @@ static func get_info() -> Dictionary:
 		"accent": UiTheme.BRICKS[2],
 		"score_label": "puntos",
 	}
+
+
+## Cámara y proyección del escenario 2.5D (ADR 0019): el paño encuadrado
+## como el tablero de Pintar el piso, con la mesa de la receta "pool" (bandas
+## y troneras en los lugares de la física).
+static func board_view() -> BoardView25D:
+	if _board_view == null:
+		var v := BoardView25D.make_fit(FELT, FELT.size.x / 20.0, Board25DScene.RECIPE_POOL)
+		v.extras = {"cushion": CUSHION, "pocket_r": POCKET_R, "pockets": pockets()}
+		_board_view = v
+	return _board_view
+
+
+## Durante la intro: el escenario 2.5D se lee del disco o se hornea.
+static func prewarm_art(host: Node) -> void:
+	Board25DBaker.request(host, board_view())
 
 
 # --- Reglas puras (testeadas) ---------------------------------------------------
@@ -469,25 +499,32 @@ static func _effect_life(kind: String) -> float:
 func _draw() -> void:
 	if _phys == null:
 		return  # Todavía sin setup().
-	draw_sky()
-	draw_play_field(FELT, BOARD_CELL)  # Marco de bloques con volumen (el paño va encima).
-	draw_static(_draw_table)
-	var batch := GameArt.TriBatch.new()
-	_add_shadows(batch)
-	for gi in _golds.size():
-		var i := _golds[gi]
-		if _phys.is_on_table(i):
-			GameArt.add_glow(batch, _phys.pos[i], GOLD_R + 20.0, UiTheme.GLOW, anim_time + gi * 0.7, 8)
+	_v25 = draw_board_25d(board_view())
+	if not _v25:
+		draw_sky()
+		draw_play_field(FELT, BOARD_CELL)  # Marco de bloques con volumen (el paño va encima).
+		draw_static(_draw_table)
+	# Lo acostado en el paño (sombras, guía de tiro): en 2.5D se arma en
+	# coordenadas de la mesa y se proyecta vértice por vértice.
+	# Halos de las doradas: plano, debajo de la flecha (como siempre); en
+	# 2.5D, alrededor de la bola levantada (encima de lo acostado).
+	var floor := GameArt.TriBatch.new()
+	_add_shadows(floor)
+	if not _v25:
+		_add_glows(floor)
 	for p in players:
-		_add_aim(batch, p)
+		_add_aim(floor, p)
+	var batch := _to_screen(floor)
+	if _v25:
+		_add_glows(batch)
 	_add_falling_golds(batch)
 	for i in _golds:
 		if _phys.is_on_table(i):
-			_add_gold(batch, _phys.pos[i], GOLD_R, i)
+			_add_gold(batch, _ball_at(_phys.pos[i], GOLD_R), GOLD_R * _depth(_phys.pos[i]), i)
 	for p in players:
 		var i: int = _ball[p.id]
 		if _phys.is_on_table(i):
-			_add_ball(batch, _phys.pos[i], BALL_R, p.color, i)
+			_add_ball(batch, _ball_at(_phys.pos[i], BALL_R), BALL_R, p.color, i, _depth(_phys.pos[i]))
 	batch.flush(self)
 	# Mascotas arriba de su bola, de arriba hacia abajo (la de más abajo queda adelante).
 	var order := players.filter(func(p: Dictionary) -> bool: return _phys.is_on_table(_ball[p.id]))
@@ -498,16 +535,52 @@ func _draw() -> void:
 	# Globitos 1P–4P y nombres; los que esperan reaparecer, transparentes en su lugar.
 	var tags: Array = []
 	for p in order:
-		tags.append([p, _feet(_pos[p.id]), MASCOT_SCALE, NAME_OFFSET])
+		var d := _depth(_pos[p.id])
+		tags.append([p, _feet_at(_pos[p.id]), MASCOT_SCALE * d, NAME_OFFSET * d])
 	for p in players:
 		if _respawn.has(p.id):
-			tags.append([p, _feet(_spawn[p.id]), MASCOT_SCALE, -1.0, 0.55])
+			tags.append([p, _feet_at(_spawn[p.id]), MASCOT_SCALE * _depth(_spawn[p.id]), -1.0, 0.55])
 	draw_player_tags(tags)
 	_draw_falling_players()
 	_draw_respawns()
 	_draw_effects()
 	draw_hud(_score, clock_text(_time_left), "clock")
 	_draw_messages()
+
+
+func _add_glows(b: GameArt.TriBatch) -> void:
+	for gi in _golds.size():
+		var i := _golds[gi]
+		if _phys.is_on_table(i):
+			GameArt.add_glow(b, _ball_at(_phys.pos[i], GOLD_R), (GOLD_R + 20.0) * _depth(_phys.pos[i]), UiTheme.GLOW,
+				anim_time + gi * 0.7, 8)
+
+
+## Triángulos armados en coordenadas de la mesa -> pantalla: en 2.5D, cada
+## vértice por la homografía (exacto: las rectas siguen rectas); plano, igual.
+func _to_screen(b: GameArt.TriBatch) -> GameArt.TriBatch:
+	if _v25:
+		b.points = board_view().project_points(b.points)
+	return b
+
+
+## Centro en pantalla de una bola de radio `r` apoyada en `p`: en 2.5D, a
+## su altura sobre el paño; plano, en su lugar.
+func _ball_at(p: Vector2, r: float) -> Vector2:
+	return board_view().project_up(p, r) if _v25 else p
+
+
+## Escala de lo que está parado en `p` (bolas, mascotas, efectos): más chico
+## atrás en 2.5D (con tope, UiTheme.BOARD25D_SCALE_*); 1 en plano.
+func _depth(p: Vector2) -> float:
+	if not _v25:
+		return 1.0
+	return clampf(board_view().scale_at(p), UiTheme.BOARD25D_SCALE_MIN, UiTheme.BOARD25D_SCALE_MAX)
+
+
+## Pies de la mascota que va arriba de la bola apoyada en `p` (pantalla).
+func _feet_at(p: Vector2) -> Vector2:
+	return _ball_at(p, BALL_R) + Vector2(0, -BALL_R * FEET_UP) * _depth(p)
 
 
 static func _feet(ball: Vector2) -> Vector2:
@@ -623,7 +696,8 @@ func _add_falling_golds(b: GameArt.TriBatch) -> void:
 			continue
 		var k: float = f.t / FALL_SEC
 		var c: Vector2 = (f.from as Vector2).lerp(f.to, minf(k * 1.6, 1.0))
-		_add_gold(b, c, GOLD_R * (1.0 - k * 0.85), f.i)
+		var r := GOLD_R * (1.0 - k * 0.85)
+		_add_gold(b, _ball_at(c, r), r * _depth(c), f.i)
 
 
 ## Bola dorada: aro de tinta, cuerpo con sombra, estrella (se distingue sin
@@ -638,9 +712,10 @@ func _add_gold(b: GameArt.TriBatch, c: Vector2, r: float, i: int) -> void:
 
 ## Bola de un jugador, de su color, con un círculo blanco que rueda (se ve
 ## que se mueve y hacia dónde) y reflejo.
-func _add_ball(b: GameArt.TriBatch, c: Vector2, r: float, col: Color, i: int) -> void:
+func _add_ball(b: GameArt.TriBatch, c: Vector2, r: float, col: Color, i: int, u: float = 1.0) -> void:
 	var tpl := _ball_tpl(col)
-	b.template(tpl[0], tpl[1], Transform2D(0.0, c))
+	b.template(tpl[0], tpl[1], Transform2D(0.0, Vector2(u, u), 0.0, c))
+	r *= u
 	var roll: Array = _roll.get(i, [0.0, Vector2.DOWN])
 	var phase := float(roll[0])
 	var dir: Vector2 = roll[1]
@@ -728,7 +803,8 @@ func _draw_player(p: Dictionary, best: int) -> void:
 	var look: Vector2 = (aim.dir as Vector2) if float(aim.power) >= RELEASE_ZONE else _phys.vel[i] / 1200.0
 	var anim := mascot_anim(pid, look.limit_length(1.0))
 	anim["wave"] = mood == PlayerAvatar.Mood.HAPPY
-	PlayerAvatar.draw_mascot(self, _feet(_phys.pos[i]), MASCOT_SCALE, p.color, PlayerAvatar.style_of(p), mood, 0.0, 0.0, false, anim)
+	var at: Vector2 = _phys.pos[i]
+	PlayerAvatar.draw_mascot(self, _feet_at(at), MASCOT_SCALE * _depth(at), p.color, PlayerAvatar.style_of(p), mood, 0.0, 0.0, false, anim)
 
 
 ## Bola y mascota de un jugador que cae en una tronera: giran y se achican.
@@ -742,7 +818,8 @@ func _draw_falling_players() -> void:
 		var k: float = f.t / FALL_SEC
 		var s := 1.0 - k * 0.9
 		var c: Vector2 = (f.from as Vector2).lerp(f.to, minf(k * 1.6, 1.0))
-		var xform := Transform2D(k * PI * (1.0 if int(p.slot) % 2 == 0 else -1.0), Vector2(s, s), 0.0, c)
+		s *= _depth(c)
+		var xform := Transform2D(k * PI * (1.0 if int(p.slot) % 2 == 0 else -1.0), Vector2(s, s), 0.0, _ball_at(c, BALL_R * s))
 		draw_set_transform_matrix(xform)
 		var b := GameArt.TriBatch.new()
 		_add_ball(b, Vector2.ZERO, BALL_R, p.color, f.i)
@@ -760,12 +837,18 @@ func _draw_respawns() -> void:
 			continue
 		var at: Vector2 = _spawn[p.id]
 		var k := 1.0 - clampf(float(_respawn[p.id]) / RESPAWN_SEC, 0.0, 1.0)
+		if _v25:  # Acostado en el paño.
+			draw_set_transform_matrix(board_view().floor_xform(at))
 		draw_circle(at, BALL_R, Color(p.color, 0.3))
 		draw_arc(at, BALL_R + 2.0, 0, TAU, 32, Color(UiTheme.INK, 0.5), 6.0, true)
 		draw_arc(at, BALL_R + 2.0, -PI / 2.0, -PI / 2.0 + TAU * k, 32, p.color, 6.0, true)
+	draw_set_transform(Vector2.ZERO)
 
 
 func _draw_effects() -> void:
+	# Anillos (tronera, bola que vuelve): acostados en el paño. Estrellitas
+	# de los choques: paradas, a la altura de las bolas.
+	var rings := GameArt.TriBatch.new()
 	var b := GameArt.TriBatch.new()
 	for e in _effects:
 		var pos: Vector2 = e.pos
@@ -773,21 +856,24 @@ func _draw_effects() -> void:
 			"hit":
 				var k: float = e.t / HIT_FX_SEC
 				var power: float = e.power
+				var c := _ball_at(pos, BALL_R)
+				var u := _depth(pos)
 				for s in 5:
 					var a := TAU * s / 5.0 + pos.x * 0.01
-					var at := pos + Vector2.from_angle(a) * lerpf(10.0, 30.0 + 40.0 * power, k)
-					b.star(at, (7.0 + 7.0 * power) * (1.0 - k * 0.8), UiTheme.GOLD, k * 2.0, 3.0)
+					var at := c + Vector2.from_angle(a) * lerpf(10.0, 30.0 + 40.0 * power, k) * u
+					b.star(at, (7.0 + 7.0 * power) * (1.0 - k * 0.8) * u, UiTheme.GOLD, k * 2.0, 3.0)
 			"pocket":
 				var k: float = e.t / POCKET_FX_SEC
-				_add_ring(b, pos, lerpf(POCKET_R * 0.8, POCKET_R * 2.0, k), Color(UiTheme.PAPER, 0.85 * (1.0 - k)))
+				_add_ring(rings, pos, lerpf(POCKET_R * 0.8, POCKET_R * 2.0, k), Color(UiTheme.PAPER, 0.85 * (1.0 - k)))
 			_:
 				var k: float = e.t / SPAWN_FX_SEC
-				_add_ring(b, pos, lerpf(BALL_R * 2.4, BALL_R * 1.1, k), Color(UiTheme.PAPER, 0.9 * (1.0 - k)))
+				_add_ring(rings, pos, lerpf(BALL_R * 2.4, BALL_R * 1.1, k), Color(UiTheme.PAPER, 0.9 * (1.0 - k)))
+	_to_screen(rings).flush(self)
 	b.flush(self)
 	for p in _popups:
 		var k: float = p.t / POPUP_SEC
 		var at: Vector2 = _pos.get(p.pid, Vector2.ZERO)
-		UiTheme.draw_text(self, p.text, _feet(at) - Vector2(0, 120.0 + 50.0 * k), 48,
+		UiTheme.draw_text(self, p.text, _feet_at(at) - Vector2(0, 120.0 + 50.0 * k) * _depth(at), 48,
 			Color(UiTheme.GOLD, 1.0 - k * k), 10, Color(UiTheme.INK, 1.0 - k * k))
 
 

@@ -29,6 +29,17 @@ const SHADER_INK := preload("res://core/mascot3d/ink_outline.gdshader")
 const LAYER_BACK := "back"
 const LAYER_BOARD := "board"
 
+## Recetas (BoardView25D.recipe). Cualquier otra ("paint", "arena"): el
+## tablero de baldosas a cuadros de la maqueta.
+##   - "dodge": el mismo tablero con baldosas lila (Esquivar se distingue de
+##     Arena, que tiene el mismo campo) donde las sombras de los bloques se leen bien.
+##   - "pool": mesa de paño con bandas, troneras con aro, miras y la marca del
+##     centro, dentro del mismo marco de bloques. Usa `view.extras`:
+##     "cushion" (ancho de las bandas), "pocket_r" (radio de las troneras) y
+##     "pockets" (centros, en coordenadas del plano), los de la física del juego.
+const RECIPE_DODGE := "dodge"
+const RECIPE_POOL := "pool"
+
 static var _materials: Dictionary = {}
 
 
@@ -37,7 +48,11 @@ static func build(view: BoardView25D, layer: String) -> Node3D:
 	var root := Node3D.new()
 	root.name = "Board25D_" + layer
 	if layer == LAYER_BOARD:
-		_board(root, view)
+		match view.recipe:
+			RECIPE_POOL:
+				_pool(root, view)
+			_:
+				_board(root, view)
 	else:
 		_back(root, view)
 	return root
@@ -46,6 +61,15 @@ static func build(view: BoardView25D, layer: String) -> Node3D:
 ## Suelta materiales y mallas del armado (después de hornear no se usan).
 static func release_build_caches() -> void:
 	_materials.clear()
+
+
+## Tokens propios de una receta que no empiezan con BOARD25D_ (ej. los
+## colores POOL_* de la mesa): entran en la firma de la caché del horneado.
+static func recipe_tokens(recipe: String) -> Array:
+	if recipe == RECIPE_POOL:
+		return [UiTheme.POOL_FELT, UiTheme.POOL_FELT_LIGHT, UiTheme.POOL_CUSHION, UiTheme.POOL_CUSHION_EDGE, UiTheme.POOL_MARK,
+			UiTheme.POOL_SIGHT, UiTheme.POOL_POCKET, UiTheme.POOL_POCKET_RIM]
+	return []
 
 
 ## Medio ancho y medio largo del tablero con el marco (unidades del mundo).
@@ -57,7 +81,6 @@ static func outer_half(view: BoardView25D) -> Vector2:
 
 static func _board(root: Node3D, view: BoardView25D) -> void:
 	var half := view.plane.size / 2.0
-	var fw := UiTheme.BOARD25D_FRAME_W
 	var base := UiTheme.BOARD25D_BASE
 	var tile_h := UiTheme.BOARD25D_TILE_H
 	# Base: la "caja" del tablero debajo de las baldosas (se ve en las juntas).
@@ -66,17 +89,31 @@ static func _board(root: Node3D, view: BoardView25D) -> void:
 	slab.position = Vector3(0, -tile_h * 0.6 - base / 2.0, 0)
 	# Baldosas a cuadros: cajitas con los cantos redondeados (el borde toma luz).
 	var gap := UiTheme.BOARD25D_TILE_GAP
-	var tile := Props3DMeshes.rounded_box(Vector3(view.cell - gap * 2.0, tile_h, view.cell - gap * 2.0), UiTheme.BOARD25D_TILE_ROUND)
-	var light := _plastic(UiTheme.BOARD25D_TILE_LIGHT, 0.0, 0.12, 0.0)
-	var dark := _plastic(UiTheme.BOARD25D_TILE_DARK, 0.0, 0.12, 0.0)
+	# Lado de cada baldosa: `cell`, o un poco menos en un eje si el campo no
+	# es múltiplo (Arena: 1600 × 860 con 80 -> 20 × 11 baldosas de 80 × 78).
+	var side := view.plane.size / Vector2(view.cols, view.rows)
+	var tile := Props3DMeshes.rounded_box(Vector3(side.x - gap * 2.0, tile_h, side.y - gap * 2.0), UiTheme.BOARD25D_TILE_ROUND)
+	var dodge := view.recipe == RECIPE_DODGE
+	var light := _plastic(UiTheme.BOARD25D_DODGE_TILE_LIGHT if dodge else UiTheme.BOARD25D_TILE_LIGHT, 0.0, 0.12, 0.0)
+	var dark := _plastic(UiTheme.BOARD25D_DODGE_TILE_DARK if dodge else UiTheme.BOARD25D_TILE_DARK, 0.0, 0.12, 0.0)
 	for y in view.rows:
 		for x in view.cols:
 			var t := _part(root, tile, light if (x + y) % 2 == 0 else dark)
-			var c := view.to_world(view.plane.position + (Vector2(x, y) + Vector2(0.5, 0.5)) * view.cell)
+			var c := view.to_world(view.plane.position + (Vector2(x, y) + Vector2(0.5, 0.5)) * side)
 			t.position = c + Vector3(0, -tile_h / 2.0, 0)
 	# Sombra suave del marco sobre el piso (arriba y a la izquierda, como si la
 	# luz viniera de atrás): tiras transparentes con degradé, sin luces reales.
 	_edge_shade(root, half)
+	_frame(root, half)
+
+
+## Marco: bloques arcoíris a los cuatro lados del plano (medio tamaño
+## `half`) y, en las esquinas, un bloque más alto con una estrella dorada.
+## Lo comparten todas las recetas.
+static func _frame(root: Node3D, half: Vector2) -> void:
+	var fw := UiTheme.BOARD25D_FRAME_W
+	var base := UiTheme.BOARD25D_BASE
+	var tile_h := UiTheme.BOARD25D_TILE_H
 	# Marco: bloques arcoíris a los cuatro lados (las esquinas, aparte).
 	var top_y := UiTheme.BOARD25D_FRAME_H
 	var bottom_y := -tile_h - base
@@ -119,13 +156,116 @@ static func _board(root: Node3D, view: BoardView25D) -> void:
 		star.position = p + Vector3(0, corner_h / 2.0 + 6.0, 4.0)
 
 
+# --- Mesa de pool ------------------------------------------------------------------
+
+## Mesa de Pool loco: el plano es el paño (Pool.FELT) y adentro, a
+## `cushion` de cada borde, está el área donde ruedan las bolas (Pool.PLAY).
+## Paño de plástico mate con la luz de la lámpara y las marcas del centro,
+## bandas con volumen cortadas en cada tronera, troneras con aro, miras
+## blancas en las bandas y el marco de bloques de siempre alrededor.
+static func _pool(root: Node3D, view: BoardView25D) -> void:
+	var half := view.plane.size / 2.0
+	var cushion: float = view.extras.get("cushion", 36.0)
+	var pocket_r: float = view.extras.get("pocket_r", 36.0)
+	var inner := half - Vector2.ONE * cushion  # Medio tamaño del área de juego.
+	var depth := UiTheme.BOARD25D_TILE_H + UiTheme.BOARD25D_BASE
+	# Paño: una caja con la tapa en y = 0 (donde ruedan las bolas).
+	var felt := _part(root, Props3DMeshes.rounded_box(Vector3(half.x * 2.0 + 4.0, depth, half.y * 2.0 + 4.0), 4.0),
+		_plastic(UiTheme.POOL_FELT.lightened(UiTheme.BOARD25D_POOL_FELT_LIFT), 0.0, 0.0, 0.0))
+	felt.position = Vector3(0, -depth / 2.0, 0)
+	# Luz de la lámpara, marcas del centro y sombra de las bandas: figuras
+	# planas apenas sobre el paño (color por vértice, transparentes).
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	_flat_ellipse(st, Vector2.ZERO, inner * Vector2(1.0, 1.24), 0.3, UiTheme.POOL_FELT_LIGHT, Color(UiTheme.POOL_FELT_LIGHT, 0.0))
+	_flat_ring(st, Vector2.ZERO, 0.0, UiTheme.BOARD25D_POOL_MARK_DOT, 0.5, UiTheme.POOL_MARK)
+	_flat_ring(st, Vector2.ZERO, UiTheme.BOARD25D_POOL_MARK_RING - 3.0, UiTheme.BOARD25D_POOL_MARK_RING + 3.0, 0.5, UiTheme.POOL_MARK)
+	var marks := MeshInstance3D.new()
+	marks.mesh = st.commit()
+	marks.material_override = _vertex_color_material()
+	marks.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	root.add_child(marks)
+	_edge_shade(root, inner, UiTheme.BOARD25D_POOL_SHADE_W)
+	# Bandas: un tramo entre cada par de troneras (las de las esquinas y las
+	# del medio de los lados largos), con el canto redondeado que toma luz.
+	var h := UiTheme.BOARD25D_POOL_CUSHION_H
+	var gap := pocket_r + UiTheme.BOARD25D_POOL_POCKET_GAP
+	var band := _plastic(UiTheme.POOL_CUSHION, UiTheme.BOARD25D_INK_THIN, 0.22, 0.6)
+	var r := UiTheme.BOARD25D_POOL_CUSHION_ROUND
+	for sz: float in [-1.0, 1.0]:
+		var z := sz * (inner.y + cushion / 2.0)
+		for sx: float in [-1.0, 1.0]:  # Lados largos: de la esquina al medio.
+			var length := inner.x - gap * 2.0
+			var b := _part(root, Props3DMeshes.rounded_box(Vector3(length, h, cushion - 2.0), r), band)
+			b.position = Vector3(sx * (gap + length / 2.0), h / 2.0, z)
+	for sx: float in [-1.0, 1.0]:  # Lados cortos: de esquina a esquina.
+		var length := inner.y * 2.0 - gap * 2.0
+		var b := _part(root, Props3DMeshes.rounded_box(Vector3(cushion - 2.0, h, length), r), band)
+		b.position = Vector3(sx * (inner.x + cushion / 2.0), h / 2.0, 0)
+	# Esquinas del riel (detrás de la tronera de la esquina): del color de las bandas.
+	for sx: float in [-1.0, 1.0]:
+		for sz: float in [-1.0, 1.0]:
+			var c := _part(root, Props3DMeshes.rounded_box(Vector3(cushion, h * 0.7, cushion), r), band)
+			c.position = Vector3(sx * (inner.x + cushion / 2.0), h * 0.35, sz * (inner.y + cushion / 2.0))
+	# Miras: botoncitos blancos en las bandas, entre las troneras.
+	var sight := _plastic(Color(UiTheme.POOL_SIGHT, 1.0), 0.0, 0.3, 0.9)
+	var dot := UiTheme.BOARD25D_POOL_SIGHT_R
+	for k: int in [1, 2, 3, 5, 6, 7]:
+		for sz: float in [-1.0, 1.0]:
+			var m := _part(root, Props3DMeshes.sphere(8, 12), sight)
+			m.scale = Vector3(dot, dot * 0.45, dot)
+			m.position = Vector3(-inner.x + inner.x * 2.0 * k / 8.0, h, sz * (inner.y + cushion / 2.0))
+	for k in [1, 2, 3]:
+		for sx: float in [-1.0, 1.0]:
+			var m := _part(root, Props3DMeshes.sphere(8, 12), sight)
+			m.scale = Vector3(dot, dot * 0.45, dot)
+			m.position = Vector3(sx * (inner.x + cushion / 2.0), h, -inner.y + inner.y * 2.0 * k / 4.0)
+	# Troneras: agujero oscuro (sin luz: se ve negro desde cualquier lado) y
+	# un aro con volumen alrededor, a la altura de las bandas.
+	var hole := _flat_material(Color(UiTheme.POOL_POCKET, 1.0))
+	var rim := _plastic(UiTheme.POOL_POCKET_RIM, UiTheme.BOARD25D_INK, 0.3, 0.9)
+	var center := view.plane.get_center()
+	for p: Vector2 in view.extras.get("pockets", PackedVector2Array()):
+		var w := Vector3(p.x - center.x, 0.0, p.y - center.y)
+		var disc := _part(root, Props3DMeshes.cone(1.0, 32), hole)
+		var hole_r := pocket_r - UiTheme.BOARD25D_POOL_RIM * 0.5
+		disc.scale = Vector3(hole_r, 1.0, hole_r)
+		disc.position = w + Vector3(0, h * 0.5 - 1.0, 0)
+		# Aro: toro de radio `pocket_r` y grosor RIM (afuera llega a pocket_r + RIM),
+		# estirado en alto hasta la altura de las bandas.
+		var t := UiTheme.BOARD25D_POOL_RIM / pocket_r
+		var ring := _part(root, Props3DMeshes.torus(t, 36), rim)
+		ring.scale = Vector3(pocket_r, h * 0.5 / t, pocket_r)
+		ring.position = w + Vector3(0, h * 0.5, 0)
+	_frame(root, half)
+
+
+## Elipse plana a la altura `y` (xz), de `inner` en el centro a `outer` en el borde.
+static func _flat_ellipse(st: SurfaceTool, c: Vector2, radii: Vector2, y: float, inner: Color, outer: Color, segs := 48) -> void:
+	for i in segs:
+		var a := Vector2.from_angle(TAU * i / segs) * radii + c
+		var b := Vector2.from_angle(TAU * (i + 1) / segs) * radii + c
+		for v: Array in [[c, inner], [b, outer], [a, outer]]:
+			st.set_color(v[1])
+			st.set_normal(Vector3.UP)
+			st.add_vertex(Vector3((v[0] as Vector2).x, y, (v[0] as Vector2).y))
+
+
+## Anillo plano (o disco, con r_in = 0) a la altura `y`, de un color.
+static func _flat_ring(st: SurfaceTool, c: Vector2, r_in: float, r_out: float, y: float, col: Color, segs := 48) -> void:
+	for i in segs:
+		var d0 := Vector2.from_angle(TAU * i / segs)
+		var d1 := Vector2.from_angle(TAU * (i + 1) / segs)
+		var pts := [c + d0 * r_in, c + d1 * r_in, c + d1 * r_out, c + d0 * r_out]
+		_quad(st, pts.map(func(p: Vector2) -> Vector3: return Vector3(p.x, y, p.y)), [col, col, col, col])
+
+
 ## Sombra del marco sobre el piso: dos tiras (arriba y a la izquierda) que
 ## van de tinta transparente a nada, apenas sobre las baldosas.
-static func _edge_shade(root: Node3D, half: Vector2) -> void:
+static func _edge_shade(root: Node3D, half: Vector2, w: float = UiTheme.BOARD25D_EDGE_SHADE_W) -> void:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var y := 0.6
-	var w := UiTheme.BOARD25D_EDGE_SHADE_W
 	var dark := Color(UiTheme.INK, UiTheme.BOARD25D_EDGE_SHADE_ALPHA)
 	var clear := Color(UiTheme.INK, 0.0)
 	# Tira de arriba (z = -half.y) y de la izquierda (x = -half.x).

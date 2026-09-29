@@ -1,6 +1,6 @@
 # ADR 0019 · Tablero "2.5D horneado": escenario 3D con cámara en perspectiva, juego en 2D proyectado
 
-- **Estado:** Aceptada (integrada en Pintar el piso)
+- **Estado:** Aceptada (integrada en Pintar el piso, Arena de estrellas, Esquivar y Pool loco)
 - **Fecha:** 2026-09-29
 - **Relacionados:** [ADR 0009](0009-arte-de-los-juegos.md) (arte de los juegos: descartaba la perspectiva por costo), [ADR 0012](0012-mascotas-3d.md) (mascotas 3D horneadas), [ADR 0016](0016-piezas-3d-horneadas.md) (piezas 3D horneadas), [ADR 0018](0018-dioramas-de-los-juegos.md) (dioramas del lobby: misma idea de fondo desenfocado y frente nítido), [ADR 0006](0006-rendimiento-capas-cacheadas.md) (capas cacheadas).
 
@@ -23,6 +23,23 @@ Restricción: 60 fps en una Google TV de gama baja (p95 de Scripts ≤ 8 ms y �
 - **Memoria**: textura de 1920 × 1080 RGB = 6,2 MB (8,3 MB si el driver la guarda como RGBA), solo mientras se juega (y 2 s después). Transitorio del horneado ≈ 35 MB (render de 1920 × 1080 con profundidad, imágenes intermedias).
 - **Por cuadro** (`tools/benchmark.gd -- --only=paint,arena --board=both`, misma corrida): Pintar el piso plano → 2.5D: Scripts p95 2,62 → **1,70 ms**, draw calls 53 → **44**, render 29,0 → **18,5 ms**; Arena (control) 1,94 ms / 35 draw calls. El 2.5D es **más barato** que el plano: el fondo es un rectángulo con textura en vez de cielo + escenario + tablero en lotes. Tabla completa en [PERFORMANCE.md](../PERFORMANCE.md#tablero-25d-horneado-adr-0019).
 
+## Arena, Esquivar y Pool loco (29/09)
+Los otros tres juegos con tablero pasaron a la misma técnica sin tocar reglas, bots ni tests de reglas (solo cambia dónde se dibuja cada cosa). Comparaciones antes/después: [Arena](../img/arena_25d_comparacion.png), [Esquivar](../img/dodge_25d_comparacion.png), [Pool](../img/pool_25d_comparacion.png).
+
+- **Encuadre** (`BoardView25D.make_fit`): la misma cámara que Pintar el piso, alejada o acercada para que el campo ocupe el mismo ancho en pantalla (`UiTheme.BOARD25D_FIT_WIDTH` = 1480). Arena y Esquivar (1600 × 860): distancia × 1,08; Pool (paño de 1420 × 764): × 0,96. `make` (lo que usa Pintar) no cambió.
+- **Recetas** (`Board25DScene`, por `view.recipe`; cada una con su archivo de caché):
+  - `arena`: el tablero de Pintar el piso (baldosas a cuadros, marco arcoíris, esquinas con estrella). Las baldosas se ajustan si el campo no es múltiplo de la celda (Arena: 20 × 11 de 80 × 78).
+  - `dodge`: igual, con baldosas lila (`BOARD25D_DODGE_TILE_*`): Esquivar se distingue de Arena (mismo campo) y las sombras de los bloques se leen igual.
+  - `pool`: mesa de paño (plástico mate, luz de lámpara y marcas del centro como figuras planas), bandas con volumen cortadas en cada tronera, 6 troneras con aro y agujero oscuro, miras blancas y el marco de siempre. Las troneras salen de la física (`view.extras`: ancho de banda, radio y centros de `Pool.pockets()`), así el hoyo 3D queda donde caen las bolas. `view.extras` y los colores `POOL_*` (`Board25DScene.recipe_tokens`) entran en la firma de la caché solo para esa receta: la firma de Pintar el piso no cambia por eso.
+  - El marco pasó a una función propia (`_frame`) que comparten todas; el tablero de Pintar se arma igual que antes.
+- **Dibujo por juego**:
+  - *Arena*: mascotas paradas en su punto del piso (`project`, antes los pies iban 36 px abajo del círculo de choque), estrellas flotando sobre una sombra acostada, "+1" y brillo en la estrella proyectada.
+  - *Esquivar*: sombras y aviso punteado acostados; bloques de juguete con alto (`BOARD25D_BLOCK_RISE`): base con `floor_xform`, tapa con la transformación del plano levantado (3 proyecciones), casco convexo y contorno en un lote. Caen por la vertical de la pantalla desde arriba del borde (detrás del marcador; la capa del aire deja de recortarse al campo). Bloques apoyados y mascotas se ordenan de atrás hacia adelante; eliminados translúcidos en su lugar proyectado.
+  - *Pool*: lo acostado en el paño (sombras, **guía de tiro y flecha**, anillos de tronera y de reaparición) se arma en coordenadas de la mesa con las funciones de siempre y se proyecta **vértice por vértice** (`project_points`): exacto aunque la guía mida 800 px, y la puntería se lee igual que en plano (se acorta ~10 % hacia atrás). Bolas a su altura sobre el paño (`project_up`) y escaladas; mascota arriba de su bola; estrellitas de choque y "+3" en la bola proyectada. La física sigue en `PLAY`.
+- **Números** (llvmpipe): horneado 0,76–0,93 s la primera vez, 40–55 ms del disco; 6,2 MB de textura por juego mientras se juega; p95 de scripts 1,9–6,0 ms y 30–34 draw calls (Pool +0,5 ms de scripts por las proyecciones). Tabla en [PERFORMANCE.md](../PERFORMANCE.md#tablero-25d-horneado-adr-0019).
+- **Herramientas**: `tools/board25d_preview.gd -- --game=arena|dodge|pool --compare=…` (estado fijo, antes/después y dos detalles a tamaño real); `tools/make_thumbnails.gd` ubica el recorte con las posiciones proyectadas.
+- **Pendiente / límites**: las bolas y mascotas se dibujan encima de las bandas de adelante (no las tapa la banda, que mide 20 u: casi no se nota); los bloques que caen en la fila de atrás pasan por detrás del marcador.
+
 ## Alternativas
 - **3D en vivo** (la escena 3D renderizada en cada cuadro, las mascotas como sprites o modelos): lo más fiel y con luz dinámica, pero ~600 piezas con contorno son ~1200 draw calls por cuadro, más el costo del driver GLES3 de la TV. No entra en 150 draw calls; ni con MultiMesh (el contorno de casco invertido duplica todo y cada material es un lote).
 - **2D plano mejorado** (lo que había, ADR 0009): barato y probado, pero no tiene perspectiva ni profundidad; es justamente la diferencia que marcó el dueño.
@@ -30,7 +47,7 @@ Restricción: 60 fps en una Google TV de gama baja (p95 de Scripts ≤ 8 ms y �
 - **Renderizar el tablero plano a una textura y deformarla con un shader en cada cuadro**: reutiliza todo el dibujo 2D, pero agrega un pase de pantalla completa por cuadro (costoso en una GPU Mali-G31) y deja borroso lo que se agranda.
 
 ## Consecuencias
-- **Reutilizable**: otro juego con tablero (Arena, Esquivar, Pool…) define `static func board_view()` y `prewarm_art()`, llama `draw_board_25d(board_view())` en `_draw()` y pasa sus posiciones por `project`/`scale_at`/`floor_xform`. Guía: [ADDING_A_MINIGAME.md](../ADDING_A_MINIGAME.md#tablero-25d-horneado-adr-0019). Una receta de escenario distinta (ej. arena redonda) se suma en `Board25DScene` con otro `recipe`.
+- **Reutilizable** (así se sumaron Arena, Esquivar y Pool): otro juego con tablero define `static func board_view()` y `prewarm_art()`, llama `draw_board_25d(board_view())` en `_draw()` y pasa sus posiciones por `project`/`scale_at`/`floor_xform`. Guía: [ADDING_A_MINIGAME.md](../ADDING_A_MINIGAME.md#tablero-25d-horneado-adr-0019). Una receta de escenario distinta (ej. arena redonda) se suma en `Board25DScene` con otro `recipe`.
 - La textura se genera en el aparato (el APK no crece) y se lee de `user://` después de la primera vez; cambiar la cámara, un token `BOARD25D_*`, los shaders o `Board25DBaker.VERSION` invalida la caché.
 - Las mascotas se dibujan de frente (como billboards), no giradas por la cámara; en perspectiva real se inclinarían apenas. Con la escala por profundidad entre 0,93 y 1,07 siguen usando el mismo tamaño de horneado del atlas (ADR 0012).
 - Los efectos (partículas, textos flotantes, confeti) usan posiciones proyectadas; los juegos que pasen al 2.5D tienen que proyectar todo lo que dibujen en el piso.

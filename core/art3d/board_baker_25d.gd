@@ -83,6 +83,10 @@ static func key_of(view: BoardView25D) -> String:
 		UiTheme.INK, UiTheme.SKY_TOP, UiTheme.SKY_BOTTOM, UiTheme.STAGE_CLOUD, UiTheme.PROP_STAR_SHADE, UiTheme.MASCOT_SHADE_TINT,
 		# El plástico y el contorno (los ajusta la dirección de arte): si cambian, se vuelve a hornear.
 		Board25DScene.SHADER_TOY.code.hash(), Board25DScene.SHADER_INK.code.hash()]
+	# Colores propios de la receta (ej. los POOL_* de la mesa de pool).
+	var own := Board25DScene.recipe_tokens(view.recipe)
+	if not own.is_empty():
+		parts.append(own)
 	var key := "%08x" % (str(parts).hash() & 0xffffffff)
 	view.set_meta("bake_key", key)
 	return key

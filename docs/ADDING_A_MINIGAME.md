@@ -105,7 +105,7 @@ Para una escena propia, sumá una receta en `core/art3d/game_diorama.gd` (`RECIP
 
 ## Tablero 2.5D horneado (ADR 0019)
 
-Opcional, para juegos con tablero (hoy lo usa Pintar el piso). El tablero, su marco de bloques y los juguetes de alrededor son una escena 3D que se **hornea una vez** a una textura con una **cámara en perspectiva** (el tablero "se aleja", como en la maqueta); el juego se dibuja encima en 2D **proyectado con la misma cámara**. Las reglas no cambian: posiciones, choques y celdas siguen en las coordenadas planas de siempre (tu `FIELD`). Cuesta menos por cuadro que el tablero plano (ver [PERFORMANCE.md](PERFORMANCE.md#tablero-25d-horneado-adr-0019)).
+Opcional, para juegos con tablero (lo usan Pintar el piso, Arena, Esquivar y Pool loco). El tablero, su marco de bloques y los juguetes de alrededor son una escena 3D que se **hornea una vez** a una textura con una **cámara en perspectiva** (el tablero "se aleja", como en la maqueta); el juego se dibuja encima en 2D **proyectado con la misma cámara**. Las reglas no cambian: posiciones, choques y celdas siguen en las coordenadas planas de siempre (tu `FIELD`). Cuesta menos por cuadro que el tablero plano (ver [PERFORMANCE.md](PERFORMANCE.md#tablero-25d-horneado-adr-0019)).
 
 Conceptos, con Pintar el piso:
 - **Cámara en perspectiva**: lo lejano se ve más chico. La fila de atrás mide ~1360 px en pantalla y la de adelante ~1590.
@@ -145,8 +145,10 @@ func _depth(p: Vector2) -> float:
 
 - **Todo lo que se dibuje sobre el piso se proyecta**: también los efectos (`juice().sparkles(_screen(p))`, `float_text`, confeti de `celebrate`). Las capas cacheadas propias (ej. filas de baldosas) se redibujan cuando cambia `_v25`.
 - **Obstáculos**: si no se mueven en toda la partida podrían ir en la escena horneada (una receta propia en `Board25DScene`); si cambian (se rompen, aparecen), dibujalos en 2D: acostados con `floor_xform`, o parados como las mascotas.
+- **Otro tamaño de campo**: `BoardView25D.make_fit(FIELD, CELL, "mi_juego")` encuadra el campo como el de Pintar el piso (aleja o acerca la cámara). Así lo hacen Arena, Esquivar y Pool.
+- **Muchas figuras acostadas** (una guía de tiro larga, anillos, sombras): armalas en un `GameArt.TriBatch` en coordenadas del plano y pasá `batch.points = view.project_points(batch.points)` antes del flush: exacto aunque sean largas (ver `pool.gd`, `_to_screen`). Algo a una altura sobre el piso (una bola): `view.project_up(p, altura)`.
 - **Otro escenario** (arena redonda, mesa): sumá una receta en `core/art3d/board_scene_25d.gd` (`build` elige por `view.recipe`) y subí `Board25DBaker.VERSION` al cambiarla. Los colores y medidas van en `UiTheme` (`BOARD25D_*`).
-- **Verificar**: `tools/board25d_preview.gd` (Pintar el piso en un estado fijo, con `--flat` para el antes y `--compare` para la comparación con la maqueta), `tools/capture_screens.gd` y `tools/benchmark.gd -- --only=<id> --board=both`. Sin pantalla (tests) el juego se dibuja plano: los tests de reglas no cambian.
+- **Verificar**: `tools/board25d_preview.gd` (Pintar el piso en un estado fijo, con `--flat` para el antes y `--compare` para la comparación con la maqueta; `--game=arena|dodge|pool` para los otros, con antes/después), `tools/capture_screens.gd` y `tools/benchmark.gd -- --only=<id> --board=both`. Sin pantalla (tests) el juego se dibuja plano: los tests de reglas no cambian.
 
 ## Sonido y vibración
 
