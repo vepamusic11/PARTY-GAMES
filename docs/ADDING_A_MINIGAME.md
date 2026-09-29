@@ -103,6 +103,51 @@ godot --headless --path . --import
 
 Para una escena propia, sumá una receta en `core/art3d/game_diorama.gd` (`RECIPES` y el `match` de `build`) con las piezas de ahí (`_round_stage`, `_tile_floor`, `_toy_block`, `_star`, `_mascot`, `_joystick`…). `test_games_have_dioramas` falla si falta el archivo y dice el comando.
 
+## Tablero 2.5D horneado (ADR 0019)
+
+Opcional, para juegos con tablero (hoy lo usa Pintar el piso). El tablero, su marco de bloques y los juguetes de alrededor son una escena 3D que se **hornea una vez** a una textura con una **cámara en perspectiva** (el tablero "se aleja", como en la maqueta); el juego se dibuja encima en 2D **proyectado con la misma cámara**. Las reglas no cambian: posiciones, choques y celdas siguen en las coordenadas planas de siempre (tu `FIELD`). Cuesta menos por cuadro que el tablero plano (ver [PERFORMANCE.md](PERFORMANCE.md#tablero-25d-horneado-adr-0019)).
+
+Conceptos, con Pintar el piso:
+- **Cámara en perspectiva**: lo lejano se ve más chico. La fila de atrás mide ~1360 px en pantalla y la de adelante ~1590.
+- **Homografía** (`view.project(p)`): la fórmula que lleva un punto del plano del juego a la pantalla. *Ejemplo:* el centro de la baldosa (0, 0), que en el juego está en (257, 209), se dibuja en (309, 227).
+- **Transformación del piso** (`view.floor_xform(p)`): cerca de un punto, la homografía es casi una transformación 2D común. Con ella se dibuja cualquier figura "acostada" en el piso (baldosa, sombra, marco) con las funciones de siempre.
+- **Horneado**: renderizar una vez y guardar la imagen (en `user://board25d/`, se lee en ~45 ms las veces siguientes).
+
+Pasos (ver `host/minigames/paint/paint.gd`):
+
+```gdscript
+static var _board_view: BoardView25D
+var _v25 := false  # ¿Este cuadro se dibuja en 2.5D?
+
+static func board_view() -> BoardView25D:  # La usa también tools/benchmark.gd (--board=both).
+	if _board_view == null:
+		_board_view = BoardView25D.make(FIELD, CELL, "mi_juego")  # "mi_juego": nombre de la receta/caché.
+	return _board_view
+
+static func prewarm_art(host: Node) -> void:  # El host la llama durante la intro.
+	Board25DBaker.request(host, board_view())
+
+func _draw() -> void:
+	_v25 = draw_board_25d(board_view())  # false: sin render, horneando o falló -> plano
+	if not _v25:
+		draw_sky()
+		draw_play_field(FIELD, CELL)
+	# Lo acostado en el piso: con floor_xform (o cell_xform para una celda).
+	# Lo parado (mascotas, premios): en _screen(p) y escalado por _depth(p),
+	# de atrás hacia adelante; globitos con draw_player_tags([[p, _screen(pos), u * _depth(pos)]]).
+
+func _screen(p: Vector2) -> Vector2:
+	return board_view().project(p) if _v25 else p
+
+func _depth(p: Vector2) -> float:
+	return clampf(board_view().scale_at(p), UiTheme.BOARD25D_SCALE_MIN, UiTheme.BOARD25D_SCALE_MAX) if _v25 else 1.0
+```
+
+- **Todo lo que se dibuje sobre el piso se proyecta**: también los efectos (`juice().sparkles(_screen(p))`, `float_text`, confeti de `celebrate`). Las capas cacheadas propias (ej. filas de baldosas) se redibujan cuando cambia `_v25`.
+- **Obstáculos**: si no se mueven en toda la partida podrían ir en la escena horneada (una receta propia en `Board25DScene`); si cambian (se rompen, aparecen), dibujalos en 2D: acostados con `floor_xform`, o parados como las mascotas.
+- **Otro escenario** (arena redonda, mesa): sumá una receta en `core/art3d/board_scene_25d.gd` (`build` elige por `view.recipe`) y subí `Board25DBaker.VERSION` al cambiarla. Los colores y medidas van en `UiTheme` (`BOARD25D_*`).
+- **Verificar**: `tools/board25d_preview.gd` (Pintar el piso en un estado fijo, con `--flat` para el antes y `--compare` para la comparación con la maqueta), `tools/capture_screens.gd` y `tools/benchmark.gd -- --only=<id> --board=both`. Sin pantalla (tests) el juego se dibuja plano: los tests de reglas no cambian.
+
 ## Sonido y vibración
 
 Una línea por evento, sin archivos de audio (ver `core/audio/sfx.gd`):

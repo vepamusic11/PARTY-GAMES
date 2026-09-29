@@ -310,6 +310,22 @@ Estrellas, bloques del marco y de los fondos, medallas, corona, trofeo, ficha de
 - **Dioramas**: una textura por tarjeta, igual que la captura (648×240 WebP, ~20 KB; en la GPU ≈ 0,8 MB con mipmaps para los 13). No hay 3D en la TV: se renderizan con `tools/make_dioramas.gd` (~0,3 s por juego en llvmpipe).
 - **Fondo más lleno** (fila de torres del medio): se pinta una vez al preparar el escenario desenfocado, cero costo por frame.
 
+### Tablero 2.5D horneado (ADR 0019)
+
+Pintar el piso con el escenario 3D horneado (tablero en perspectiva, marco con volumen, juguetes desenfocados) y el juego en 2D proyectado encima. `tools/benchmark.gd -- --only=paint,arena --board=both`: el mismo juego plano y en 2.5D **en la misma corrida**, con Arena como control del ruido; tres corridas con el candado de Godot tomado (xvfb + llvmpipe, 300 frames, 4 jugadores):
+
+| Escena | Scripts prom. (ms) | Scripts p95 (ms) | Draw calls | Render (ms) |
+|---|---:|---:|---:|---:|
+| arena (control) | 1,26 · 1,86 · 1,56 | 1,94 · 2,52 · 2,31 | 35–36 | 24,8 · 28,6 · 25,9 |
+| paint plano (antes) | 1,70 · 2,01 · 1,95 | 2,62 · 3,04 · 2,89 | 52–53 | 29,0 · 30,7 · 30,3 |
+| **paint 2.5D** | **1,05 · 1,71 · 1,66** | **1,70 · 2,70 · 2,71** | **44–47** | **18,5 · 23,7 · 23,7** |
+
+- **Más barato que el plano**: el fondo es **una** textura de pantalla completa (1 draw call, capa cacheada) en vez del escenario en franjas + el tablero en lotes con bisel y bloques del atlas; y cada píxel se pinta una vez (el render de llvmpipe baja ~20–35 %). Muy lejos del presupuesto (p95 ≤ 8 ms, ≤ 150 draw calls).
+- **Qué se hace por cuadro además del plano**: proyectar 4 mascotas y el premio (`project` + `scale_at`: una multiplicación de matriz 3×3 cada una) y, cuando cambia una fila de baldosas, ubicar cada baldosa con su transformación ya calculada (`cell_xform`, en caché: igual costo que antes).
+- **Horneado** (la primera vez en el aparato, durante la intro "¿Cómo se juega?"): 0,9–1,2 s en llvmpipe (armar la escena ~85 ms, entorno ~190 ms, desenfoque ~170 ms, tablero 2 × 2 azulejos con supermuestreo ~400 ms, componer ~50 ms). En una GPU real el render es mucho menor; el armado (GDScript, ~600 piezas) es lo que más pesa en la CPU de la TV: pendiente medirlo en el aparato.
+- **Después, del disco**: `user://board25d/board_paint_<firma>.png` se lee en un hilo en **~37–45 ms** (32 ms leer + 4–8 ms subir a la placa): no traba la intro.
+- **Memoria**: la textura es de 1920 × 1080 RGB = **6,2 MB** (8,3 MB si el driver la guarda como RGBA), mientras se juega a Pintar el piso y 2 s después (`Board25DBaker.retain`). Transitorio del horneado ≈ 35 MB (render de 1920 × 1080 con profundidad, el achicado y las imágenes intermedias), que se suelta al terminar.
+
 ## Qué se cambió y por qué
 
 ### 1. Capas estáticas que se dibujan una sola vez
@@ -404,6 +420,7 @@ Reglas prácticas al dibujar:
 - Varias figuras seguidas → `UiTheme.ShapeBatch` (y `flush` antes de texto, líneas o rectángulos redondeados).
 - Nada de crear objetos (`StyleBox`, `Theme`, arreglos grandes) dentro de `_draw()` o `_process()`.
 - `_process` apagado mientras el nodo no se ve.
+- Tablero en perspectiva o escenario 3D: **horneado** una vez a una textura (`Board25DBaker`, ADR 0019) y el juego en 2D proyectado; nunca 3D en vivo por cuadro.
 
 ## Próximos pasos posibles
 

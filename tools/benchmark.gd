@@ -20,6 +20,10 @@ extends SceneTree
 ##                                    también 2d o 3d. Default: 3d, como el
 ##                                    juego. ADR 0012)
 ##   … -- --no-props3d               (sin piezas 3D horneadas: el dibujo 2D, para comparar)
+##   … -- --board=both               (juegos con escenario 2.5D horneado, ej.
+##                                    Pintar el piso: dos veces seguidas, plano
+##                                    y 2.5D, alternando cuál va primero; también
+##                                    plano o 25d. Default: 25d. ADR 0019)
 ##
 ## Igual que tools/capture_screens.gd necesita una pantalla (real o xvfb):
 ## con --headless no se dibuja nada y los números no sirven.
@@ -84,6 +88,10 @@ var _audio := true
 ## Mascotas a medir: "2d" (por código), "3d" (horneadas, MascotAtlas) o las dos.
 var _mascot_modes: Array[String] = ["3d"]
 var _mode_turn := 0  ## Alterna qué modo va primero en cada escena.
+## Escenario de los juegos con tablero 2.5D: "plano", "25d" o los dos (--board=).
+var _board_modes: Array[String] = ["25d"]
+var _board_turn := 0
+var _board_mode := ""  ## El de la medición en curso ("" = el juego no tiene 2.5D).
 var _music_tracks: Array = []
 
 
@@ -109,6 +117,9 @@ func _run() -> void:
 			_mascot_modes.assign(["2d", "3d"] if m == "both" else [m])
 		elif arg == "--no-props3d":
 			Props3D.enabled = false
+		elif arg.begins_with("--board="):
+			var b := arg.trim_prefix("--board=")
+			_board_modes.assign(["plano", "25d"] if b == "both" else [b])
 	_driver.auto_step = false
 	if DisplayServer.get_name() == "headless":
 		printerr("El benchmark necesita una pantalla: correlo con xvfb-run (ver el comentario del script).")
@@ -169,7 +180,10 @@ func _modes() -> Array[String]:
 
 ## Nombre de la fila: con sufijo ·2d/·3d solo si se miden los dos modos.
 func _row_name(scene: String, mode: String) -> String:
-	return scene if _mascot_modes.size() == 1 else "%s·%s" % [scene, mode]
+	var name := scene if _mascot_modes.size() == 1 else "%s·%s" % [scene, mode]
+	if _board_mode != "" and _board_modes.size() > 1:
+		name += "·" + _board_mode
+	return name
 
 
 ## Construye la escena, la deja estabilizarse y mide _frames frames.
@@ -189,10 +203,39 @@ func _bench(scene: String, build: Callable) -> void:
 func _bench_game(info: Dictionary) -> void:
 	if not _wanted(info.id):
 		return
+	var view := _board_view_of(info.id)
 	for mode in _modes():
 		MascotAtlas.enabled = mode == "3d"
-		await _bench_game_mode(info, mode)
+		if view == null:
+			await _bench_game_mode(info, mode)
+			continue
+		# Escenario 2.5D (ADR 0019): plano y/o 2.5D, alternando el orden.
+		var boards := _board_modes.duplicate()
+		if boards.size() > 1 and _board_turn % 2 == 1:
+			boards.reverse()
+		_board_turn += 1
+		for board: String in boards:
+			_board_mode = board
+			Board25DBaker.enabled = board == "25d"
+			if Board25DBaker.enabled:
+				var t0 := Time.get_ticks_msec()
+				await Board25DBaker.ensure(root, view)  # Como en la TV: listo desde la intro.
+				print("  (escenario 2.5D de %s: %d ms, %s)" % [info.id, Time.get_ticks_msec() - t0, Board25DBaker.last_report])
+			await _bench_game_mode(info, mode)
+		_board_mode = ""
+		Board25DBaker.enabled = true
 	MascotAtlas.enabled = true
+
+
+## Vista 2.5D del juego (su static board_view(), ver ADR 0019) o null.
+func _board_view_of(id: String) -> BoardView25D:
+	for script: Script in MiniGameRegistry.GAMES:
+		if script.call("get_info").id != id:
+			continue
+		for m: Dictionary in script.get_script_method_list():
+			if m.name == "board_view":
+				return script.call("board_view")
+	return null
 
 
 func _bench_game_mode(info: Dictionary, mode: String) -> void:
@@ -275,6 +318,8 @@ func _measure(scene: String, mode: String = "3d") -> void:
 		"mascots": mode,
 		"bakes_during": int(MascotAtlas.stats.jobs) - jobs_before,
 		"atlas_mb": MascotAtlas.memory_bytes() / 1048576.0,
+		"board": _board_mode,
+		"board_mb": Board25DBaker.memory_bytes() / 1048576.0,
 	}
 	_results.append(row)
 	print("  %-17s proceso %6.2f ms  scripts %5.2f ms (p95 %5.2f)  render %6.2f ms  draws %4.0f  objetos %5.0f  atlas %4.1f MB%s" % [

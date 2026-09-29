@@ -27,7 +27,7 @@ Siempre correr los tests antes de dar un cambio por terminado.
 - `host/tournament/tournament.gd` — modo competencia: rondas y puntos por posición (lógica pura, testeada).
 - `host/ui/` — pantallas (lobby, resumen de ronda, podio, pausa) y componentes de la TV.
 - `core/ui/ui_theme.gd` — sistema visual: tokens de color/medidas, tema y funciones de dibujo. Mascotas, fondo y chips en `core/ui/widgets/`.
-- `core/art3d/` — piezas 3D (estrellas, bloques, medallas…) horneadas una vez a un atlas con el plástico de las mascotas; siempre con respaldo 2D (ADR 0016).
+- `core/art3d/` — piezas 3D (estrellas, bloques, medallas…) horneadas una vez a un atlas con el plástico de las mascotas; siempre con respaldo 2D (ADR 0016). Tablero 2.5D: escenario 3D horneado con cámara en perspectiva y juego en 2D proyectado (`board_*_25d.gd`, ADR 0019).
 - `host/minigames/` — cada juego extiende `MiniGame` y se registra en `registry.gd`. Guía: `docs/ADDING_A_MINIGAME.md`.
 - `controller/` — cliente, descubrimiento y layouts táctiles.
 - `app/boot.gd` — decide modo host/control.

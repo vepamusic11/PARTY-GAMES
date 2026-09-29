@@ -4964,3 +4964,146 @@ func test_props3d_install_and_draw() -> void:
 	check(not Props3D.is_ready() and Props3D.image("star") == null, "clear() vuelve al dibujo 2D")
 	probe.queue_free()
 	await process_frame
+
+
+# --- Escenario 2.5D horneado (core/art3d/board_*_25d, ADR 0019) (agente) ------------
+
+## Cámara en perspectiva y homografía (matemática pura, sin render): el
+## tablero se aleja (arriba más angosto), ida y vuelta exacta, la baldosa
+## acostada coincide con la proyección exacta y las mascotas no cambian de
+## tamaño de horneado.
+func test_board25d_projection() -> void:
+	var paint: GDScript = preload("res://host/minigames/paint/paint.gd")
+	var v: BoardView25D = paint.board_view()
+	var f: Rect2 = paint.FIELD
+	var tl := v.project(f.position)
+	var tr := v.project(Vector2(f.end.x, f.position.y))
+	var bl := v.project(Vector2(f.position.x, f.end.y))
+	var br := v.project(f.end)
+	var screen := Rect2(Vector2.ZERO, v.screen)
+	check(screen.has_point(tl) and screen.has_point(br), "el campo entra en la pantalla (%s, %s)" % [tl, br])
+	check(tr.x - tl.x < br.x - bl.x - 60.0, "perspectiva: la fila de atrás es más angosta (%.0f vs %.0f px)" % [tr.x - tl.x, br.x - bl.x])
+	check(is_equal_approx(tl.y, tr.y) and absf((tl.x + tr.x) / 2.0 - v.screen.x / 2.0) < 1.0, "tablero derecho y centrado")
+	check(tl.y > UiTheme.HUD_TOP + UiTheme.HUD_CLOCK_H and bl.y < v.screen.y - 64.0, "arriba deja lugar al marcador y abajo al marco")
+	var p := Vector2(612.5, 733.0)
+	check(v.unproject(v.project(p)).distance_to(p) < 0.01, "unproject deshace project")
+	check(v.project_3d(v.to_world(p)).distance_to(v.project(p)) < 0.01, "la homografía coincide con la cámara 3D")
+	var back := v.scale_at(Vector2(f.get_center().x, f.position.y))
+	var front := v.scale_at(Vector2(f.get_center().x, f.end.y))
+	check(back < 1.0 and front > back, "lo de atrás se ve más chico (%.3f atrás, %.3f adelante)" % [back, front])
+	var worst := 0.0
+	for c: Vector2i in [Vector2i(0, 0), Vector2i(19, 0), Vector2i(0, 10), Vector2i(19, 10), Vector2i(9, 5)]:
+		var xf := v.cell_xform(c)
+		var origin := f.position + Vector2(c) * v.cell
+		for corner: Vector2 in [Vector2.ZERO, Vector2(v.cell, 0), Vector2(0, v.cell), Vector2.ONE * v.cell]:
+			worst = maxf(worst, (xf * corner).distance_to(v.project(origin + corner)))
+	check(worst < 1.0, "baldosa acostada: error en las esquinas < 1 px (%.2f)" % worst)
+	check(v.floor_xform(p) * p == v.project(p) or (v.floor_xform(p) * p).distance_to(v.project(p)) < 0.01, "floor_xform es exacta en su punto")
+	var tier := MascotAtlas.tier_for(paint.MASCOT_SCALE)
+	for s in [clampf(back, UiTheme.BOARD25D_SCALE_MIN, UiTheme.BOARD25D_SCALE_MAX), clampf(front, UiTheme.BOARD25D_SCALE_MIN, UiTheme.BOARD25D_SCALE_MAX)]:
+		check(MascotAtlas.tier_for(paint.MASCOT_SCALE * s) == tier, "la mascota escalada por profundidad usa el mismo horneado (%.2f)" % s)
+	var key := Board25DBaker.key_of(v)
+	check(key.length() == 8 and Board25DBaker.key_of(v) == key, "firma de la caché estable")
+	var other := BoardView25D.make(f, paint.CELL, "otra")
+	check(Board25DBaker.key_of(other) != key, "otra receta, otra firma")
+
+
+## Sin render (--headless): no hay escenario horneado y Pintar el piso se
+## dibuja plano como siempre (mismas capas, mismas posiciones).
+func test_board25d_fallback_headless() -> void:
+	if DisplayServer.get_name() != "headless":
+		return
+	var paint: GDScript = preload("res://host/minigames/paint/paint.gd")
+	check(not Board25DBaker.available() and Board25DBaker.texture_for(paint.board_view()) == null, "sin pantalla no hay escenario 2.5D")
+	check(not (await Board25DBaker.ensure(root, paint.board_view())), "ensure() no hornea sin pantalla")
+	check(Board25DBaker.is_idle(), "y no queda nada pendiente")
+	var game: Variant = MiniGameRegistry.create("paint")
+	root.add_child(game)
+	game.setup(_fake_players(4))
+	var drawn := PlayerAvatar.drawn
+	await _frames(3)
+	check(not game._v25, "Pintar el piso dibuja plano")
+	check(game._screen(Vector2(500, 500)) == Vector2(500, 500) and game._depth(Vector2(500, 500)) == 1.0, "posiciones y escalas sin proyectar")
+	check(game._backdrop_ops.size() == 2 and game._backdrop_ops[0][0] == "sky" and game._backdrop_ops[1][0] == "field", "fondo de siempre: cielo y campo")
+	check(PlayerAvatar.drawn > drawn, "dibuja las mascotas")
+	game.queue_free()
+	await process_frame
+
+
+## Con un escenario "horneado" inyectado (acá no hay render), el juego lo
+## usa de fondo y proyecta baldosas, mascotas y efectos; al sacarlo vuelve
+## al plano. La textura se suelta cuando sale el último juego que la usa.
+func test_board25d_injected_draws_projected() -> void:
+	var paint: GDScript = preload("res://host/minigames/paint/paint.gd")
+	var v: BoardView25D = paint.board_view()
+	Board25DBaker.reset()
+	Board25DBaker.fake_render = true
+	Board25DBaker.release_after_sec = 0.05
+	var img := Image.create_empty(16, 9, false, Image.FORMAT_RGB8)
+	img.fill(UiTheme.SKY_TOP)
+	var tex := ImageTexture.create_from_image(img)
+	Board25DBaker.inject(v, tex)
+	check(Board25DBaker.texture_for(v) == tex, "inject deja la textura lista")
+	var game: Variant = MiniGameRegistry.create("paint")
+	root.add_child(game)
+	game.setup(_fake_players(4))
+	game._anim = 5.0
+	game._paint_area(1, paint.cell_center(Vector2i(4, 3)), 1)
+	game._anim = 6.0  # Ya terminó el salto de las baldosas: van a su fila.
+	await _frames(3)
+	check(game._v25, "con escenario, Pintar el piso dibuja en 2.5D")
+	check(game._backdrop_ops.size() == 1 and game._backdrop_ops[0] == ["board25d", tex], "el fondo es solo la textura horneada (1 draw call)")
+	var at: Vector2 = game._pos[1]
+	check(game._screen(at) == v.project(at) and game._depth(at) != 1.0, "mascotas en su lugar proyectado y escaladas")
+	check(game._floor_tiles[3][4] == 1, "las baldosas pintadas se dibujan en su fila")
+	game._spawn_powerup(Vector2i(10, 5), 0)
+	game._brush_left[1] = 2.0
+	game._speed_left[2] = 2.0
+	game._axis[2] = Vector2.RIGHT
+	game.queue_redraw()
+	await _frames(2)
+	check(game._v25, "premio, brocha y velocidad se dibujan en 2.5D sin errores")
+	# Sin escenario (se apagó a mano): vuelve al plano y redibuja las filas.
+	Board25DBaker.enabled = false
+	game.queue_redraw()
+	await _frames(2)
+	check(not game._v25 and game._backdrop_ops[0][0] == "sky", "sin escenario vuelve al dibujo plano")
+	check(game._floor_tiles[3][4] == 1, "las filas se redibujan planas")
+	Board25DBaker.enabled = true
+	game.queue_redraw()
+	await _frames(2)
+	check(game._v25, "y vuelve al 2.5D")
+	game.queue_free()
+	await _frames(2)
+	await create_timer(0.15).timeout
+	check(Board25DBaker.texture_for(v) == null, "al salir el último juego se suelta la textura")
+	Board25DBaker.fake_render = false
+	Board25DBaker.release_after_sec = 2.0
+	Board25DBaker.reset()
+
+
+## La escena 3D se arma sin render (solo nodos): todas las baldosas, el marco
+## alrededor del campo y el entorno por fuera del tablero.
+func test_board25d_scene_builds() -> void:
+	var paint: GDScript = preload("res://host/minigames/paint/paint.gd")
+	var v: BoardView25D = paint.board_view()
+	var board := Board25DScene.build(v, Board25DScene.LAYER_BOARD)
+	var meshes: Array[MeshInstance3D] = []
+	var stack: Array[Node] = [board]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		if n is MeshInstance3D:
+			meshes.append(n)
+		stack.append_array(n.get_children())
+	check(meshes.size() > v.cols * v.rows + 30, "tablero: baldosas, marco y esquinas (%d piezas)" % meshes.size())
+	var half := Board25DScene.outer_half(v)
+	var outside := 0
+	for m in meshes:
+		if absf(m.position.x) > half.x + 60.0 or absf(m.position.z) > half.y + 60.0:
+			outside += 1
+	check(outside == 0, "nada del tablero fuera del marco (%d)" % outside)
+	board.free()
+	var back := Board25DScene.build(v, Board25DScene.LAYER_BACK)
+	check(back.get_child_count() > 40, "entorno: piso de la sala, sombra y juguetes (%d)" % back.get_child_count())
+	back.free()
+	Board25DScene.release_build_caches()

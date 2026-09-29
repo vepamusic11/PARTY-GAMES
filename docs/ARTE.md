@@ -198,3 +198,17 @@ Estrellas, bloques del marco del tablero y de los fondos, medallas, corona, trof
 - *Supermuestreo con alfa* (`props3d_downsample.gdshader`): se renderiza 4× más grande y cada píxel final promedia 16, pesando el color por su opacidad. *Ejemplo:* en el borde de una medalla, 8 píxeles de tinta y 8 vacíos dan tinta al 50 % (y no un gris oscuro al 50 % que se vería como un halo).
 - Sin render (tests, un aparato donde falle el horneado) cada función dibuja su versión 2D de siempre.
 
+
+## El tablero en 2.5D: perspectiva como la maqueta ([ADR 0019](adr/0019-tablero-25d-horneado.md))
+
+La maqueta de Pintar el piso es una escena 3D con **cámara en perspectiva**: el tablero se aleja, el marco de bloques tiene volumen y alrededor hay juguetes fuera de foco. El juego ahora hace lo mismo sin pagar 3D por cuadro: el tablero, el marco, las esquinas con estrella y el entorno se arman en 3D con el plástico de las mascotas (`core/art3d/board_scene_25d.gd`), se **hornean una vez** a una textura de 1920 × 1080 (`board_baker_25d.gd`, caché en `user://board25d/`) y el juego se dibuja encima en 2D **proyectado con la misma cámara** (`board_view_25d.gd`): baldosas pintadas acostadas en el piso, mascotas y premios parados, más chicos atrás.
+
+| Maqueta | Antes (plano) | Ahora (2.5D) | Lado a lado |
+|---|---|---|---|
+| `docs/design/referencia_juego_pintar.webp` | `docs/img/pintar_plano.png` | `docs/img/paint.png` | `docs/img/pintar_25d_comparacion.png` |
+
+- *Homografía*: la fórmula exacta que lleva un punto del piso del juego a la pantalla a través de la cámara. *Ejemplo:* el centro de la baldosa de arriba a la izquierda, (257, 209) en el juego, se dibuja en (309, 227).
+- *Profundidad de campo barata*: el entorno se renderiza aparte a media resolución y se desenfoca una vez; el tablero va nítido encima. En cada cuadro es una sola textura.
+- Para comparar colores se usan las mascotas de la maqueta: rojo robot, azul oso, amarillo gato y verde brote (`tools/board25d_preview.gd -- --flat --compare=…`).
+
+Lo que queda distinto a propósito: las mascotas se dibujan de frente (no se inclinan con la cámara) y el marco usa la paleta `UiTheme.BRICKS`. Para pasar otro juego (Arena, Esquivar, Pool…) ver [ADDING_A_MINIGAME.md](ADDING_A_MINIGAME.md#tablero-25d-horneado-adr-0019).

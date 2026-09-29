@@ -446,6 +446,37 @@ func draw_play_field(rect: Rect2, cell: float = 80.0) -> void:
 	_backdrop_request(["field", rect, cell])
 
 
+## Escenario 2.5D horneado (ADR 0019): tablero 3D con marco, entorno de
+## juguetes y cámara en perspectiva, dibujado como UNA textura en la capa de
+## fondo (en lugar de draw_sky() + draw_play_field()). Devuelve false si
+## todavía no está (se pide en segundo plano) o no hay render (--headless,
+## tests, un aparato donde falló): el juego dibuja plano, como siempre.
+## Uso en _draw():
+##   _v25 = draw_board_25d(board_view())
+##   if not _v25:
+##       draw_sky()
+##       draw_play_field(FIELD, CELL)
+## y el resto del dibujo pasa por la vista (ver BoardView25D y
+## docs/ADDING_A_MINIGAME.md, "Tablero 2.5D").
+func draw_board_25d(view: BoardView25D) -> bool:
+	var tex := Board25DBaker.texture_for(view)
+	if tex == null:
+		if is_inside_tree():
+			Board25DBaker.request(self, view)
+		return false
+	_backdrop_request(["board25d", tex])
+	# Al salir el último juego que la usa, la textura (~6–8 MB) se suelta.
+	Board25DBaker.retain(view, self)
+	return true
+
+
+## El host lo llama durante la intro "¿Cómo se juega?" de este juego (como el
+## precalentado de mascotas): para preparar arte caro antes de jugar, ej.
+## Board25DBaker.request(host, board_view()). Por defecto nada.
+static func prewarm_art(_host: Node) -> void:
+	pass
+
+
 ## Dibujo fijo del juego que no cambia en toda la partida (la mesa de Ping
 ## Pong, paneles, tribunas, carteles…): se cachea igual que draw_sky() (va en
 ## la capa de fondo, detrás de todo lo que dibuja _draw) y se dibuja una sola
@@ -539,6 +570,8 @@ func _draw_backdrop() -> void:
 				_paint_play_field(_backdrop, op[1], op[2])
 			"static":
 				(op[1] as Callable).call(_backdrop)
+			"board25d":
+				_backdrop.draw_texture_rect(op[1], Rect2(Vector2.ZERO, SCREEN), false)
 
 
 ## Tablero con volumen: ver GameArt.paint_board.

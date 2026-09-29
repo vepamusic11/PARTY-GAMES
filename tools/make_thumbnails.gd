@@ -137,10 +137,10 @@ func _run() -> void:
 	quit(0)
 
 
-## Espera a que MascotAtlas termine de hornear (sin render no hace nada).
+## Espera a que MascotAtlas y el escenario 2.5D terminen de hornear (sin render no hacen nada).
 func _atlas_idle() -> void:
 	var t0 := Time.get_ticks_msec()
-	while not MascotAtlas.is_idle() and Time.get_ticks_msec() - t0 < 30000:
+	while not (MascotAtlas.is_idle() and Board25DBaker.is_idle()) and Time.get_ticks_msec() - t0 < 30000:
 		await process_frame
 
 
@@ -155,6 +155,7 @@ func _make(info: Dictionary) -> void:
 	# Mascotas 3D horneadas (ADR 0012), como en la intro de la TV.
 	var scale: Variant = game.get_script().get_script_constant_map().get("MASCOT_SCALE", 0.8)
 	MascotAtlas.prewarm_game(game.players, float(scale))
+	game.get_script().call("prewarm_art", _viewport)  # Escenario 2.5D horneado (ADR 0019), si el juego lo usa.
 	await _atlas_idle()
 	var steps := roundi(float(shot.sec) / STEP)
 	var max_steps := steps + roundi(15.0 / STEP)  # Tope de la espera (`ball_in`, `wait`).

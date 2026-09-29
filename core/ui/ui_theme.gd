@@ -1812,3 +1812,64 @@ static func draw_music_note(ci: CanvasItem, c: Vector2, s: float, color: Color) 
 const BG_MID_TOWER_BLOCK := 50.0            ## Bloques de la fila de torres del medio.
 const BG_MID_TOWER_GAP := Vector2(0.045, 0.075)  ## Separación entre torres del medio (fracción del ancho).
 const BG_HAZE_FRONT := 0.0                  ## Torres de adelante: color puro (antes, BG_HAZE_NEAR).
+
+# --- Escenario 2.5D (agente) ---
+# Tablero y entorno de juguetes en 3D horneados una vez a una textura, con
+# cámara en perspectiva; el juego se dibuja en 2D proyectado encima
+# (core/art3d/board_view_25d.gd, ADR 0019). Medidas en unidades del mundo =
+# px del plano del juego (una baldosa de Pintar el piso mide 74).
+
+## Cámara: grados sobre el piso (90 = desde arriba), campo de visión vertical,
+## distancia al punto que mira y ese punto (relativo al centro del tablero).
+## Ajustada para que el tablero ocupe lo mismo que en la maqueta.
+const BOARD25D_PITCH_DEG := 65.0
+const BOARD25D_FOV_DEG := 28.0
+const BOARD25D_DISTANCE := 2182.0
+const BOARD25D_TARGET := Vector2(0, 3)
+## Tablero 3D: marco (ancho y cuánto sobresale del piso), base debajo de las
+## baldosas, bloque de las esquinas, baldosas y contornos de tinta.
+const BOARD25D_FRAME_W := 58.0
+const BOARD25D_FRAME_H := 40.0
+const BOARD25D_BASE := 44.0
+const BOARD25D_CORNER := 90.0
+const BOARD25D_CORNER_RISE := 14.0    ## Las esquinas sobresalen un poco más que el marco.
+const BOARD25D_STAR_LIFT_DEG := 38.0  ## La estrella de la esquina se levanta hacia la cámara.
+const BOARD25D_BRICK_ROUND := 11.0    ## Radio de los cantos de los bloques del marco.
+const BOARD25D_TILE_H := 12.0
+const BOARD25D_TILE_GAP := 2.5
+const BOARD25D_TILE_ROUND := 5.0
+const BOARD25D_INK := 3.2
+const BOARD25D_INK_THIN := 2.2
+const BOARD25D_LIGHT := 0.26          ## Cuánto se aclara la cara iluminada del plástico.
+const BOARD25D_GROUT := Color("#B9C4DD")   ## Junta entre baldosas (la base del tablero).
+const BOARD25D_EDGE_SHADE_W := 46.0   ## Sombra del marco sobre el piso.
+const BOARD25D_EDGE_SHADE_ALPHA := 0.22
+## Sala alrededor del tablero (se desenfoca): piso celeste a cuadros y sombra.
+const BOARD25D_GROUND_TILE := 250.0
+const BOARD25D_GROUND_A := Color("#5DAEF3")
+const BOARD25D_GROUND_B := Color("#93CCF8")
+const BOARD25D_SHADOW := Color(0.04, 0.12, 0.36, 0.5)
+## Horneado: supermuestreo del tablero, azulejos por lado (la textura de
+## render más grande es de 1920×1080) y desenfoque del entorno (se arma a
+## 1/BACK_DIV de la pantalla y se le pasa el desenfoque gaussiano del fondo
+## BLUR_PASSES veces, con muestras cada BLUR_STEP px).
+const BOARD25D_SUPERSAMPLE := 2
+const BOARD25D_TILES := 2
+const BOARD25D_BACK_DIV := 2
+const BOARD25D_BLUR_STEP := 1.5
+const BOARD25D_BLUR_PASSES := 2
+## Mascotas y premios parados sobre el tablero: escala por profundidad, con
+## tope para que el cuadro horneado de la mascota no cambie de tamaño (ADR 0012).
+const BOARD25D_SCALE_MIN := 0.86
+const BOARD25D_SCALE_MAX := 1.25
+## Premio sobre el piso: cuánto flota (px) y su sombra acostada.
+const BOARD25D_POWER_HOVER := 16.0
+const BOARD25D_POWER_SHADOW := Color(0.08, 0.1, 0.3, 0.28)
+## Juguetes de alrededor: celeste extra, cuánto se mezclan con la bruma
+## (lo de lejos es más claro) y hasta dónde llega el piso detrás del tablero.
+const BOARD25D_TOY_SKY := Color("#63B7F7")
+const BOARD25D_TOY_HAZE := 0.0
+const BOARD25D_GROUND_BACK := 150.0
+## Baldosas del tablero a cuadros (claras y grises, como la maqueta).
+const BOARD25D_TILE_LIGHT := Color("#F6F8FC")
+const BOARD25D_TILE_DARK := Color("#DDE3EE")

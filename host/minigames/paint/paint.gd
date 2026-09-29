@@ -17,6 +17,14 @@ extends MiniGame
 ## Rendimiento: el campo es una grilla de COLS×ROWS enteros (dueño por
 ## baldosa) y los patrones se precalculan una vez; en cada frame solo se
 ## recorren las baldosas sin crear arrays nuevos.
+##
+## Escenario 2.5D (ADR 0019): si hay render, el tablero, su marco y los
+## juguetes de alrededor son una escena 3D horneada una vez con cámara en
+## perspectiva (Board25DBaker) y el juego se dibuja encima PROYECTADO con la
+## misma cámara (BoardView25D): baldosas pintadas acostadas en el piso,
+## mascotas y premios parados, más chicos atrás. Las reglas siguen en las
+## coordenadas planas de FIELD (tests y bots no cambian). Sin render
+## (--headless) o mientras se hornea, se dibuja plano como siempre.
 
 enum State { COUNTDOWN, PLAYING, TIME_UP }
 enum PowerUp { BRUSH, SPEED }
@@ -88,6 +96,11 @@ var _tile: Dictionary = {}        # player_id -> Array
 var _floor: Array[Node2D] = []            # una capa por fila con las baldosas quietas (ver _draw_tiles)
 var _floor_tiles: Array[PackedInt32Array] = []  # lo que muestra cada fila: dueño por baldosa
 
+## Vista 2.5D del campo (una por proceso: la cámara no cambia) y si este
+## cuadro se dibuja con ella (hay escenario horneado).
+static var _board_view: BoardView25D
+var _v25 := false
+
 
 static func get_info() -> Dictionary:
 	return {
@@ -101,6 +114,18 @@ static func get_info() -> Dictionary:
 		"accent": UiTheme.BRICKS[6],
 		"score_label": "baldosas",
 	}
+
+
+## Cámara y proyección del escenario 2.5D de este juego (ADR 0019).
+static func board_view() -> BoardView25D:
+	if _board_view == null:
+		_board_view = BoardView25D.make(FIELD, CELL, "paint")
+	return _board_view
+
+
+## Durante la intro: el escenario 2.5D se lee del disco o se hornea.
+static func prewarm_art(host: Node) -> void:
+	Board25DBaker.request(host, board_view())
 
 
 # --- Reglas puras (testeadas) ---------------------------------------------------
@@ -210,7 +235,7 @@ func _move_players(delta: float) -> void:
 		p.x = clampf(p.x, FIELD.position.x + MOVE_MARGIN_X, FIELD.end.x - MOVE_MARGIN_X)
 		p.y = clampf(p.y, FIELD.position.y + MOVE_MARGIN_Y, FIELD.end.y - MOVE_MARGIN_Y)
 		_pos[pid] = p
-		juice().stop_dust(pid, (_axis[pid] as Vector2).length(), p)
+		juice().stop_dust(pid, (_axis[pid] as Vector2).length(), _screen(p))
 
 
 func _speed_of(pid: int) -> float:
@@ -306,9 +331,9 @@ func _pickup_fx(pid: int, at: Vector2, kind: int) -> void:
 	notify_player(pid, "point")
 	if not is_inside_tree():
 		return
-	juice().sparkles(at)
-	juice().shine(at, 80.0)
-	juice().float_text("¡Brocha!" if kind == PowerUp.BRUSH else "¡Rápido!", (_pos[pid] as Vector2) + Vector2(0, -165),
+	juice().sparkles(_screen(at))
+	juice().shine(_screen(at), 80.0)
+	juice().float_text("¡Brocha!" if kind == PowerUp.BRUSH else "¡Rápido!", _screen(_pos[pid]) + Vector2(0, -165),
 		player_by_id(pid).get("color", UiTheme.GOLD))
 
 
@@ -318,15 +343,21 @@ func _time_up_fx() -> void:
 	var party := {}
 	for pid: int in _tiles:
 		if best > 0 and int(_tiles[pid]) == best:
-			party[pid] = _pos[pid]
+			party[pid] = _screen(_pos[pid])
 	celebrate("¡Tiempo!", party)
 
 
 # --- Dibujo ---------------------------------------------------------------------
 
 func _draw() -> void:
-	draw_sky()
-	draw_play_field(FIELD, CELL)
+	var v25 := draw_board_25d(board_view())
+	if v25 != _v25:
+		_v25 = v25
+		for y in _floor_tiles.size():  # Cambió la proyección: se redibujan todas las filas.
+			_floor_tiles[y] = PackedInt32Array()
+	if not _v25:
+		draw_sky()
+		draw_play_field(FIELD, CELL)
 	_draw_tiles()
 	if not _powerup.is_empty():
 		_draw_powerup()
@@ -337,7 +368,9 @@ func _draw() -> void:
 	for p in order:
 		_draw_player(p, best)
 	# Globitos 1P–4P y nombres encima de todas las mascotas.
-	draw_player_tags(order.map(func(p: Dictionary) -> Array: return [p, _pos[p.id], MASCOT_SCALE, NAME_OFFSET]))
+	draw_player_tags(order.map(func(p: Dictionary) -> Array:
+		var d := _depth(_pos[p.id])
+		return [p, _screen(_pos[p.id]), MASCOT_SCALE * d, NAME_OFFSET * d]))
 	draw_hud(_tiles, clock_text(_time_left), "clock")
 	# "¡Tiempo!" lo muestra el cartel de los efectos (_time_up_fx).
 	if _state != State.TIME_UP:
@@ -374,6 +407,11 @@ func _draw_tiles() -> void:
 				continue  # Quieta: la dibuja _floor.
 			still[i] = EMPTY
 			var s := lerpf(0.55, 1.0, UiTheme.ease_pop(k))
+			if _v25:  # Achicada en su celda del piso y levantada en la pantalla.
+				var grow := Transform2D(0.0, Vector2(s, s), 0.0, Vector2.ONE * CELL * (1.0 - s) / 2.0)
+				var hop := Transform2D(0.0, Vector2(0, -sin(k * PI) * TILE_HOP))
+				_add_tile(popping, pid, hop * board_view().cell_xform(Vector2i(x, y)) * grow)
+				continue
 			var origin := FIELD.position + Vector2(x, y) * CELL + Vector2.ONE * CELL * (1.0 - s) / 2.0 \
 				- Vector2(0, sin(k * PI) * TILE_HOP)
 			_add_tile(popping, pid, Transform2D(0.0, Vector2(s, s), 0.0, origin))
@@ -392,7 +430,11 @@ func _draw_floor_row(y: int) -> void:
 	var batch := GameArt.TriBatch.new()
 	for x in tiles.size():
 		var pid := tiles[x]
-		if pid != EMPTY:
+		if pid == EMPTY:
+			continue
+		if _v25:  # Acostada en el piso del tablero 2.5D (ver BoardView25D.cell_xform).
+			_add_tile(batch, pid, board_view().cell_xform(Vector2i(x, y)))
+		else:
 			_add_tile(batch, pid, Transform2D(0.0, FIELD.position + Vector2(x, y) * CELL))
 	batch.flush(_floor[y])
 
@@ -407,8 +449,19 @@ func _draw_powerup() -> void:
 	var life: float = _powerup.life
 	if life < 1.5 and fmod(_anim, 0.3) < 0.12:
 		return  # Parpadea antes de desaparecer.
-	var c := cell_center(_powerup.cell) + Vector2(0, sin(_anim * 5.0) * 4.0)
-	_draw_power_badge(_powerup.kind, c, 1.0, true)
+	var at := cell_center(_powerup.cell)
+	if not _v25:
+		_draw_power_badge(_powerup.kind, at + Vector2(0, sin(_anim * 5.0) * 4.0), 1.0, true)
+		return
+	# 2.5D: sombra acostada en el piso y la ficha parada, flotando encima.
+	var d := _depth(at)
+	var shadow := GameArt.TriBatch.new()
+	var r := POWER_BADGE * (0.85 - 0.08 * sin(_anim * 5.0))
+	shadow.shape(GameArt.circle_tris(24), board_view().floor_xform(at) * Transform2D(0.0, Vector2(r, r * 0.75), 0.0, at + Vector2(0, 8)),
+		UiTheme.BOARD25D_POWER_SHADOW)
+	shadow.flush(self)
+	var c := _screen(at) + Vector2(0, sin(_anim * 5.0) * 4.0 - UiTheme.BOARD25D_POWER_HOVER) * d
+	_draw_power_badge(_powerup.kind, c, d, true)
 
 
 ## Ficha dorada con el ícono del power-up (brocha o rayo). Con `glow`, halo
@@ -471,36 +524,41 @@ func _draw_bolt_icon() -> void:
 
 func _draw_player(p: Dictionary, best: int) -> void:
 	var pid: int = p.id
-	var feet: Vector2 = _pos[pid]
+	var at: Vector2 = _pos[pid]       # En el campo (reglas).
+	var feet := _screen(at)           # En la pantalla.
+	var d := _depth(at)               # Más chica atrás (2.5D).
 	var axis: Vector2 = _axis[pid]
 	var moving := _state == State.PLAYING and axis.length() > 0.1
 	var brush: float = _brush_left[pid]
 	var speed: float = _speed_left[pid]
 	# Brocha gigante: marco punteado del área de 3×3 que está pintando.
 	if brush > 0.0:
-		var area := brush_rect(cell_at(feet), BRUSH_RADIUS)
+		var area := brush_rect(cell_at(at), BRUSH_RADIUS)
 		var r := Rect2(FIELD.position + Vector2(area.position) * CELL, Vector2(area.size) * CELL)
-		UiTheme.draw_dashed_rect(self, r.grow(-3.0), UiTheme.INK, 5.0, 0.0, 14.0, 8.0)
+		if _v25:
+			board_view().draw_dashed_rect(self, r.grow(-3.0), UiTheme.INK, 5.0, 14.0, 8.0)
+		else:
+			UiTheme.draw_dashed_rect(self, r.grow(-3.0), UiTheme.INK, 5.0, 0.0, 14.0, 8.0)
 	# Velocidad: estelas detrás de la mascota.
 	if speed > 0.0 and moving:
 		var back := -axis.normalized()
 		var side := Vector2(-back.y, back.x)
 		for k in 3:
-			var o := feet + Vector2(0, -30) + side * (k - 1) * 18.0 + back * 34.0
-			draw_line(o, o + back * (26.0 + k % 2 * 14.0), Color(UiTheme.INK, 0.45), 5.0, true)
+			var o := feet + (Vector2(0, -30) + side * (k - 1) * 18.0 + back * 34.0) * d
+			draw_line(o, o + back * (26.0 + k % 2 * 14.0) * d, Color(UiTheme.INK, 0.45), 5.0, true)
 	var mood := PlayerAvatar.Mood.NORMAL
 	if _state == State.TIME_UP or is_finished():
 		mood = PlayerAvatar.Mood.HAPPY if int(_tiles[pid]) == best else PlayerAvatar.Mood.NORMAL
 	var anim := mascot_anim(pid, axis)
 	anim["wave"] = mood == PlayerAvatar.Mood.HAPPY
-	PlayerAvatar.draw_mascot(self, feet, MASCOT_SCALE, p.color, PlayerAvatar.style_of(p), mood, 0.0, celebrate_hop(pid), false, anim)
+	PlayerAvatar.draw_mascot(self, feet, MASCOT_SCALE * d, p.color, PlayerAvatar.style_of(p), mood, 0.0, celebrate_hop(pid), false, anim)
 	# Power-up activo: ícono chico al costado con el tiempo que le queda.
 	var active := maxf(brush, speed)
 	if active > 0.0:
-		var c := feet + Vector2(56, -64)
-		_draw_power_badge(PowerUp.BRUSH if brush >= speed else PowerUp.SPEED, c, 0.55)
+		var c := feet + Vector2(56, -64) * d
+		_draw_power_badge(PowerUp.BRUSH if brush >= speed else PowerUp.SPEED, c, 0.55 * d)
 		# Cuánto le queda: arco blanco sobre el aro dorado.
-		draw_arc(c, POWER_BADGE * 0.55 + 3.0, -PI / 2.0, -PI / 2.0 + TAU * active / POWER_SEC, 32, UiTheme.PAPER, 4.0, true)
+		draw_arc(c, (POWER_BADGE * 0.55 + 3.0) * d, -PI / 2.0, -PI / 2.0 + TAU * active / POWER_SEC, 32, UiTheme.PAPER, 4.0, true)
 
 
 ## Debajo de cada píldora del marcador, una muestra del patrón del jugador:
@@ -517,6 +575,20 @@ func _draw_hud_extra(ci: CanvasItem, player: Dictionary, pill: Rect2) -> void:
 	batch.rect(r.grow(-1.0), UiTheme.TILE_GROUT)
 	_add_tile(batch, pid, Transform2D(0.0, Vector2(s, s), 0.0, r.position))
 	batch.flush(ci)
+
+
+## Dónde se dibuja un punto del campo: proyectado sobre el tablero 2.5D, o
+## igual si se dibuja plano.
+func _screen(p: Vector2) -> Vector2:
+	return board_view().project(p) if _v25 else p
+
+
+## Escala de lo que está parado en `p` (mascotas, premios, estelas): más
+## chico atrás en 2.5D (con tope, ver UiTheme.BOARD25D_SCALE_*); 1 en plano.
+func _depth(p: Vector2) -> float:
+	if not _v25:
+		return 1.0
+	return clampf(board_view().scale_at(p), UiTheme.BOARD25D_SCALE_MIN, UiTheme.BOARD25D_SCALE_MAX)
 
 
 func _best_score() -> int:

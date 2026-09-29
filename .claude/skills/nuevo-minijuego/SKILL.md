@@ -22,6 +22,7 @@ Guía completa con ejemplo: `docs/ADDING_A_MINIGAME.md`. Esta skill es el checkl
    - `PlayerAvatar.draw_mascot(self, pies, escala, p.color, PlayerAvatar.style_of(p))` para los jugadores y después `draw_player_tags([[p, pies, escala], …])` (globito 1P–4P y nombre).
    - `draw_hud(puntajes, texto_central, ícono)` arriba (reloj con `clock_text(seg)`; ícono "clock", "flag" o "star").
    - Arte común (tablero, brillo, figuras en lote): `GameArt` (`host/minigames/game_art.gd`, ADR 0009).
+   - Tablero en perspectiva como la maqueta (opcional): `draw_board_25d(board_view())` y el dibujo proyectado con `BoardView25D` (ADR 0019; guía en `docs/ADDING_A_MINIGAME.md`, "Tablero 2.5D horneado"). Sin render cae solo en el tablero plano.
    - `draw_text_centered(texto, pos, tamaño, color, contorno)` para textos.
    - Cielo, campo y marcador están cacheados (capas propias): `draw_sky()`/`draw_play_field()` al principio de `_draw()`, `draw_hud()` una vez por `_draw()`. Lo fijo del juego (mesa, paneles), con `draw_static(fn)`. Ver `docs/PERFORMANCE.md`.
 6. **Sonido y vibración**: `play_sfx(nombre)` en la TV, `notify_player(pid, tipo)` en el celular del jugador y `tick_countdown(antes, después)` para la cuenta regresiva. Eventos importantes (sumar, eliminar, ganar) siempre con las dos cosas.
