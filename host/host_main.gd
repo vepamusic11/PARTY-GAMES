@@ -40,6 +40,10 @@ const PORT_ATTEMPTS := 5
 
 var server := HostServer.new()
 var beacon := DiscoveryBeacon.new()
+## Control web (ADR 0022): la TV sirve por HTTP la página que hace de control.
+var web := WebControllerServer.new()
+var web_port := Protocol.HTTP_PORT
+var serve_web := true
 var bots := BotDriver.new()
 ## Ayuda de los eliminados (MODOS.md §11, ADR 0020): el que quedó afuera
 ## elige a quién ayudar y paga con puntos de la competencia.
@@ -77,6 +81,7 @@ func _ready() -> void:
 	Music.sync_mute()
 	add_child(server)
 	add_child(beacon)
+	add_child(web)
 	add_child(bots)
 	add_child(help)
 	bots.help = help
@@ -108,7 +113,14 @@ func _ready() -> void:
 		return
 	if announce:
 		beacon.start(server.port, _device_name())
-	_lobby.set_room(server.room_code, "%s  ·  puerto %d" % [", ".join(_local_ipv4()), server.port])
+	if serve_web and web.start(web_port, server.port) != OK:
+		push_warning("Control web: no se pudo abrir el puerto %d (se juega solo con la app)." % web_port)
+	var ips := WebControllerServer.sort_lan_ips(IP.get_local_addresses())
+	_lobby.set_join_info(server.room_code, ips, web.port if web.is_listening() else 0, server.port)
+	# En la consola (útil para pruebas y para la prueba de punta a punta).
+	print("PARTY-GAME TV · sala %s · control web: %s · app: %s puerto %d" % [
+		server.room_code, _lobby.join_url() if not _lobby.join_url().is_empty() else "no disponible",
+		", ".join(_local_ipv4()), server.port])
 	server.max_players = _lobby.player_count
 	_refresh_lobby()
 	_lobby.focus_default()
@@ -124,6 +136,7 @@ func _ready() -> void:
 
 func _exit_tree() -> void:
 	beacon.stop()
+	web.stop()
 	server.stop()
 
 

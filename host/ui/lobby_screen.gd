@@ -6,13 +6,16 @@ extends Control
 ##   ┌──────────────┬──────────────────────────────────────────────┐
 ##   │ [LOGO]       │ [1P Pablo] [2P Sofi] [3P  +  ] [4P —] [◀ 3 ▶] │
 ##   │ ¡Sumate!     │ 🎮 ¿A qué jugamos?              (6 de 7 elegidos)│
-##   │ ① Abrí…      │ [Arena ✓] [Ping Pong 🔒] [Carrera ✓] [Reloj ✓] │
-##   │ ② Elegí…     │ [Esquivar ✓] [Pintar ✓] [Empujones ✓]          │
-##   │ ③ Escribí…   │                                                │
+##   │ ▣▣▣▣ QR ▣▣▣▣ │ [Arena ✓] [Ping Pong 🔒] [Carrera ✓] [Reloj ✓] │
+##   │ Escaneá…     │ [Esquivar ✓] [Pintar ✓] [Empujones ✓]          │
+##   │ o entrá a IP │                                                │
 ##   │ [K][7][Q][X] │ [⇅ Orden: lista] [Ayudas: Sí]    [▶ ¡A jugar!]  │
-##   │ Wi-Fi: IP    │ ◀▶ Moverse   OK Elegir   ◀▶ Cambiar cantidad    │
+##   │ ¿Tenés app?  │ ◀▶ Moverse   OK Elegir   ◀▶ Cambiar cantidad    │
 ##   │  (mascota)   │                                                │
 ##   └──────────────┴──────────────────────────────────────────────┘
+##
+## El QR (JoinQr) abre el control web que sirve la propia TV (ADR 0022); el
+## código y la dirección siguen a la vista para la app y para escribir a mano.
 ##
 ## Maqueta de referencia: docs/design/lobby.md.
 ##
@@ -35,11 +38,16 @@ signal bot_difficulty_requested(player_id: int, difficulty: int)
 signal helps_toggled(on: bool)
 
 const DEFAULT_PLAYERS := 2
-const JOIN_WIDTH := 508          ## Columna "¡Sumate!" (entran los pasos en letra grande).
+const JOIN_WIDTH := 508          ## Columna "¡Sumate!" (entra el QR grande y las fichas del código).
 const COLUMN_GAP := 30
-const CODE_TILE := UiTheme.CODE_TILE_SIZE
+const CODE_TILE := UiTheme.LOBBY_CODE_TILE_SIZE
 const CODE_GAP := UiTheme.CODE_TILE_GAP
-const STEP_FONT := 26
+const LOGO_HEIGHT := 150
+const MASCOT_WIDTH := 150        ## Mascota anfitriona junto al logo.
+const QR_SIZE := UiTheme.LOBBY_QR_SIZE
+const QR_CAPTION_FONT := 26
+const ADDRESS_FONT := 30
+const APP_LINE_FONT := 22
 const START_SIZE := UiTheme.START_SIZE
 ## "Orden" y "Ayudas" comparten la fila con "¡A jugar!" (START_SIZE): entre
 ## los tres llenan la columna, por eso los textos son cortos.
@@ -57,7 +65,11 @@ var _start: Button
 var _shuffle_btn: Button
 var _helps_btn: Button
 var _code_box: HBoxContainer
+var _qr: JoinQr
+var _qr_caption: Label
 var _address: Label
+var _other_ips: Label
+var _app_line: Label
 var _status: Label
 var _selection: Label
 var _bot_menu: BotMenu
@@ -73,7 +85,11 @@ func _ready() -> void:
 
 # --- API ------------------------------------------------------------------------
 
-func set_room(code: String, address: String) -> void:
+## Cómo unirse: código de sala, IPs de la TV (la más probable primero, ver
+## WebControllerServer.sort_lan_ips), puerto del control web (0 = no hay) y
+## puerto del WebSocket (para quien usa la app y escribe la dirección).
+## El QR se genera una vez acá (JoinQr) y solo cambia si cambian los datos.
+func set_join_info(code: String, ips: Array[String], http_port: int, ws_port: int) -> void:
 	for c in _code_box.get_children():
 		c.queue_free()
 	for i in code.length():
@@ -82,7 +98,20 @@ func set_room(code: String, address: String) -> void:
 		tile.color = UiTheme.code_tile_color(i)  # Naranja, verde, azul, rosa (como el celular).
 		tile.custom_minimum_size = CODE_TILE
 		_code_box.add_child(tile)
-	_address.text = address
+	var ip := ips[0] if not ips.is_empty() else ""
+	var web_ok := not ip.is_empty() and http_port > 0
+	_qr.set_text(Protocol.web_join_url(ip, http_port, code) if web_ok else "")
+	_qr_caption.text = "Escaneá con la cámara del celular" if web_ok else "Sin Wi-Fi: conectá la TV a la red"
+	_address.text = "%s:%d" % [ip, http_port] if web_ok else ("sin red" if ip.is_empty() else ip)
+	var others := ips.slice(1)
+	_other_ips.text = "Otras redes de esta TV: " + ", ".join(others) if not others.is_empty() else ""
+	_other_ips.visible = not others.is_empty()
+	_app_line.text = "¿Tenés la app? Elegí esta TV y escribí el código (IP %s · puerto %d)." % [ip if not ip.is_empty() else "—", ws_port]
+
+
+## Enlace que codifica el QR ("" si no hay control web).
+func join_url() -> String:
+	return _qr.text
 
 
 func set_status(message: String) -> void:
@@ -218,18 +247,6 @@ func _on_start_pressed() -> void:
 # --- UI -------------------------------------------------------------------------
 
 func _build() -> void:
-	# Mascota anfitriona: grande, abajo a la izquierda, asomándose desde
-	# afuera de la pantalla. Va primero para quedar detrás de los paneles
-	# (nunca tapa información).
-	var host_mascot := PlayerAvatar.new()
-	host_mascot.color = Protocol.player_color(0)
-	host_mascot.mood = PlayerAvatar.Mood.HAPPY
-	host_mascot.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
-	host_mascot.offset_left = -24
-	host_mascot.offset_right = host_mascot.offset_left + 250
-	host_mascot.offset_top = -270
-	host_mascot.offset_bottom = 60
-	add_child(host_mascot)
 	var margin := MarginContainer.new()
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	for side in ["left", "right", "bottom"]:
@@ -248,79 +265,85 @@ func _build() -> void:
 	add_child(_bot_menu)
 
 
-## Columna izquierda: cómo unirse, en tres pasos numerados.
+## Columna izquierda: cómo unirse. El héroe es el QR del control web (ADR
+## 0022): se escanea con la cámara y se juega desde el navegador, sin
+## instalar nada. Debajo, la dirección para escribirla a mano, el código de
+## sala en fichas (lo pide la página si se entró sin QR, y la app) y una
+## línea para quien tiene la app.
 func _build_join_column() -> Control:
 	var col := VBoxContainer.new()
 	col.custom_minimum_size = Vector2(JOIN_WIDTH, 0)
-	col.add_theme_constant_override("separation", 6)
+	col.add_theme_constant_override("separation", 4)
+	# Mascota anfitriona saludando junto al logo (como en la pantalla de
+	# unirse del celular): el QR de abajo necesita toda la altura.
+	var brand := HBoxContainer.new()
+	brand.custom_minimum_size = Vector2(0, LOGO_HEIGHT)
+	brand.add_theme_constant_override("separation", 0)
+	col.add_child(brand)
+	var host_mascot := PlayerAvatar.new()
+	host_mascot.color = Protocol.player_color(0)
+	host_mascot.mood = PlayerAvatar.Mood.HAPPY
+	host_mascot.custom_minimum_size = Vector2(MASCOT_WIDTH, 0)
+	brand.add_child(host_mascot)
 	var logo := UiTheme.logo_rect()
-	logo.custom_minimum_size = Vector2(0, 170)
-	col.add_child(logo)
+	logo.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	brand.add_child(logo)
 
 	var panel := PanelContainer.new()
-	panel.add_theme_stylebox_override("panel", UiTheme.panel_style(UiTheme.PAPER, UiTheme.RADIUS + 8, 18))
+	panel.add_theme_stylebox_override("panel", UiTheme.panel_style(UiTheme.PAPER, UiTheme.RADIUS + 8, 16))
 	col.add_child(panel)
 	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 10)
+	box.add_theme_constant_override("separation", 6)
 	panel.add_child(box)
 	var title := HBoxContainer.new()
 	title.add_theme_constant_override("separation", 12)
-	title.add_child(GlyphBadge.new("phone", UiTheme.BRICKS[5], UiTheme.PAPER, 66))
+	title.add_child(GlyphBadge.new("phone", UiTheme.BRICKS[5], UiTheme.PAPER, 56))
 	title.add_child(UiTheme.label("¡Sumate desde tu celular!", 34, UiTheme.INK, true, HORIZONTAL_ALIGNMENT_LEFT))
 	box.add_child(title)
-	var steps := [
-		[UiTheme.BRICKS[2], "Abrí PARTY-GAME en el celular"],
-		[UiTheme.BRICKS[5], "Elegí esta TV de la lista"],
-		[UiTheme.BRICKS[7], "Escribí tu apodo y este código:"],
-	]
-	for i in steps.size():
-		box.add_child(_step_row(i + 1, steps[i][0], steps[i][1]))
+	# QR grande, centrado: se lee desde el sillón (módulos de 10 px a 1080p).
+	_qr = JoinQr.new()
+	_qr.custom_minimum_size = Vector2(QR_SIZE, QR_SIZE)
+	_qr.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	box.add_child(_qr)
+	_qr_caption = UiTheme.label("Escaneá con la cámara del celular", QR_CAPTION_FONT, UiTheme.INK, true)
+	box.add_child(_qr_caption)
+	# "o entrá a 192.168.1.34:47770": para quien no puede escanear.
+	var address_row := HBoxContainer.new()
+	address_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	address_row.add_theme_constant_override("separation", 10)
+	box.add_child(address_row)
+	address_row.add_child(UiTheme.label("o entrá a", 24, UiTheme.INK_SOFT, true))
+	var address_box := PanelContainer.new()
+	var address_style := UiTheme.chip_style(UiTheme.PAPER_DIM, 18, 6, Color(UiTheme.INK_SOFT, 0.25))
+	address_style.shadow_size = 0
+	address_box.add_theme_stylebox_override("panel", address_style)
+	address_row.add_child(address_box)
+	_address = UiTheme.label("", ADDRESS_FONT, UiTheme.INK, true)
+	address_box.add_child(_address)
+	_other_ips = UiTheme.label("", 20, UiTheme.INK_SOFT, true)
+	_other_ips.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_other_ips.visible = false
+	box.add_child(_other_ips)
+	# Código de sala: lo pide la página (si se entró escribiendo la dirección) y la app.
+	var code_title := HBoxContainer.new()
+	code_title.alignment = BoxContainer.ALIGNMENT_CENTER
+	code_title.add_theme_constant_override("separation", 10)
+	code_title.add_child(GlyphBadge.new("", UiTheme.BRICKS[7], UiTheme.PAPER, 36, "#"))
+	code_title.add_child(UiTheme.label("Código de la sala", 24, UiTheme.INK, true))
+	box.add_child(code_title)
 	_code_box = HBoxContainer.new()
 	_code_box.alignment = BoxContainer.ALIGNMENT_CENTER
 	_code_box.add_theme_constant_override("separation", CODE_GAP)
-	_code_box.custom_minimum_size = Vector2(0, CODE_TILE.y + 6)
+	_code_box.custom_minimum_size = Vector2(0, CODE_TILE.y + 4)
 	box.add_child(_code_box)
-	var help := HBoxContainer.new()
-	help.add_theme_constant_override("separation", 12)
-	help.add_child(GlyphBadge.new("wifi", UiTheme.BRICKS[4], UiTheme.PAPER, 54))
-	var help_text := VBoxContainer.new()
-	help_text.add_theme_constant_override("separation", -6)
-	help_text.add_child(UiTheme.label("¿No aparece la TV?", 26, UiTheme.INK, true, HORIZONTAL_ALIGNMENT_LEFT))
-	help_text.add_child(UiTheme.label("Escribí esta dirección:", 24, UiTheme.INK_SOFT, true, HORIZONTAL_ALIGNMENT_LEFT))
-	help.add_child(help_text)
-	box.add_child(help)
-	var address_box := PanelContainer.new()
-	var address_style := UiTheme.chip_style(UiTheme.PAPER_DIM, 20, 10, Color(UiTheme.INK_SOFT, 0.25))
-	address_style.shadow_size = 0
-	address_box.add_theme_stylebox_override("panel", address_style)
-	box.add_child(address_box)
-	_address = UiTheme.label("", 28, UiTheme.INK, true)
-	_address.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	address_box.add_child(_address)
+	_app_line = UiTheme.label("", APP_LINE_FONT, UiTheme.INK_SOFT, true)
+	_app_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(_app_line)
 	_status = UiTheme.label("", 24, UiTheme.DANGER, true, HORIZONTAL_ALIGNMENT_LEFT)
 	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_status.visible = false
 	box.add_child(_status)
 	return col
-
-
-## Paso numerado: (①) texto, sobre una píldora clara.
-func _step_row(n: int, color: Color, text: String) -> Control:
-	var pill := PanelContainer.new()
-	var style := UiTheme.panel_style(UiTheme.PAPER_DIM, 32, 5)
-	style.content_margin_right = 12
-	style.shadow_size = 0
-	pill.add_theme_stylebox_override("panel", style)
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 12)
-	pill.add_child(row)
-	row.add_child(GlyphBadge.new("", color, UiTheme.PAPER, 54, str(n)))
-	var l := UiTheme.label(text, STEP_FONT, UiTheme.INK, true, HORIZONTAL_ALIGNMENT_LEFT)
-	l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	l.clip_text = true
-	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	row.add_child(l)
-	return pill
 
 
 ## Columna derecha: A QUÉ se juega. Con 7 juegos entra todo sin desplazar;
