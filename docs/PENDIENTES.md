@@ -14,15 +14,18 @@ Estado al **03/10/2026** (rama `claude/laughing-ramanujan-tfi3ps`, [PR #1](https
 
 El dueño quiere jugar con **una TV real e invitados con sus propios celulares**. Todo lo demás (2.5D de Empujones/Desenfunde, juegos nuevos) queda en pausa hasta después de la prueba para no meter riesgo.
 
-| Frente | Qué resuelve | Estado (03/10) |
-|---|---|---|
-| **Control web servido por la TV** | Los invitados escanean un QR en el lobby y juegan desde el navegador (Android **y iPhone**), sin instalar el APK | Agente trabajando (ADR 0021) |
-| **APK para Google TV** | Que la app aparezca en el menú de la tele, con banner; guía de instalación sin adb; `jugar_en_tv.bat` para la opción PC por HDMI | Agente trabajando |
-| **Auditoría de partida real** | Competencia completa con 4 controles por red, reconexiones, latencia, sesión larga, bug de "¡Que no te deje la cámara!"; guía y planilla para el viernes (`docs/PRUEBA_REAL.md`) | Agente trabajando |
+Todo integrado en la rama el 03/10 (suite 3261+ ok, CI verde):
 
-**Plan A para la TV:** la PC con Windows por HDMI (ya funciona: `--host --fullscreen`). **Plan B:** Google TV con el APK.
+| Frente | Qué quedó |
+|---|---|
+| **Control web servido por la TV** ([ADR 0022](adr/0022-control-web.md)) | QR en el lobby (`http://<IP>:47770/<código>`): los invitados juegan desde el navegador, Android **y iPhone**, sin instalar nada. Probado con Chromium real (`node tools/web_e2e.mjs`): 24/24. **Sin probar con un iPhone real.** |
+| **Google TV** ([ADR 0021](adr/0021-google-tv.md)) | Abre directo como TV, OpenGL ES 3 en Android, 1080p con salida 4K, banner y fila de apps (APK con Gradle en la CI, verificado con `aapt2`). **Sin probar en el Xiaomi TV Stick real.** |
+| **Instalar sin PC** | La CI publica cada APK que pasa los tests en `https://github.com/vepamusic11/PARTY-GAMES/releases/download/prueba/party-game.apk` (pre-release `prueba`, autorizado por el dueño). En la TV: app **Downloader** + código de números de go.aftvnews.com ([BUILD.md](BUILD.md)). El APK pesa ~178 MB (libs sin comprimir por Gradle). |
+| **Partida real** | `tools/playtest.gd`: 13 juegos, 2–3 personas, demora de red, TV lenta a 30 fps, sesión de 36 min con memoria plana. 3 errores de red arreglados (celular bloqueado = fantasma, reabrir la app recupera el lugar por apodo, envíos con el socket cerrándose). Guía y planilla: [PRUEBA_REAL.md](PRUEBA_REAL.md). |
 
-**Prueba real del viernes 9/10 (Google TV + QR):** guía, planilla y resultado de la auditoría en [PRUEBA_REAL.md](PRUEBA_REAL.md). Partidas de punta a punta con celulares por la red: `tools/playtest.gd`.
+**Falta (el dueño, antes del viernes):** crear el código de Downloader, instalar en el Xiaomi TV Stick, abrir y mandar una foto del lobby (que el QR tenga la IP de la Wi-Fi), probar el QR con un iPhone y un Android, y medir si el stick va fluido (memoria: ~220 MB de RAM y ~270 MB de texturas en la PC; el stick tiene 2 GB).
+
+**Plan A para la TV:** el Xiaomi TV Stick 4K (Google TV) con el APK. **Plan B:** una PC por HDMI con `jugar_en_tv.bat`.
 
 ## 1. Lo que depende del dueño
 
@@ -37,7 +40,7 @@ El dueño quiere jugar con **una TV real e invitados con sus propios celulares**
 
 ## 2. Trabajo en curso
 
-No quedó ningún agente trabajando: todo lo del 29/09 está integrado en la rama (vuelta 3 de dirección de arte y ayuda de los eliminados).
+No quedó ningún agente trabajando: todo lo del 03/10 (control web, Google TV, auditoría de partida real) está integrado en la rama.
 
 **Para la próxima sesión (sugerido, en este orden):**
 1. **Empujones en 2.5D** (receta `sumo` con sala y agua; la isla proyectada en 2D) y **Desenfunde** con fachadas 3D del pueblo; con eso no queda ningún juego plano ([ADR 0019](adr/0019-tablero-25d-horneado.md)).

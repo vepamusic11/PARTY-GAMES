@@ -107,7 +107,7 @@ Crece durante la primera competencia (cada juego nuevo hornea su tablero y sus p
 
 ## 6. Riesgos conocidos (no se arreglaron)
 
-1. **Instalación en la Google TV.** Sin PC: con *Send Files to TV* desde un celular ([BUILD.md](BUILD.md#jugar-en-una-google-tv-sin-pc)). El APK todavía puede no aparecer en la fila de apps (falta el *Gradle build*): se abre desde **Configuración → Apps → Ver todas las apps → PARTY-GAME → Abrir**. Probarlo el jueves, no el viernes.
+1. **Instalación en la Google TV.** Sin PC ni celular: con la app **Downloader** y el código de números (o la dirección fija `https://github.com/vepamusic11/PARTY-GAMES/releases/download/prueba/party-game.apk`); alternativa: *Send Files to TV* desde un celular ([BUILD.md](BUILD.md#jugar-en-una-google-tv-sin-pc)). El APK de la CI ya sale con Gradle (aparece en la fila de apps con su banner, verificado con `aapt2`), pero no se probó en un aparato real: si no apareciera, se abre desde **Configuración → Apps → Ver todas las apps → PARTY-GAME → Abrir**. Probarlo el jueves, no el viernes.
 2. **Control web (QR) con iPhone:** Safari anterior a 16.4 no tiene Wake Lock, así que la pantalla puede apagarse si no se toca. Con el arreglo de §3.1, la TV lo marca "se desconectó" a los 4 s y la mascota queda quieta; al desbloquear vuelve solo. El control web guarda el token en el navegador: recargar la página o volver a escanear el QR lo devuelve a su lugar. En iPhone no vibra.
 3. **Reabrir la app o la página: 30 s.** Quien se queda sin conexión (app cerrada, página cerrada) recupera su lugar dentro de los 30 s de reserva: el control web solo (token guardado) y la app con el **mismo apodo** (§3.2). Después de 30 s queda afuera de esa competencia y entra en la siguiente. No se alargó la reserva: el aviso de la TV muestra una cuenta de 30 s y cambiarlo era tocar diseño.
 4. **Aviso "se desconectó · N s" de un celular bloqueado.** Con la conexión abierta (§3.1) la reserva no corre, pero el aviso igual cuenta 30 s y desaparece; el jugador sigue en su lugar y vuelve solo. Solo es un texto engañoso.
@@ -124,7 +124,7 @@ TV: **Xiaomi TV Stick 4K (2.ª gen.) con Google TV** (CPU ARM chica de 4 núcleo
 
 ### 7.1 El día antes (jueves), 30–40 minutos
 
-- [ ] **Instalar el APK en la TV** siguiendo [BUILD.md → Jugar en una Google TV (sin PC)](BUILD.md#jugar-en-una-google-tv-sin-pc) (bajar el APK de GitHub en el celular, *Send Files to TV*, instalar). Confirmar que abre en el lobby y que se ve el **QR**.
+- [ ] **Instalar el APK en la TV** con **Downloader** y el código de números ([BUILD.md → Lo más fácil: instalar con la app Downloader](BUILD.md#lo-más-fácil-instalar-con-la-app-downloader-sin-celular)). Confirmar que abre en el lobby y que se ve el **QR**.
 - [ ] **Jugar una competencia completa** con tu celular (escaneando el QR) + 2 bots (lobby: OK sobre un lugar libre → "Sumar bot"). Deja en el disco de la TV los tableros 3D, las piezas y la música, así el viernes el primer ingreso a cada juego es más rápido. Anotar cuánto tarda en abrir, si algún juego da tirones o se ve con la mascota 2D, y si la TV cerró la app sola.
 - [ ] Probar el QR con **un iPhone y un Android** si los hay: escanear, unirse, bloquear la pantalla 10 s en medio de un juego y volver (tiene que volver solo).
 - [ ] Ver si aparece el **protector de pantalla** de Google TV con la app abierta 15 minutos sin tocar el control remoto. Si aparece: Configuración → Sistema → Energía y luz (o *Protector de pantalla*) → más largo o apagado.
