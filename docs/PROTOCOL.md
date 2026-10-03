@@ -33,6 +33,7 @@ Todos los layouts nuevos que se sumen antes de publicar la app van en la **misma
 - `room`: 4 caracteres de `ABCDEFGHJKLMNPQRSTUVWXYZ23456789` (sin I/O/0/1 para no confundir).
 - `name`: se limpia (sin caracteres de control) y se recorta a 16.
 - `token`: opcional. Si coincide con un jugador existente, se reconecta a su lugar.
+- **Sin token, mismo apodo que un jugador desconectado:** recupera ese lugar (mismo id, color, estilo y puntos) con un token nuevo, en el lobby o en medio de la partida. Es el caso de quien cerró la app (o se la cerró el sistema) y la volvió a abrir: el token vivía en la app. Solo vale para lugares **desconectados** dentro de su reserva; con alguien conectado con ese apodo, entra como jugador nuevo (si se puede). Sin cambio de mensajes ni de `VERSION`.
 - `color` / `style`: **opcionales**. Apariencia pedida (ver [Apariencia](#apariencia-color-y-estilo)). Si faltan o no son válidos, se usan los del lugar (1P rojo con antena…) y el `join` se acepta igual. En una reconexión se ignoran: vuelve con la apariencia que tenía.
 - Debe llegar dentro de los **5 segundos** de abierta la conexión, o se corta.
 

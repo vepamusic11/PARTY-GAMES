@@ -1958,6 +1958,95 @@ func test_silent_phone_counts_as_disconnected() -> void:
 	await _free_clients()
 
 
+## Alguien cierra la app (sin "Salir") y la vuelve a abrir: el token se
+## perdió con la app. Antes, en una sala llena recibía "room_full" (su lugar
+## seguía reservado) y en medio de la partida "game_in_progress". Ahora, con
+## el mismo apodo, recupera SU lugar desconectado (mismo id, color y
+## puntos); nunca el de alguien conectado (docs/PRUEBA_REAL.md).
+func test_reopened_app_reclaims_slot_by_name() -> void:
+	var port := TEST_PORT + 76
+	var server := HostServer.new()
+	root.add_child(server)
+	check(server.start(port, "127.0.0.1") == OK, "el servidor abre el puerto")
+	server.max_players = 2
+	var pablo := _client()
+	pablo.join("127.0.0.1", port, server.room_code, "Pablo", {"color": 4})
+	await _until(func() -> bool: return pablo.state == ControllerClient.State.JOINED)
+	var sofi := _client()
+	sofi.join("127.0.0.1", port, server.room_code, "Sofi")
+	await _until(func() -> bool: return server.get_players().size() == 2)
+	var old_token := pablo._token
+	# Pablo cierra la app: el sistema corta el socket (sin "bye").
+	pablo.queue_free()
+	await _until(func() -> bool: return not server.get_players()[0].connected)
+	check(not server.get_players()[0].connected, "Pablo queda desconectado con el lugar reservado")
+	# Abre la app de nuevo: mismo apodo, sin token, sala llena.
+	var again := _client()
+	var rejected: Array = []
+	again.rejected.connect(func(r: String) -> void: rejected.append(r))
+	again.join("127.0.0.1", port, server.room_code, "Pablo")
+	await _until(func() -> bool: return again.state == ControllerClient.State.JOINED or not rejected.is_empty())
+	check(rejected.is_empty() and again.state == ControllerClient.State.JOINED, "vuelve a entrar (no \"sala llena\": %s)" % [rejected])
+	check(again.player_info.get("id") == 1 and server.get_players().size() == 2, "recupera su lugar 1P, sin duplicarse")
+	check(int(again.player_info.get("color_index", -1)) == 4, "con su color de antes")
+	check(again._token != old_token and Protocol.is_valid_token(again._token), "con un token nuevo")
+	# Con alguien CONECTADO con ese apodo no se recupera nada: Sofi sigue jugando.
+	server.max_players = 3
+	var twin := _client()
+	twin.join("127.0.0.1", port, server.room_code, "Sofi")
+	await _until(func() -> bool: return twin.state == ControllerClient.State.JOINED)
+	check(twin.player_info.get("id") == 3 and sofi.state == ControllerClient.State.JOINED,
+		"otro \"Sofi\" entra en otro lugar; la Sofi conectada no se toca")
+	# En medio de la partida: cierra la app y vuelve con el mismo apodo; un
+	# apodo nuevo sigue sin poder entrar.
+	server.accepting_new_players = false
+	sofi.queue_free()
+	await _until(func() -> bool: return not server.get_players()[1].connected)
+	var sofi_again := _client()
+	sofi_again.join("127.0.0.1", port, server.room_code, "Sofi")
+	var late := _client()
+	var late_r: Array = []
+	late.rejected.connect(func(r: String) -> void: late_r.append(r))
+	late.join("127.0.0.1", port, server.room_code, "Tomi")
+	await _until(func() -> bool: return sofi_again.state == ControllerClient.State.JOINED and not late_r.is_empty())
+	check(sofi_again.player_info.get("id") == 2, "en la partida, Sofi vuelve a su lugar 2P")
+	check(late_r == [Protocol.R_GAME_IN_PROGRESS], "alguien nuevo sigue sin poder entrar en la partida (%s)" % [late_r])
+	server.stop()
+	server.queue_free()
+	await _free_clients()
+
+
+## El celular pide cerrar (WebSocket close) y se congela antes de terminar:
+## la TV deja de mandarle mensajes (antes: error "ready_state != STATE_OPEN"
+## en cada envío) y lo da por desconectado a los CLOSING_TIMEOUT_MS, sin
+## esperar al cierre del socket.
+func test_phone_closing_without_finishing() -> void:
+	var port := TEST_PORT + 77
+	var server := HostServer.new()
+	root.add_child(server)
+	check(server.start(port, "127.0.0.1") == OK, "el servidor abre el puerto")
+	var gone: Array = []
+	server.player_disconnected.connect(func(pid: int) -> void: gone.append(pid))
+	var c := _client()
+	c.join("127.0.0.1", port, server.room_code, "Pablo")
+	await _until(func() -> bool: return c.state == ControllerClient.State.JOINED)
+	c.process_mode = Node.PROCESS_MODE_DISABLED
+	c._ws.close(1001, "")
+	c._ws.poll()
+	await _frames(5)
+	server.set_layout(Protocol.LAYOUT_JOYSTICK)  # No debe intentar mandarlo.
+	server.send_to(1, Protocol.T_FEEDBACK, {"kind": "point"})
+	check(server._peer_key_for_player(1) == 0, "un socket cerrándose no recibe mensajes")
+	await _until(func() -> bool: return not gone.is_empty(), HostServer.CLOSING_TIMEOUT_MS + 1500)
+	check(gone == [1] and server.get_players().size() == 1, "desconectado a los %d ms, con el lugar reservado" % HostServer.CLOSING_TIMEOUT_MS)
+	c.process_mode = Node.PROCESS_MODE_INHERIT
+	await _until(func() -> bool: return c.state == ControllerClient.State.JOINED and server.get_players()[0].connected, 5000)
+	check(server.get_players()[0].connected and c.player_info.get("id") == 1, "al volver se reconecta a su lugar")
+	server.stop()
+	server.queue_free()
+	await _free_clients()
+
+
 func test_room_capacity() -> void:
 	var server := HostServer.new()
 	root.add_child(server)

@@ -160,13 +160,13 @@ func set_layout(layout: String, data: Dictionary = {}) -> void:
 func broadcast(type: String, payload: Dictionary = {}) -> void:
 	var text := Protocol.encode(type, payload)
 	for peer: _Peer in _peers.values():
-		if peer.player_id != 0 and peer.closing_since < 0:
+		if peer.player_id != 0 and peer.closing_since < 0 and peer.ws.get_ready_state() == WebSocketPeer.STATE_OPEN:
 			peer.ws.send_text(text)
 
 
 func send_to(player_id: int, type: String, payload: Dictionary = {}) -> void:
 	var peer := _peer_for_player(player_id)
-	if peer:
+	if peer and peer.ws.get_ready_state() == WebSocketPeer.STATE_OPEN:
 		peer.ws.send_text(Protocol.encode(type, payload))
 
 
@@ -295,6 +295,10 @@ func _poll_peer(key: int, now: int) -> void:
 	if state == WebSocketPeer.STATE_CLOSED:
 		_on_peer_closed(key)
 		return
+	if state == WebSocketPeer.STATE_CLOSING and peer.closing_since < 0:
+		# El celular pidió cerrar: ya no se le manda nada y, si no termina de
+		# cerrar (app congelada), se da por cerrado a los CLOSING_TIMEOUT_MS.
+		peer.closing_since = now
 	if peer.closing_since >= 0:
 		if now - peer.closing_since > CLOSING_TIMEOUT_MS:
 			_on_peer_closed(key)
@@ -379,10 +383,23 @@ func _handle_join(key: int, msg: Dictionary) -> void:
 				_send_appearance(p)  # Se reconecta con su apariencia de antes.
 				return
 
+	var player_name := Protocol.sanitize_name(msg.get("name"))
+	# ¿Cerró la app y la volvió a abrir? El token se perdió con la app, pero
+	# su lugar sigue reservado (desconectado): con el mismo apodo lo recupera
+	# (con token nuevo), en el lobby o en medio de la partida. Solo lugares
+	# DESCONECTADOS (socket cerrado o mudo, que _attach cierra): nunca le
+	# saca el lugar a alguien que está jugando.
+	var orphan := _disconnected_human_named(player_name)
+	if not orphan.is_empty():
+		orphan.token = Protocol.generate_token()
+		_attach(key, orphan)
+		player_reconnected.emit(_public_player(orphan))
+		_send_appearance_all()
+		return
+
 	if not accepting_new_players:
 		_reject(key, Protocol.R_GAME_IN_PROGRESS)
 		return
-	var player_name := Protocol.sanitize_name(msg.get("name"))
 	if player_name.is_empty():
 		_reject(key, Protocol.R_BAD_NAME)
 		return
@@ -602,6 +619,19 @@ func _send_appearance_all() -> void:
 	for p: Dictionary in _players.values():
 		if p.connected:
 			_send_appearance(p)
+
+
+## Persona desconectada (reserva de lugar en curso) con ese apodo, la de
+## lugar más bajo; {} si no hay. Ver _handle_join.
+func _disconnected_human_named(player_name: String) -> Dictionary:
+	if player_name.is_empty():
+		return {}
+	var found := {}
+	for p: Dictionary in _players.values():
+		if not p.connected and not p.get("bot", false) and p.name == player_name \
+				and (found.is_empty() or p.slot < found.slot):
+			found = p
+	return found
 
 
 func _free_slot() -> int:
