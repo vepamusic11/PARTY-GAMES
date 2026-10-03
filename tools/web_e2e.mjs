@@ -65,8 +65,7 @@ function waitLine(re, timeout = 15000, from = 0) {
     setTimeout(() => { if (waiters.includes(w)) { waiters.splice(waiters.indexOf(w), 1); reject(new Error("timeout esperando " + re)); } }, timeout);
   });
 }
-let cmdSeq = 0;
-async function tv(cmd) { const from = lines.length; appendFileSync(CMD, cmd + "\n"); cmdSeq++; await waitLine(new RegExp("^E2E done " + cmd.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "$"), 40000, from); }
+async function tv(cmd) { const from = lines.length; appendFileSync(CMD, cmd + "\n"); await waitLine(new RegExp("^E2E done " + cmd.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "$"), 40000, from); }
 async function players() { const n = lines.length; await tv("players"); const l = lines.slice(n).find((x) => x.startsWith("E2E players asked ")); return JSON.parse(l.slice("E2E players asked ".length)); }
 let mark = 0;  // Desde dónde buscar las entradas de un gesto (se marca antes de tocar).
 const setMark = () => { mark = lines.length; };
@@ -198,7 +197,6 @@ try {
   box = await padBox(pageA);
   // Dos dedos a la vez: uno en el joystick (hacia arriba) y otro en A; después un tercero en B.
   o = { x: box.x + box.width * 0.27, y: box.y + box.height * 0.5 };
-  const aPos = await pageA.evaluate(() => null); void aPos;
   setMark();
   await touch(cdpA, "touchStart", [{ x: o.x, y: o.y, id: 1 }]);
   await touch(cdpA, "touchMove", [{ x: o.x, y: o.y - 200, id: 1 }]);

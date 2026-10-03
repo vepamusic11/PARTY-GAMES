@@ -881,7 +881,8 @@
       const fy = this.toyDisc(ctx, x0, y, r, color, b.press);
       const fs = Math.round(r * (label.length <= 2 ? 0.4 : 0.26));
       this.text(ctx, label, x0, fy + 1, fs, PAPER, true);
-      if (caption) this.text(ctx, caption, x0, y0 + r * 1.44 + 16, 17, PAPER, true);
+      // En vertical B queda arriba de A: su texto va encima para que A no lo tape.
+      if (caption) this.text(ctx, caption, x0, label === "B" && this.portrait() ? y0 - r * 1.3 - 14 : y0 + r * 1.44 + 16, 17, PAPER, true);
     },
     drawSlider(ctx) {
       const margin = this.W * 0.08, y = this.H * (this.portrait() ? 0.5 : 0.46), v = this.slider.value;
