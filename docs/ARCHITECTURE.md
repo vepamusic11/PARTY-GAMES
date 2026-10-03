@@ -3,18 +3,22 @@
 ## Visión general
 
 ```
-┌──────────────┐   WebSocket (Wi-Fi local)   ┌───────────────────────────────┐
-│ Celular 1..4 │ ──── input (30/seg) ──────► │ TV · HostMain                  │
-│ ControllerMain│ ◄─── layout / fase ──────── │  ├─ HostServer  (red, validación)│
-└──────────────┘                              │  ├─ DiscoveryBeacon (anuncio UDP)│
-       ▲                                      │  ├─ Tournament (puntos, rondas)  │
-       │                                      │  ├─ BotDriver (bots en la TV)    │
-       │                                      │  ├─ Pantallas (host/ui/)         │
-       │                                      │  └─ MiniGame activo (lógica)     │
-       └──────── anuncio UDP broadcast ────── └───────────────────────────────┘
+┌────────────────────┐   WebSocket (Wi-Fi local)   ┌─────────────────────────────────────┐
+│ Celular 1..4       │ ──── input (30/seg) ──────► │ TV · HostMain                        │
+│  app ControllerMain│ ◄─── layout / fase ──────── │  ├─ HostServer  (WebSocket, validación)│
+│  o navegador (web/)│                              │  ├─ WebControllerServer (HTTP: sirve  │
+└────────────────────┘                              │  │   la página del control, ADR 0022) │
+       ▲        ▲                                   │  ├─ DiscoveryBeacon (anuncio UDP)     │
+       │        └──── GET http://IP:47770/K7QX ──── │  ├─ Tournament (puntos, rondas)       │
+       │              (QR del lobby)                │  ├─ BotDriver (bots en la TV)         │
+       │                                            │  ├─ Pantallas (host/ui/)              │
+       │                                            │  └─ MiniGame activo (lógica)          │
+       └──────── anuncio UDP broadcast ──────────── └─────────────────────────────────────┘
 ```
 
 **Un solo proyecto, dos modos.** `app/boot.gd` decide al arrancar si el dispositivo es la TV (`HostMain`) o un control (`ControllerMain`). Esto evita mantener dos apps y garantiza que ambas usen exactamente el mismo `Protocol`.
+
+**Y un tercer cliente sin instalar nada.** La TV también sirve por HTTP una página (`web/`) que es el mismo control en HTML/JS: el invitado escanea el QR del lobby con la cámara, se abre el navegador y juega. Habla el mismo protocolo por WebSocket; para la TV es un control más ([ADR 0022](adr/0022-control-web.md)).
 
 ## Conceptos clave
 
@@ -82,7 +86,7 @@ Los efectos se sintetizan al iniciar (`core/audio/sfx.gd`); los de navegación d
 Lo que no cambia no se redibuja en cada frame: el fondo y el campo de los juegos van en capas propias que se dibujan una vez, y las figuras se dibujan en lote. El celular baja a 30 fps y modo de bajo consumo mientras espera. Medición, presupuestos y detalles en [PERFORMANCE.md](PERFORMANCE.md) y [ADR 0006](adr/0006-rendimiento-capas-cacheadas.md).
 
 ### Reconexión con token
-Al unirse, cada jugador recibe un token aleatorio de 128 bits. Si el celular se bloquea o se corta el Wi-Fi, el cliente reintenta con backoff exponencial (0,5 s, 1 s, 2 s… hasta 5 s) presentando el token, y recupera **el mismo lugar, color e id**. El host reserva el lugar 30 segundos.
+Al unirse, cada jugador recibe un token aleatorio de 128 bits. Si el celular se bloquea o se corta el Wi-Fi, el cliente reintenta con backoff exponencial (0,5 s, 1 s, 2 s… hasta 5 s) presentando el token, y recupera **el mismo lugar, color e id**. El host reserva el lugar 30 segundos. El control web hace lo mismo (token en `localStorage`): incluso si se cierra la pestaña y se vuelve a abrir, entra directo a su lugar.
 
 *Ejemplo:* Sofi está jugando, le entra una llamada y la app pasa a segundo plano. Su paleta queda quieta (input neutro), y cuando vuelve a la app sigue siendo la jugadora 2 sin tocar nada.
 
@@ -100,6 +104,9 @@ host/bots/
 ├─ bot_driver.gd     BotDriver: cada paso, bot_view() -> bots -> parse_input -> on_input
 └─ bot_match.gd      BotMatch: un juego entero sin pantalla (tests y simulate.gd)
 ```
+
+### Control web (sin app)
+`WebControllerServer` (`host/network/web_server.gd`) es un servidor HTTP de ~300 líneas: solo `GET`/`HEAD` de una lista fija de archivos de `res://web/` (y la ruta del QR, `/K7QX`), con `Content-Type`, `nosniff` y una CSP que solo permite la propia TV y el WebSocket a la misma IP. Al servir `index.html` inyecta el puerto real del WebSocket. `web/controller.js` replica la lógica de `ControllerMain` y `controller/layouts/` (mismos ritmos de envío, zona muerta, reconexión y validación de lo que llega) y dibuja los controles en `canvas`. Las fuentes e imágenes van como `.bin` (Godot no las importa y viajan en el export) y, por si acaso, todo `web/` está embebido en `WebBundle` (generado). El lobby muestra el QR (`JoinQr`, generado una vez como textura) y la dirección corta. Ver [ADR 0022](adr/0022-control-web.md).
 
 ### Minijuegos como plugins
 Cada juego hereda de `MiniGame` y se registra en `MiniGameRegistry.GAMES`. El lobby, la red y los demás juegos no se modifican. Ver [ADDING_A_MINIGAME.md](ADDING_A_MINIGAME.md).
@@ -128,5 +135,5 @@ Registradas en [adr/](adr/):
 ## Límites conocidos (v0.1)
 
 - WebSocket va sobre TCP: si se pierde un paquete, los siguientes esperan. En Wi-Fi doméstico normal es imperceptible (la latencia se ve en pantalla del control). Si hiciera falta, la capa de red está aislada para migrar a UDP/ENet sin tocar los juegos.
-- Sin QR todavía (Godot no genera QR nativamente): está en el roadmap.
+- El QR del lobby abre el **control web**; la app del celular todavía no lee ese enlace (se une por la lista de TVs o la IP).
 - Sin relay en la nube: TV y celulares deben estar en la misma red.

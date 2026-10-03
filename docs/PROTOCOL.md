@@ -6,10 +6,22 @@ Fuente de verdad en código: [`core/protocol/protocol.gd`](../core/protocol/prot
 
 | | Valor |
 |---|---|
-| Juego | WebSocket, mensajes de **texto** JSON, puerto `47777` |
+| Juego | WebSocket, mensajes de **texto** JSON, puerto `47777` (si está ocupado, 47778–47781; el lobby y la página del control web saben cuál) |
 | Descubrimiento | UDP broadcast a `255.255.255.255:47778`, 1 por segundo |
+| Control web | HTTP en el puerto `47770` (si está ocupado, 47771–47774): la TV sirve la página que hace de control ([ADR 0022](adr/0022-control-web.md)) |
 | Tamaño máximo | 512 bytes por mensaje (más grande = se descarta) |
 | Campos obligatorios | `v` (versión, número) y `type` (string) en **todos** los mensajes |
+
+### Control web (HTTP + el mismo WebSocket)
+
+El control web es **otro cliente del mismo protocolo**: habla exactamente los mensajes de abajo por WebSocket. Lo único nuevo es cómo llega al celular:
+
+1. El lobby de la TV muestra un QR con `http://<IP de la TV>:47770/<CÓDIGO>` (ej. `http://192.168.1.34:47770/K7QX`, `Protocol.web_join_url`). El código va en la **ruta** (sin `?` ni `=`) para que el QR sea chico (versión 3, 29 módulos). Quien no puede escanear escribe `192.168.1.34:47770` en el navegador y pone el código a mano.
+2. El servidor HTTP de la TV (`host/network/web_server.gd`) solo responde `GET`/`HEAD` de una lista fija: `/` e `/index.html`, `/controller.css`, `/controller.js`, `/fredoka-bold.woff2`, `/fredoka-semibold.woff2`, `/logo.png`, `/icon.svg` y la ruta del QR (`/K7QX`: 4 caracteres del alfabeto del código, `Protocol.parse_web_join_path`), que sirve la misma página. Cualquier otra cosa: `404`; otro método: `405`; cabecera mayor a 4 KB: `431`; sin encabezado `Host` válido: `400`.
+3. Al servir `index.html`, la TV reemplaza `{{WS_PORT}}` por el **puerto real del WebSocket** (`<meta name="pg-ws-port">`). La página se conecta a `ws://<mismo host de la página>:<ese puerto>` y manda `join` con `room` = el código de la ruta (o el tipeado), `name`, los `color`/`style` guardados y `token` si guardó uno de esa sala en `localStorage`.
+4. La `Content-Security-Policy` de la respuesta solo permite recursos de la propia TV y `connect-src ws://<IP>:<puerto del WebSocket>`: la página no puede hablar con nada más.
+
+**Sin cambios de `VERSION`**: la TV no distingue un control web de la app.
 
 **Compatibilidad:** los tipos desconocidos se ignoran (permite agregar mensajes sin romper versiones viejas). Un cambio incompatible sube `VERSION`, y el host rechaza a los controles con otra versión con `bad_version`, que el celular muestra como "Actualizá ambas apps".
 

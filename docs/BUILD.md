@@ -5,9 +5,29 @@
 - Godot **4.4.x** estándar.
 - Plantillas de exportación: en Godot, **Editor → Administrar plantillas de exportación → Descargar**.
 
+## Jugar con los celulares de los invitados, sin instalar nada (control web)
+
+Es la forma recomendada para una juntada ([ADR 0022](adr/0022-control-web.md)): sirve para **Android y iPhone**, no hay que instalar nada y pesa 160 KB.
+
+1. Abrí la TV (PC con `-- --host`, o la Google TV con el APK) con la TV y los celulares en la **misma Wi-Fi**.
+2. En el lobby, cada invitado **escanea el QR con la cámara del celular** (la app Cámara de iPhone y de Android lo reconoce sola; si no, Google Lens). Se abre el navegador con el control y el código ya puesto: escribe su apodo y toca **¡Unirme!**.
+3. Si alguien no puede escanear: en el navegador escribe la dirección que muestra la TV debajo del QR (ej. `192.168.1.34:47770`) y después el código de 4 letras.
+4. El celular queda con su color, su mascota (se elige ahí mismo) y su 1P–4P. Si se bloquea la pantalla o se cierra la pestaña, al volver a abrirla recupera su lugar solo (30 segundos de gracia, como la app).
+
+**Firewall de Windows (si la TV es la PC):** además del WebSocket hay que dejar entrar el puerto del control web. Ver la tabla de puertos más abajo; en PowerShell como administrador:
+```powershell
+New-NetFirewallRule -DisplayName "PARTY-GAME TV (web)" -Direction Inbound -Protocol TCP -LocalPort 47770-47774 -Action Allow -Profile Private
+```
+
+**Si el navegador dice que no puede conectar:** misma Wi-Fi (no la de invitados), red de la PC como *privada*, y probá abrir `http://<IP>:47770/` desde el celular. Si la página carga pero dice "No encontramos la TV", lo bloqueado es el puerto del WebSocket (47777–47781). Una VPN activa en el celular suele cortar la red local.
+
+**Para probarlo en la PC sin celular:** abrí la TV y entrá desde el navegador de la PC a la dirección que muestra el lobby (o `http://127.0.0.1:47770/`). Con las herramientas de desarrollador en modo celular (Ctrl+Shift+M en Chrome) se ve como en un teléfono. La prueba automática con navegadores reales es `node tools/web_e2e.mjs --out=/tmp/e2e` (necesita Playwright con Chromium, `xvfb-run` y `godot` en el PATH).
+
+Si editás algo en `web/`, regenerá la copia embebida que viaja en el APK: `godot --headless --path . -s res://tools/build_web_bundle.gd` (el test `test_web_bundle_in_sync` lo recuerda).
+
 ## Probar con tu celular Android (APK de prueba)
 
-No hace falta Android Studio: GitHub arma el APK solo. La **TV es tu PC con Windows** y el **control es tu celular**, los dos en la **misma Wi-Fi**.
+No hace falta Android Studio: GitHub arma el APK solo. La **TV es tu PC con Windows** y el **control es tu celular**, los dos en la **misma Wi-Fi**. (Alternativa sin instalar nada: el control web de arriba.)
 
 ### 1. Bajar el APK
 
@@ -34,7 +54,8 @@ Qué usa el juego (por si configurás el firewall a mano):
 
 | Qué | Protocolo y puerto | Sentido en la PC |
 |---|---|---|
-| Conexión del celular a la TV | TCP **47777** (si está ocupado, 47778–47781; el lobby muestra el real) | Entrante: hay que permitirlo |
+| Conexión del celular a la TV (app y control web) | TCP **47777** (si está ocupado, 47778–47781; el lobby muestra el real) | Entrante: hay que permitirlo |
+| Página del control web (QR del lobby) | TCP **47770** (si está ocupado, 47771–47774; el QR y la dirección del lobby usan el real) | Entrante: hay que permitirlo |
 | Anuncio "acá hay una TV" | UDP **47778**, broadcast | Saliente: Windows lo deja salir por defecto |
 
 ### 4. Conectar el celular
@@ -51,6 +72,7 @@ Qué usa el juego (por si configurás el firewall a mano):
 3. Si con la IP escrita tampoco conecta, es el firewall: **Panel de control → Firewall de Windows Defender → Permitir una aplicación a través del firewall → Cambiar configuración** → buscá todas las líneas **Godot** y marcá **Privada**. (Si alguna vez tocaste *Cancelar* en el aviso, Windows guardó una regla de **bloqueo** para Godot, y el bloqueo gana sobre cualquier regla que permita el puerto.) Alternativa en PowerShell como administrador:
    ```powershell
    New-NetFirewallRule -DisplayName "PARTY-GAME TV" -Direction Inbound -Protocol TCP -LocalPort 47777-47781 -Action Allow -Profile Private
+   New-NetFirewallRule -DisplayName "PARTY-GAME TV (web)" -Direction Inbound -Protocol TCP -LocalPort 47770-47774 -Action Allow -Profile Private
    ```
 4. Si la IP escrita conecta pero la lista sigue vacía: la red filtra el broadcast (Wi-Fi de invitados, "aislamiento de clientes/AP isolation" del router, algunas redes de oficina). Jugá con la IP escrita (hay que volver a escribirla cada vez que abrís la app).
 5. PC por cable y celular por Wi-Fi funciona si los dos salen del **mismo router**. Una VPN activa en la PC o en el celular suele cortar la red local: desactivala para jugar.
@@ -110,6 +132,6 @@ Requiere una Mac con Xcode y cuenta de Apple Developer.
 ## Prueba de red mínima (checklist)
 
 1. TV y celulares en la **misma Wi-Fi** (no la de invitados: suele aislar dispositivos).
-2. La TV aparece sola en la lista del celular. Si no aparece, escribir la IP que muestra la TV.
+2. Un celular escanea el QR del lobby y la página del control carga; si no carga, escribir `http://<IP>:47770/` a mano. Con la app, la TV aparece sola en la lista; si no aparece, escribir la IP que muestra la TV.
 3. Mirar la latencia arriba a la derecha del control: **< 60 ms excelente, 60–100 ms aceptable, > 100 ms revisar la red**.
 4. Bloquear el celular 5 segundos y volver: debe reconectarse solo como el mismo jugador.
