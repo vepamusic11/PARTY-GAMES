@@ -35,6 +35,8 @@ extends SceneTree
 ##   --json=/tmp/x.json  además guarda los resultados
 ##   --slow-ms=40      TV lenta: cada cuadro tarda además estos ms (OS.delay_msec)
 ##   --max-fps=20      TV lenta: tope de cuadros por segundo (Engine.max_fps)
+##   --lobby=60        segundos en el lobby antes de arrancar (como la gente
+##                     eligiendo mascota): mide el horneado del primer arranque
 ##
 ## La entrada viaja SIEMPRE por la red. Los celulares "dirigidos" deciden qué
 ## apretar con el mismo cerebro que los bots de la TV (mirando el juego, como
@@ -64,6 +66,7 @@ var _json_path := ""
 var _humans := -1
 var _bots := 0
 var _slow_ms := 0
+var _lobby_wait := 0.0
 
 var _t0 := 0
 var _screen := ""
@@ -115,6 +118,8 @@ func _run() -> void:
 			_humans = clampi(int(arg.trim_prefix("--humans=")), 1, 4)
 		elif arg.begins_with("--bots="):
 			_bots = clampi(int(arg.trim_prefix("--bots=")), 0, 3)
+		elif arg.begins_with("--lobby="):
+			_lobby_wait = maxf(0.0, float(arg.trim_prefix("--lobby=")))
 		elif arg.begins_with("--slow-ms="):
 			_slow_ms = maxi(0, int(arg.trim_prefix("--slow-ms=")))
 		elif arg.begins_with("--max-fps="):
@@ -201,6 +206,10 @@ func _setup_room(humans: int, bots: int, join_port: int) -> void:
 	for p in players:
 		names.append("%s%s(c%d,e%d)" % [p.name, " [bot] " if p.bot else " ", p.color_index, p.style])
 	_log("En la sala: %s" % ", ".join(names))
+	if _lobby_wait > 0.0:
+		await _seconds(_lobby_wait)
+		if _boot_ready_sec < 0.0:
+			_note("a los %.0f s en el lobby todavía se horneaba (%d poses pendientes)" % [_lobby_wait, MascotAtlas.pending_count()])
 	if players.size() != humans + bots:
 		_problem("se esperaban %d jugadores y hay %d" % [humans + bots, players.size()])
 	for ph in _phones:
@@ -272,6 +281,8 @@ func _play_tournament(chaos: bool = false) -> void:
 		_problem("la competencia no llegó al podio en 45 min (%s)" % _screen)
 		return
 	_log("Podio: %s" % _standings_text())
+	if _scenario != "long":
+		_sample_memory("podio")
 	await _check_standings(true)
 	if chaos:
 		await _lock_phone(_phones[0], true, "en el podio")
@@ -553,10 +564,12 @@ func _sample_memory(label: String) -> void:
 		"orphans": int(Performance.get_monitor(Performance.OBJECT_ORPHAN_NODE_COUNT)),
 		"resources": int(Performance.get_monitor(Performance.OBJECT_RESOURCE_COUNT)),
 		"texture_mb": Performance.get_monitor(Performance.RENDER_TEXTURE_MEM_USED) / 1048576.0,
+		"mascots_mb": MascotAtlas.memory_bytes() / 1048576.0,
+		"boards_mb": Board25DBaker.memory_bytes() / 1048576.0,
 	}
 	_mem.append(m)
-	_log("Memoria (%s): %.1f MB estática, %d objetos, %d nodos, %d huérfanos, %d recursos, %.1f MB texturas" % [
-		label, m.static_mb, m.objects, m.nodes, m.orphans, m.resources, m.texture_mb])
+	_log("Memoria (%s): %.1f MB estática, %d objetos, %d nodos, %d huérfanos, %d recursos, %.1f MB texturas (mascotas %.1f, tableros %.1f)" % [
+		label, m.static_mb, m.objects, m.nodes, m.orphans, m.resources, m.texture_mb, m.mascots_mb, m.boards_mb])
 
 
 # --- Monitor por cuadro -------------------------------------------------------------
