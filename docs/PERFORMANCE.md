@@ -23,6 +23,8 @@ xvfb-run -a -s "-screen 0 1920x1080x24" godot --path . --rendering-driver opengl
 
 Por defecto el benchmark agrega `Sfx` y `Music` como la TV: cada escena cambia de pista (fundido cruzado durante el calentamiento) y un `go` por segundo dispara el *ducking*. El presupuesto del audio es **≤ 0,3 ms de p95 de Scripts** frente a `--no-audio` ([ADR 0015](adr/0015-musica-y-mezcla.md)); el OGG se decodifica en el hilo de audio y no cuenta en Scripts.
 
+**Control web** ([ADR 0022](adr/0022-control-web.md)): el servidor HTTP cuesta un `is_connection_available()` por cuadro cuando nadie está cargando la página (medido: ~0,5 µs por `poll()` sin conexiones) y lee/escribe de a 16 KB por conexión y cuadro mientras sirve (160 KB en total por celular, una sola vez). El QR del lobby es una textura generada una vez por enlace (~4 ms, incluida la textura) y se dibuja con un solo `draw_texture_rect`.
+
 **Ayuda de los eliminados** (ADR 0020): sin ayudas en curso no cuesta nada (la capa `TvHelpOverlay` no dibuja ni redibuja). Peor caso medido (el 4P ayudando sin parar, 400 frames, xvfb): Esquivar p95 de Scripts 2,4 → 6,7 ms y 33 → 48 draw calls; Empujones 3,3 → 7,9 ms y 90 → 101 draw calls (burbuja y salvavidas en un `ShapeBatch`: un draw call cada uno). En una partida real las ayudas son pocas (2 por eliminado, 3 s cada una).
 
 Escenas: `lobby` (4 jugadores), `game_intro` ("¿Cómo se juega?"), `round_summary`, `final` (podio con confeti), **cada juego del registry** con su máximo de jugadores (hasta 4) e inputs que cambian todo el tiempo (si un juego termina antes de juntar los frames, se reinicia), y el celular a 2340×1080: `ctrl_join`, `ctrl_wait` y `ctrl_joy`. Un juego nuevo en el registry entra solo. Los juegos que cambian mucho con el tiempo se miden además adelantados (`LATE_SCENES` en el script): `sumo_tarde` es Empujones a los 20 s, con la isla achicándose (con `--only=sumo` se miden las dos).
@@ -506,3 +508,16 @@ Reglas prácticas al dibujar:
 - **Mascotas como nodos**: en los juegos las mascotas se redibujan en cada frame aunque solo cambie su posición. Ahora que son sprites horneados (ADR 0012) cada una cuesta poco, pero como nodos hijos con `position` no haría falta ni eso.
 - **Horneado en la TV real:** medir en una Google TV cuánto tarda el render de 3 mascotas por cuadro (`Mascot3DBaker.POSES_PER_FRAME`) y ajustar ese número (1 si traba, más si sobra).
 - Medir en el aparato real (Google TV) con el profiler remoto de Godot y el monitor de `Performance`, y ajustar estos presupuestos con esos números.
+
+## Google TV de gama baja (Xiaomi TV Stick 4K, ~2 GB de RAM)
+
+Decisiones en [ADR 0021](adr/0021-google-tv.md): en Android se usa el renderer **Compatibility** (OpenGL ES 3, el mismo de las capturas y el benchmark de la CI) y en la TV la escena se dibuja **a 1080p como máximo** aunque la salida sea 4K.
+
+Memoria estimada de la app en la TV (sin medir todavía en el aparato): atlas de mascotas 25–33 MB (tope `MascotAtlas.BUDGET_BYTES` = 40 MB) + tableros 2.5D horneados 6–8 MB + música + lo que ocupe el motor (sin medir). Google TV deja a una app en primer plano unos cientos de MB en un aparato de 2 GB: hay margen, pero conviene confirmarlo con `adb shell dumpsys meminfo com.iogames.partygame` o el monitor de `Performance` del depurador remoto.
+
+Ideas fáciles si hiciera falta bajarla en la TV (no implementadas):
+
+- `MascotAtlas.BUDGET_BYTES` más bajo en Android TV (p. ej. 24 MB): suelta antes las hojas que no se dibujan; solo cuesta re-hornear al volver a un juego.
+- Hojas del atlas en RGBA4444 o sin la escala 3,4 (mascota anfitriona del lobby) en la TV.
+- Liberar los tableros 2.5D horneados al salir de cada juego (se vuelven a hornear al entrar).
+- Música: el caché de pistas en disco ya existe (`MusicCache`); verificar que en memoria quede solo la pista que suena.

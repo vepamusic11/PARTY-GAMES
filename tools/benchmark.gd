@@ -385,7 +385,7 @@ func _make_lobby() -> Node:
 	var lobby := LobbyScreen.new()
 	tv.add_child(lobby)
 	lobby._stepper.set_value(4)
-	lobby.set_room("K7QX", "192.168.0.10  ·  puerto %d" % Protocol.WS_PORT)
+	lobby.set_join_info("K7QX", ["192.168.0.10"] as Array[String], Protocol.HTTP_PORT, Protocol.WS_PORT)
 	lobby.refresh(_fake_players(4))
 	lobby.focus_default()
 	return tv

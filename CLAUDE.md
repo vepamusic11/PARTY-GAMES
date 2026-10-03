@@ -23,6 +23,7 @@ Siempre correr los tests antes de dar un cambio por terminado.
 
 - `core/protocol/protocol.gd` — **contrato único** de mensajes. Cualquier cambio: actualizar `docs/PROTOCOL.md` y subir `VERSION` si rompe compatibilidad.
 - `host/network/host_server.gd` — servidor WebSocket, autoritativo. Valida todo lo que entra.
+- `host/network/web_server.gd` + `web/` — control web (ADR 0022): la TV sirve por HTTP (puerto 47770) una página que habla el mismo protocolo; el lobby muestra el QR. Tras tocar `web/`, regenerar `host/network/web_bundle.gd` con `tools/build_web_bundle.gd` (un test lo exige). Prueba con navegadores reales: `node tools/web_e2e.mjs --out=/tmp/e2e`.
 - `host/host_main.gd` — orquesta las fases (lobby → playing → results → …). No tiene lógica de puntos ni UI propia.
 - `host/tournament/tournament.gd` — modo competencia: rondas y puntos por posición (lógica pura, testeada).
 - `host/ui/` — pantallas (lobby, resumen de ronda, podio, pausa) y componentes de la TV.

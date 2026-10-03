@@ -14,6 +14,12 @@ extends SceneTree
 ##   icon_monochrome_432.png      ícono temático (Android 13+): solo las letras
 ##                                claras del logo, en blanco; el sistema lo tiñe.
 ##                                Sin él, Android mostraría el robot de Godot.
+##   banner_320x180.png           banner de Android TV / Google TV: la tarjeta
+##                                apaisada de la fila de apps. Sin él, el
+##                                launcher de la TV muestra el ícono chico o
+##                                directamente no lista la app. Lo copia al
+##                                proyecto Gradle el plugin `addons/android_tv/`
+##                                al exportar (ver docs/BUILD.md).
 ##
 ## Concepto — *ícono adaptable*: desde Android 8 el lanzador recorta el ícono
 ## con la forma que elija el fabricante (círculo, gota, cuadrado). Del lienzo
@@ -30,6 +36,8 @@ const VISIBLE_DIAMETER := 288.0  ## Círculo visible con la máscara más chica 
 const LEGACY_SIZE := 192
 const LEGACY_RADIUS := 36.0    ## Esquinas redondeadas del ícono clásico.
 const LEGACY_LOGO_WIDTH := 176
+const BANNER_SIZE := Vector2i(320, 180)  ## xhdpi, lo que pide Android TV.
+const BANNER_LOGO_WIDTH := 272          ## Deja ~24 px de aire a los costados.
 
 
 func _initialize() -> void:
@@ -55,12 +63,18 @@ func _initialize() -> void:
 	_paste_centered(legacy, logo, LEGACY_LOGO_WIDTH)
 	_round_corners(legacy, LEGACY_RADIUS)
 
+	# Banner: el mismo cielo, apaisado, con el logo grande al centro. La TV lo
+	# muestra con esquinas redondeadas propias; no hace falta recortarlo.
+	var banner := _sky_rect(BANNER_SIZE)
+	_paste_centered(banner, logo, BANNER_LOGO_WIDTH)
+
 	var ok := true
 	for item: Array in [
 		["icon_192.png", legacy],
 		["icon_foreground_432.png", foreground],
 		["icon_background_432.png", background],
 		["icon_monochrome_432.png", monochrome],
+		["banner_320x180.png", banner],
 	]:
 		var path := OUT_DIR.path_join(item[0])
 		var err := (item[1] as Image).save_png(path)
@@ -71,10 +85,14 @@ func _initialize() -> void:
 
 ## Degradé vertical del cielo del juego (mismos tokens que el fondo de la TV).
 static func _sky(size: int) -> Image:
-	var img := Image.create_empty(size, size, false, Image.FORMAT_RGBA8)
-	for y in size:
-		var c := UiTheme.BG_SKY_TOP.lerp(UiTheme.BG_SKY_MID, float(y) / float(size - 1))
-		img.fill_rect(Rect2i(0, y, size, 1), c)
+	return _sky_rect(Vector2i(size, size))
+
+
+static func _sky_rect(size: Vector2i) -> Image:
+	var img := Image.create_empty(size.x, size.y, false, Image.FORMAT_RGBA8)
+	for y in size.y:
+		var c := UiTheme.BG_SKY_TOP.lerp(UiTheme.BG_SKY_MID, float(y) / float(size.y - 1))
+		img.fill_rect(Rect2i(0, y, size.x, 1), c)
 	return img
 
 

@@ -18,6 +18,8 @@ description: Sistema visual y reglas de UI de Party Games (TV y celular). Usar a
 | `host/ui/widgets/` | Solo TV: `GameCard`, `Stepper`, `SeatCard`, `ScorePedestal`, `ScoreBar` (marcador del resumen con el arte de los juegos), `NamePlate` (chapita [1P | nombre]), `PointsBadge` (placa "+70"), `Confetti`, `KeyHint`, `Transition` (barrido de bloques entre pantallas) |
 | `host/ui/widgets/tv_*.gd` | Pantallas: `TvButton` (botón de juguete con bisel e ícono), `TvLogoTitle` (título "de logo"), `TvReadyCard` ("¡Listo!" de la intro), `TvToasts` (avisos se sumó/se desconectó/volvió), `TvDeviceCard` (selector TV/celular) |
 | `host/ui/*_screen.gd` | Pantallas: lobby, intro "¿Cómo se juega?", resumen de ronda, podio, pausa |
+| `host/ui/widgets/join_qr.gd` | QR del control web en el lobby (ADR 0022): se genera una vez como textura; tamaño en `UiTheme.LOBBY_QR_SIZE` |
+| `web/controller.css`, `web/controller.js` | Control web (navegador del celular): mismos tokens que `UiTheme` copiados en `:root` del CSS y en el JS (si cambiás un color acá, cambialo allá); botones de juguete en CSS y controles en `canvas`. Tras tocar `web/`, regenerar `host/network/web_bundle.gd` |
 
 ## Reglas
 
