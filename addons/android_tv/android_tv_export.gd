@@ -46,8 +46,24 @@ func _get_name() -> String:
 	return "PartyGameAndroidTv"
 
 
+## Solo con Gradle: Godot rechaza exportar a Android sin *Use Gradle Build* si
+## hay algún plugin que diga soportar la plataforma ("Use Gradle Build must be
+## enabled to use the plugins"). `get_option()` todavía no vale acá, así que
+## se lee el preset de Android de `export_presets.cfg`.
 func _supports_platform(platform: EditorExportPlatform) -> bool:
-	return platform != null and platform.get_os_name() == "Android"
+	return platform != null and platform.get_os_name() == "Android" and _android_preset_uses_gradle()
+
+
+static func _android_preset_uses_gradle(presets_path: String = "res://export_presets.cfg") -> bool:
+	var cfg := ConfigFile.new()
+	if cfg.load(presets_path) != OK:
+		return false
+	for section in cfg.get_sections():
+		if section.ends_with(".options") or str(cfg.get_value(section, "platform", "")) != "Android":
+			continue
+		if bool(cfg.get_value(section + ".options", "gradle_build/use_gradle_build", false)):
+			return true
+	return false
 
 
 func _get_android_manifest_element_contents(_platform: EditorExportPlatform, _debug: bool) -> String:
