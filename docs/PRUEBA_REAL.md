@@ -74,37 +74,37 @@ PLACEHOLDER_LONGTEXT
 
 ## 6. Riesgos conocidos (no se arreglaron)
 
-1. **Instalación y arranque en la Google TV.** El APK todavía no aparece en el inicio de Google TV (falta el *Gradle build* para "Show In Android TV", ver [BUILD.md](BUILD.md)). Hay que instalarlo **antes** (con `adb` desde una PC, o con una app tipo *Send files to TV* / *Downloader*) y abrirlo desde **Configuración → Apps → Ver todas las apps → PARTY-GAME → Abrir**. Probarlo el jueves, no el viernes.
-2. **Celulares: hace falta instalar el APK en cada uno** (Android, "orígenes desconocidos"). Un invitado con **iPhone no puede jugar** hasta que esté el control web que está haciendo otro agente (con QR). Si llega a estar para el viernes, conviene probarlo antes: tiene que mandar un `ping` por segundo (§3.1; si no, la TV lo marca "desconectado" a los 4 s).
-3. **Volver a abrir la app tiene 30 s.** Si alguien cierra la app sin querer en medio de la partida, recupera su lugar entrando con el **mismo apodo** dentro de los 30 s de reserva (la app recuerda el apodo; la TV aparece sola en la lista; falta escribir el código). Después de 30 s queda afuera de esa competencia y entra en la siguiente. No se alargó la reserva: el aviso de la TV muestra una cuenta de 30 s y cambiarlo era tocar diseño.
+1. **Instalación en la Google TV.** Sin PC: con *Send Files to TV* desde un celular ([BUILD.md](BUILD.md#jugar-en-una-google-tv-sin-pc)). El APK todavía puede no aparecer en la fila de apps (falta el *Gradle build*): se abre desde **Configuración → Apps → Ver todas las apps → PARTY-GAME → Abrir**. Probarlo el jueves, no el viernes.
+2. **Control web (QR) con iPhone:** Safari anterior a 16.4 no tiene Wake Lock, así que la pantalla puede apagarse si no se toca. Con el arreglo de §3.1, la TV lo marca "se desconectó" a los 4 s y la mascota queda quieta; al desbloquear vuelve solo. El control web guarda el token en el navegador: recargar la página o volver a escanear el QR lo devuelve a su lugar. En iPhone no vibra.
+3. **Reabrir la app o la página: 30 s.** Quien se queda sin conexión (app cerrada, página cerrada) recupera su lugar dentro de los 30 s de reserva: el control web solo (token guardado) y la app con el **mismo apodo** (§3.2). Después de 30 s queda afuera de esa competencia y entra en la siguiente. No se alargó la reserva: el aviso de la TV muestra una cuenta de 30 s y cambiarlo era tocar diseño.
 4. **Aviso "se desconectó · N s" de un celular bloqueado.** Con la conexión abierta (§3.1) la reserva no corre, pero el aviso igual cuenta 30 s y desaparece; el jugador sigue en su lugar y vuelve solo. Solo es un texto engañoso.
-5. **Horneado de las mascotas 3D en cada arranque.** Las mascotas se hornean en memoria cada vez que se abre la app (tableros, piezas y música quedan en disco). En la TV lenta, los primeros juegos pueden arrancar con la mascota 2D unos segundos (§4). Se ve distinto pero no se traba. Medir en el Xiaomi: si molesta, dejar la app abierta en el lobby un par de minutos antes de empezar.
-6. **Memoria.** En la sesión larga (con render por software) se estabiliza en ~220 MB de RAM y ~270 MB de texturas después de la primera competencia (§5). No crece, pero para un aparato de 2 GB es bastante: mirar si la TV cierra la app (vuelve al inicio de Google TV) después de varias competencias.
-7. **Protector de pantalla.** Durante la partida nadie toca el control remoto. La app pide pantalla encendida (`keep_screen_on`, default de Godot), pero no se probó en el Xiaomi: si aparece el protector, desactivarlo en Configuración → Sistema → Energía y luz.
+5. **Horneado de las mascotas 3D en cada arranque.** Las mascotas se hornean en memoria cada vez que se abre la app (tableros, piezas y música quedan en disco). En una TV lenta los primeros juegos pueden arrancar con la mascota 2D unos segundos (§4). Se ve distinto pero no se traba. Dejar la app abierta en el lobby 1–2 minutos antes de empezar.
+6. **Memoria.** En la sesión larga (render por software) se estabiliza en ~220 MB de RAM y ~270 MB de texturas después de la primera competencia (§5). No crece, pero para un aparato de ~2 GB es bastante: mirar si la TV cierra la app sola (vuelve al inicio de Google TV) después de varias competencias. Con OpenGL ES en la Mali puede ser distinto: medirlo ahí.
+7. **Pestaña en segundo plano más de 5 min** (control web): Chrome espacia los timers a 1 por minuto, la TV lo marca desconectado y vuelve al abrir la pestaña. Es lo esperado: nadie juega con la pestaña escondida.
 8. **Juegos que con jugadores perdidos terminan enseguida.** En ¡Que no te deje la cámara! quien no avanza hacia la derecha queda afuera en ~2 s, y con 2 jugadores el juego termina en ~5 s. Es la regla, pero si la gente no entiende la intro dura un suspiro: anotarlo. Empujones de a 2 también puede durar 5 s o 65 s.
-9. **Mismo apodo.** Dos personas pueden llamarse igual; se distinguen por 1P–4P y el color. Si uno de los dos se desconecta y un tercero entra con ese apodo, se queda con su lugar (§3.2). En una fiesta no debería pasar.
-10. **No probado con aparatos reales:** Wi-Fi real (2,4 GHz con microondas, router con "aislamiento de clientes"), descubrimiento UDP en el Xiaomi, multitáctil del joystick A/B, sonido/vibración, 60 fps reales en la GPU Mali.
+9. **Mismo apodo.** Dos personas pueden llamarse igual; se distinguen por 1P–4P y el color. Si uno de los dos se desconecta y un tercero entra con ese apodo desde la **app** (sin token), se queda con su lugar (§3.2). En una fiesta no debería pasar.
+10. **No probado con aparatos reales:** Wi-Fi real (2,4 GHz, router con "aislamiento de clientes"), multitáctil en celulares reales, sonido y vibración, 60 fps reales en la GPU Mali, tiempo real de horneado en el Xiaomi.
 
 ## 7. Guía para el viernes (Google TV, sin PC, 2–3 personas)
 
-TV: **Xiaomi TV Stick 4K (2.ª gen.) con Google TV**: CPU ARM chica de 4 núcleos, GPU Mali de gama baja, ~2 GB de RAM. Corre la app como TV (host): sin pantalla táctil, `app/boot.gd` arranca sola en modo TV. Se maneja con el control remoto (flechas, OK, Atrás). Celulares: la app instalada en cada uno.
+TV: **Xiaomi TV Stick 4K (2.ª gen.) con Google TV** (CPU ARM chica de 4 núcleos, GPU Mali de gama baja, ~2 GB de RAM). Corre la app como TV y abre directo en el lobby. Se maneja con el control remoto: flechas, OK y Atrás (pausa). **Invitados: escanean el QR del lobby con la cámara** y juegan desde el navegador (Android o iPhone, sin instalar nada). Si alguien ya tiene la app Android, también sirve.
 
-### 7.1 El día antes (jueves), 30 minutos
+### 7.1 El día antes (jueves), 30–40 minutos
 
-- [ ] **Instalar el APK en la TV** y confirmar que abre desde **Configuración → Apps → Ver todas las apps → PARTY-GAME → Abrir** (todavía no aparece en el inicio de Google TV, ver riesgo 1). Instalar la **misma versión** en la TV y en todos los celulares: con versiones distintas el celular muestra "Actualizá las dos".
-- [ ] **Jugar una competencia completa con bots en la TV** (lobby: OK sobre un lugar libre → "Sumar bot", con un celular propio para arrancar). Deja guardados en el disco los tableros 3D, las piezas y la música (`user://board25d/`, `props3d/`, `music_cache/`): el viernes el primer ingreso a cada juego es más rápido. Anotar cuánto tarda en abrir y si algún juego se ve con la mascota 2D o da tirones.
-- [ ] **Instalar la app en los celulares de los invitados** (si se puede, antes): Android → permitir "orígenes desconocidos" ([BUILD.md](BUILD.md)). Con iPhone no se puede hasta que esté el control web.
-- [ ] Ver si aparece el **protector de pantalla** con la app abierta 15 minutos sin tocar el control remoto. Si aparece: Configuración → Sistema → Energía y luz → protector de pantalla más largo o apagado.
+- [ ] **Instalar el APK en la TV** siguiendo [BUILD.md → Jugar en una Google TV (sin PC)](BUILD.md#jugar-en-una-google-tv-sin-pc) (bajar el APK de GitHub en el celular, *Send Files to TV*, instalar). Confirmar que abre en el lobby y que se ve el **QR**.
+- [ ] **Jugar una competencia completa** con tu celular (escaneando el QR) + 2 bots (lobby: OK sobre un lugar libre → "Sumar bot"). Deja en el disco de la TV los tableros 3D, las piezas y la música, así el viernes el primer ingreso a cada juego es más rápido. Anotar cuánto tarda en abrir, si algún juego da tirones o se ve con la mascota 2D, y si la TV cerró la app sola.
+- [ ] Probar el QR con **un iPhone y un Android** si los hay: escanear, unirse, bloquear la pantalla 10 s en medio de un juego y volver (tiene que volver solo).
+- [ ] Ver si aparece el **protector de pantalla** de Google TV con la app abierta 15 minutos sin tocar el control remoto. Si aparece: Configuración → Sistema → Energía y luz (o *Protector de pantalla*) → más largo o apagado.
 
 ### 7.2 Antes de empezar (viernes, 10 minutos)
 
-- [ ] **Misma Wi-Fi** en la TV y en todos los celulares, la **principal** (no la de invitados: suele tener "aislamiento de clientes" y los celulares no ven la TV). Si el router tiene 2,4 y 5 GHz con nombres distintos, todos en la misma.
+- [ ] **Misma Wi-Fi** en la TV y en todos los celulares, la **principal** (no la de invitados: suele tener "aislamiento de clientes" y el QR no abre). Si el router separa 2,4 y 5 GHz con nombres distintos, todos en la misma. Pasarles la clave de la Wi-Fi antes del QR.
 - [ ] **Firewall:** sin PC no hay nada que abrir. Solo el router: sin "aislamiento AP/de clientes".
-- [ ] **Abrir la app en la TV y dejarla 1–2 minutos en el lobby** mientras se unen: hornea las mascotas (eso se repite en cada arranque).
-- [ ] **Sonido:** volumen de la TV a mitad; la música y los efectos se apagan desde la pausa (Atrás → "Sonido" y los volúmenes de música y efectos). En los celulares, sonido y vibración prendidos (engranaje).
-- [ ] **Batería:** celulares con más del 50 % (la app deja la pantalla prendida) y un cargador a mano.
-- [ ] **Anotar la IP de la TV** que aparece en el lobby (debajo del código): si un celular no encuentra la TV en la lista, se escribe a mano.
-- [ ] Contarles **tres cosas**: el código de 4 fichas está en la TV; "Salir" se mantiene apretado (el Atrás del celular no saca del juego); si se cierra la app sin querer, abrirla y entrar **con el mismo apodo enseguida** (menos de 30 s).
+- [ ] **Abrir la app en la TV y dejarla 1–2 minutos en el lobby** mientras se unen: hornea las mascotas (se repite en cada arranque).
+- [ ] **Sonido:** volumen de la TV a mitad; música y efectos se ajustan desde la pausa (Atrás → "Sonido" y los volúmenes). En los celulares, el sonido del control web se prende en su pantalla; en iPhone no vibra.
+- [ ] **Batería:** celulares con más del 50 % (el control deja la pantalla prendida) y un cargador a mano.
+- [ ] **Tener a mano la dirección corta** que muestra el lobby debajo del QR (ej. `192.168.1.34:47770`) por si a alguien no le lee el QR: se escribe en el navegador.
+- [ ] Contarles **tres cosas**: se escanea el QR y se pone un apodo; para irse se **mantiene** apretado "Salir"; si se cierra la página sin querer, volver a escanear el QR (vuelve a su lugar con sus puntos si pasaron menos de 30 s).
 
 ### 7.3 Orden sugerido (~20 minutos, 2–3 personas)
 
@@ -120,18 +120,18 @@ Con 2 personas, en la competencia 2 se puede sumar **1 bot Normal** (lobby: OK s
 
 | Pasa | Qué hacer |
 |---|---|
-| El celular no encuentra la TV | Misma Wi-Fi (no la de invitados) → escribir la IP del lobby a mano |
-| "¡La sala está llena!" | En la TV, subir "¿Cuántos juegan?"; si era alguien que cerró la app, que entre **con el mismo apodo** |
+| El QR no abre la página | Misma Wi-Fi (no la de invitados); escribir la dirección corta del lobby en el navegador |
+| "¡La sala está llena!" | En la TV, subir "¿Cuántos juegan?" (si hay bots, la persona reemplaza a uno sola) |
 | "Están en medio de una partida" | Se une al volver al lobby (después del podio) |
-| Se le cerró la app a alguien | Abrirla y entrar con el mismo apodo **antes de 30 s**: vuelve a su lugar con sus puntos |
-| Un celular quedó bloqueado | La TV muestra "se desconectó" a los 4 s y su mascota queda quieta; al desbloquear vuelve solo |
+| Se le cerró la página o la app | Volver a escanear el QR (o abrir la app y entrar con el **mismo apodo**) **antes de 30 s**: vuelve a su lugar con sus puntos |
+| Un celular se bloqueó | La TV muestra "se desconectó" a los 4 s y su mascota queda quieta; al desbloquear vuelve solo |
 | Un juego no se entiende o se traba | Atrás (pausa) → "Saltar este juego"; anotarlo |
 | Hay que cortar | Atrás → "Salir de la competencia" → "Sí, salir" → podio con lo jugado |
-| La app de la TV se cerró | Abrirla de nuevo; la competencia se pierde (los puntos no se guardan) |
+| La app de la TV se cerró | Abrirla de nuevo (Configuración → Apps si no está en la fila); la competencia se pierde y los celulares se vuelven a unir con el QR |
 
 ### 7.5 Qué observar y anotar
 
-- **Unirse:** cuánto tardan, si encontraron la TV solos, si entendieron el código de fichas.
+- **Unirse:** cuánto tardan desde que ven el QR, si la cámara lo leyó a la primera, quién tuvo que escribir la dirección, iPhone o Android.
 - **Intro de cada juego:** ¿la leen? ¿alcanza con el texto, el dibujo del control y la línea del celular? ¿Quién pregunta "¿qué hago?"?
 - **Durante el juego:** demoras ("apreté y no respondió"), tirones de imagen, mascotas que se ven planas (2D), cortes de conexión.
 - **Quién gana:** ¿siempre el mismo? ¿algún juego que nadie gana o que se decide por azar?
@@ -140,7 +140,7 @@ Con 2 personas, en la competencia 2 se puede sumar **1 bot Normal** (lobby: OK s
 
 ### 7.6 Planilla
 
-Fecha: ____  Personas: ____  Celulares (marca/modelo): ________________  Wi-Fi: ________
+Fecha: ____  Personas: ____  Celulares (marca/modelo, ¿web o app?): ________________  Wi-Fi: ________
 
 | # | Juego | ¿Se entendió? (sí / más o menos / no) | Demoras o tirones | Ganó | ¿Divertido? (1–5) | Notas (qué dijeron) |
 |---|---|---|---|---|---|---|
