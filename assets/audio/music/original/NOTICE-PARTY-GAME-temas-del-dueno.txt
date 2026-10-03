@@ -1,0 +1,30 @@
+PARTY-GAME · temas originales del dueño del proyecto
+=====================================================
+
+Los archivos de esta carpeta NO son de terceros ni CC0: son temas del dueño
+del proyecto, hechos con Suno (https://suno.com).
+
+breakpoint_rush.ogg
+  Tema:     "Breakpoint Rush"
+  Autor:    666monko6666 (el dueño del proyecto)
+  Hecho con: Suno · id 53a987a6-6cf1-477a-b3e2-264545df30ad
+  Enlace:   https://suno.com/song/53a987a6-6cf1-477a-b3e2-264545df30ad
+  Cambios:  recortado desde 12,94 s, bucle de 80 compases (vuelve a 33,08 s
+            del original) con fundido de 0,25 s, sonoridad igualada
+            (-14,5 LUFS) y recodificado a OGG Vorbis
+            (tools/audio/prepare_audio.py).
+
+lobby.ogg (cuando se agregue)
+  Tema del lobby del dueño, también hecho con Suno. Anotar acá título, id y
+  enlace al sumarlo.
+
+Condición de uso comercial (importante)
+  Según los términos de Suno, la propiedad de la canción y el permiso de uso
+  comercial solo corresponden si la canción se creó con un plan pago de Suno
+  (Pro o Premier). Con el plan gratis, el uso permitido es no comercial.
+  Requiere que el tema se haya creado con plan pago de Suno para uso
+  comercial: antes de publicar el juego a la venta, confirmar el plan con el
+  que se generó cada tema (y conservar la prueba). Si alguno se hizo con el
+  plan gratis, regenerarlo con plan pago o sacarlo del juego.
+
+No redistribuir estos archivos fuera del juego.

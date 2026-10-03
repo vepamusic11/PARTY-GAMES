@@ -2,12 +2,41 @@ class_name BigButton
 extends Control
 ## Un solo botón gigante que ocupa toda el área. Soporta multitouch:
 ## sigue "apretado" mientras quede al menos un dedo encima.
+##
+## Se ve como un botón de arcade con el color del jugador: aro de tinta,
+## bisel, brillo y sombra. Al tocarlo la tapa baja y se aplasta (squash) y
+## sale una onda; al soltar rebota. `pressed` cambia en el mismo evento
+## táctil: la animación es solo visual y no agrega latencia.
+##
+## Se dibuja del lado del pulgar que toca: a la derecha (como los botones de
+## un control de consola) o a la izquierda en modo zurdo (`lefty`). Cuenta
+## el toque en TODA el área (más fácil sin mirar el celular).
+## `control_scale` es el tamaño elegido en Ajustes.
 
 @export var color := Color.WHITE
 @export var label := "A"
+@export var lefty := false:
+	set(v):
+		lefty = v
+		queue_redraw()
+@export var control_scale := 1.0:
+	set(v):
+		control_scale = v
+		queue_redraw()
 
 var pressed := false
 var _touches: Dictionary = {}
+## 0..1: cuánto está hundida la tapa (animado).
+var _press := 0.0:
+	set(v):
+		_press = v
+		queue_redraw()
+## 0..1: onda que se expande al apretar (1 = terminada).
+var _ripple := 1.0:
+	set(v):
+		_ripple = v
+		queue_redraw()
+var _tween: Tween
 
 
 func _gui_input(event: InputEvent) -> void:
@@ -32,14 +61,53 @@ func _update() -> void:
 	if now_pressed != pressed:
 		pressed = now_pressed
 		if pressed:
-			Input.vibrate_handheld(15)
-		queue_redraw()
+			Haptics.buzz("tap")
+			Sfx.play("tap")
+		_animate()
+
+
+func _animate() -> void:
+	if not is_inside_tree():
+		_press = 1.0 if pressed else 0.0
+		return
+	if _tween:
+		_tween.kill()
+	_tween = create_tween()
+	if pressed:
+		_tween.tween_property(self, "_press", 1.0, 0.04)
+		_ripple = 0.0
+		_tween.parallel().tween_property(self, "_ripple", 1.0, 0.35).set_ease(Tween.EASE_OUT)
+	else:
+		_tween.tween_property(self, "_press", 0.0, 0.24).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+
+## Centro del botón (sin el corrimiento del bisel).
+func button_center() -> Vector2:
+	var side := size.x * UiTheme.PHONE_CONTROL_SIDE
+	return Vector2(side if lefty else size.x - side, size.y / 2.0)
 
 
 func _draw() -> void:
-	var r := minf(size.x, size.y) * (0.36 if pressed else 0.4)
-	draw_circle(size / 2.0, r, color if pressed else Color(color, 0.75))
-	var font := ThemeDB.fallback_font
-	var fs := int(r * 0.35)
-	var w := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
-	draw_string(font, size / 2.0 + Vector2(-w / 2.0, fs / 3.0), label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color.BLACK)
+	var fit := minf(size.x * 0.5, size.y)
+	var r := minf(fit * UiTheme.PHONE_BUTTON_RADIUS * control_scale, fit * UiTheme.PHONE_BUTTON_RADIUS_MAX)
+	var c := button_center() - Vector2(0, r * 0.06)
+	var line := maxf(6.0, r * 0.04)
+	# Carcasa: aro oscuro hundido alrededor del botón (como en un arcade).
+	var housing := UiTheme.ShapeBatch.new()
+	housing.circle(c + Vector2(0, r * 0.2), r * 1.24, UiTheme.SHADOW)
+	housing.circle(c + Vector2(0, r * 0.12), r * 1.2 + line, UiTheme.INK)
+	housing.circle(c + Vector2(0, r * 0.12), r * 1.2, UiTheme.PHONE_DISH)
+	housing.circle(c + Vector2(0, r * 0.12), r * 1.12, UiTheme.PHONE_DISH_RIM)
+	housing.circle(c + Vector2(0, r * 0.16), r * 1.07, UiTheme.PHONE_DISH)
+	if color.get_luminance() < UiTheme.PHONE_BACKDROP_DARK_LUMINANCE:
+		# Negro o grafito sobre la carcasa oscura: un aro claro lo despega.
+		housing.circle(c + Vector2(0, r * 0.1), r * 1.04, UiTheme.PHONE_DARK_KNOB_RIM)
+	housing.flush(self)
+	if _ripple < 1.0:
+		draw_arc(c + Vector2(0, r * 0.12), r * (1.2 + 0.35 * _ripple), 0, TAU, 64,
+			Color(color.lerp(UiTheme.PAPER, 0.4), 0.8 * (1.0 - _ripple)), line * 2.0 * (1.0 - _ripple) + 2.0, true)
+	var face := UiTheme.draw_toy_disc(self, c, r, color, _press, r * 0.14)
+	# Texto de la tapa: blanco con contorno, legible sobre cualquier color.
+	var fs := int(r * (0.4 if label.length() <= 2 else 0.3))
+	UiTheme.draw_text(self, label, face + Vector2(0, maxf(3.0, fs / 16.0)), fs, UiTheme.SHADOW, maxi(6, int(r * 0.05)), UiTheme.SHADOW)
+	UiTheme.draw_text(self, label, face, fs, UiTheme.PAPER, maxi(6, int(r * 0.05)), UiTheme.INK)

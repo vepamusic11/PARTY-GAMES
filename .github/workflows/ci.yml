@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Botón "Run workflow" en Actions: sirve para armar el APK de prueba de
+  # cualquier rama sin abrir un PR.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -28,5 +31,201 @@ jobs:
       - name: Importar proyecto (genera el caché de clases)
         run: godot --headless --path . --import
 
+      - name: Compilar todos los scripts (lint de tipos)
+        run: |
+          fail=0
+          for f in $(git ls-files '*.gd'); do
+            godot --headless --path . --check-only -s "res://$f" >/dev/null 2>&1 || { echo "::error file=$f::no compila"; fail=1; }
+          done
+          exit $fail
+
       - name: Tests
         run: godot --headless --path . -s res://tests/run_tests.gd
+
+  # Prueba de humo visual: recorre una competencia completa con una pantalla
+  # virtual y sube las capturas como artefacto para revisar el diseño en el PR.
+  # Además corre el benchmark de rendimiento, solo como información.
+  capturas:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar Godot ${{ env.GODOT_VERSION }} y pantalla virtual
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb libgl1-mesa-dri
+          curl -sSL -o godot.zip "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          unzip -q godot.zip
+          sudo mv "Godot_v${GODOT_VERSION}-stable_linux.x86_64" /usr/local/bin/godot
+
+      - name: Importar proyecto
+        run: godot --headless --path . --import
+
+      - name: Generar capturas
+        run: |
+          xvfb-run -a -s "-screen 0 1920x1080x24" \
+            godot --path . --rendering-driver opengl3 --audio-driver Dummy \
+            -s res://tools/capture_screens.gd -- --out="$RUNNER_TEMP/capturas"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: capturas
+          path: ${{ runner.temp }}/capturas/*.png
+
+      # Informativo: nunca hace fallar el job. Un runner de GitHub (CPU
+      # compartida, GPU por software) no se parece a una TV; sirve para ver
+      # tendencias entre PRs, no para aprobar o rechazar (ver docs/PERFORMANCE.md).
+      - name: Benchmark de rendimiento (informativo)
+        continue-on-error: true
+        timeout-minutes: 6
+        run: |
+          xvfb-run -a -s "-screen 0 1920x1080x24" \
+            godot --path . --rendering-driver opengl3 --audio-driver Dummy \
+            -s res://tools/benchmark.gd -- --frames=150 --json="$RUNNER_TEMP/benchmark.json" \
+            | tee "$RUNNER_TEMP/benchmark.txt"
+          {
+            echo "### Benchmark de rendimiento (informativo)"
+            echo ""
+            echo "Runner de GitHub con render por software: comparar tendencias, no valores absolutos."
+            echo ""
+            grep '^|' "$RUNNER_TEMP/benchmark.txt" || echo "(sin tabla)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        continue-on-error: true
+        with:
+          name: benchmark
+          path: ${{ runner.temp }}/benchmark.*
+          if-no-files-found: ignore
+
+  # APK de prueba (debug) para instalar en un celular Android sin Android
+  # Studio: Actions → la corrida → Artifacts → party-game-debug-apk (ver la
+  # sección "Probar con tu celular Android" de docs/BUILD.md).
+  # Job aparte y en paralelo: no demora ni puede romper los tests.
+  # Firma: keystore DEBUG efímero creado acá (nunca en el repo). Si existe el
+  # secreto ANDROID_DEBUG_KEYSTORE_BASE64 se usa ese, así todas las builds
+  # tienen la misma firma y se instalan una encima de la otra.
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # SHA-512 oficiales de https://github.com/godotengine/godot-builds/releases
+      # (archivo SHA512-SUMS.txt de la versión). Al cambiar GODOT_VERSION hay
+      # que actualizarlos: si no coinciden, el job falla antes de usar nada.
+      GODOT_SHA512: ef4e76880a514257175544952c61191106fdef3095b909bafed9fcbeb230c3e5533920a0f3012882dd4bbde83028a67549825794e2d2c3cf76eba7918b71370e
+      TEMPLATES_SHA512: 8f461c7d6e91a0fbabfc95b1e4ca70ff1732c6f2920956a16b086ec2a85b5f7e238baf4dbce60dcc5630fae3bcb9a1fa2ae2027b92cb495c02d082705715e441
+      APK_NAME: party-game-debug.apk
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Instalar Godot ${{ env.GODOT_VERSION }} (con SHA-512)
+        run: |
+          base="https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}-stable"
+          curl -sSfL -o godot.zip "$base/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          echo "${GODOT_SHA512}  godot.zip" | sha512sum -c -
+          unzip -q godot.zip
+          sudo mv "Godot_v${GODOT_VERSION}-stable_linux.x86_64" /usr/local/bin/godot
+          rm godot.zip
+          godot --version
+
+      # El paquete oficial trae las plantillas de TODAS las plataformas
+      # (~1,2 GB); se guardan solo las de Android (~125 MB) en caché.
+      - name: Caché de plantillas de exportación de Android
+        id: templates
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/godot/export_templates/${{ env.GODOT_VERSION }}.stable
+          key: godot-android-templates-${{ env.GODOT_VERSION }}-${{ env.TEMPLATES_SHA512 }}
+
+      - name: Descargar plantillas de exportación (con SHA-512)
+        if: steps.templates.outputs.cache-hit != 'true'
+        run: |
+          base="https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}-stable"
+          curl -sSfL -o "$RUNNER_TEMP/templates.tpz" "$base/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
+          echo "${TEMPLATES_SHA512}  $RUNNER_TEMP/templates.tpz" | sha512sum -c -
+          dir="$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
+          mkdir -p "$dir"
+          unzip -q -j "$RUNNER_TEMP/templates.tpz" templates/android_debug.apk templates/version.txt -d "$dir"
+          rm "$RUNNER_TEMP/templates.tpz"
+          ls -la "$dir"
+
+      # El runner trae el Android SDK en $ANDROID_HOME. Godot necesita adb
+      # (platform-tools) y apksigner (build-tools; prefiere la 34, su target SDK).
+      - name: Revisar el Android SDK del runner
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          if [ ! -x "$ANDROID_HOME/platform-tools/adb" ] || ! ls "$ANDROID_HOME"/build-tools/*/apksigner >/dev/null 2>&1; then
+            (yes || true) | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "platform-tools" "build-tools;34.0.0" >/dev/null
+          fi
+          ls "$ANDROID_HOME/build-tools"
+
+      - name: Keystore debug y configuración del editor
+        env:
+          DEBUG_KEYSTORE_BASE64: ${{ secrets.ANDROID_DEBUG_KEYSTORE_BASE64 }}
+        run: |
+          ks="$RUNNER_TEMP/debug.keystore"
+          if [ -n "$DEBUG_KEYSTORE_BASE64" ]; then
+            # Sin saltos de línea ni espacios: tolera un base64 pegado desde Windows.
+            printf '%s' "$DEBUG_KEYSTORE_BASE64" | tr -d '\r\n ' | base64 -d > "$ks"
+            echo "Firma: keystore debug del secreto ANDROID_DEBUG_KEYSTORE_BASE64 (estable entre builds)."
+          else
+            keytool -genkeypair -keystore "$ks" -storepass android -keypass android \
+              -alias androiddebugkey -dname "CN=Android Debug,O=Android,C=US" \
+              -keyalg RSA -keysize 2048 -validity 3650 -noprompt
+            echo "Firma: keystore debug efímero (cambia en cada build)."
+          fi
+          # Godot lo toma de estas variables (no queda en export_presets.cfg).
+          {
+            echo "GODOT_ANDROID_KEYSTORE_DEBUG_PATH=$ks"
+            echo "GODOT_ANDROID_KEYSTORE_DEBUG_USER=androiddebugkey"
+            echo "GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD=android"
+          } >> "$GITHUB_ENV"
+          mkdir -p "$HOME/.config/godot"
+          cat > "$HOME/.config/godot/editor_settings-${GODOT_VERSION%.*}.tres" <<EOF
+          [gd_resource type="EditorSettings" format=3]
+
+          [resource]
+          export/android/android_sdk_path = "$ANDROID_HOME"
+          export/android/java_sdk_path = "$JAVA_HOME"
+          export/android/debug_keystore = "$ks"
+          export/android/debug_keystore_user = "androiddebugkey"
+          export/android/debug_keystore_pass = "android"
+          EOF
+          sed -i 's/^ *//' "$HOME/.config/godot/editor_settings-${GODOT_VERSION%.*}.tres"
+
+      - name: Importar proyecto
+        run: godot --headless --path . --import
+
+      # versionCode = número de corrida: cada APK nuevo es "más nuevo" que el
+      # anterior y Android lo acepta como actualización (si la firma coincide).
+      - name: Exportar APK debug
+        run: |
+          sed -i "s/^version\/code=.*/version\/code=${GITHUB_RUN_NUMBER}/" export_presets.cfg
+          mkdir -p builds/android
+          godot --headless --path . --export-debug "Android" "$PWD/builds/android/$APK_NAME"
+          test -s "builds/android/$APK_NAME"
+          apksigner=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          "$apksigner" verify --print-certs "builds/android/$APK_NAME"
+          size=$(du -h "builds/android/$APK_NAME" | cut -f1)
+          {
+            echo "### APK de prueba (debug)"
+            echo ""
+            echo "- Archivo: \`$APK_NAME\` ($size), versionCode ${GITHUB_RUN_NUMBER}, commit \`${GITHUB_SHA::7}\`"
+            echo "- Descarga: **Artifacts → party-game-debug-apk** (abajo en esta página)"
+            echo "- Cómo instalarlo y conectarlo a la TV: docs/BUILD.md → *Probar con tu celular Android*"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: party-game-debug-apk
+          path: builds/android/${{ env.APK_NAME }}
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0  # El APK ya viene comprimido.
