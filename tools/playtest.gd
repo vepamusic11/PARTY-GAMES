@@ -581,7 +581,7 @@ func _on_frame() -> void:
 			_bake_sec[_bake_game] = -1.0
 			_note("%s arrancó con el horneado sin terminar (%.1f s de intro; se ve la mascota 2D un rato)" % [
 				_bake_game, (Time.get_ticks_msec() - _bake_from) / 1000.0])
-			_bake_game = 
+			_bake_game = ""
 	if s != _screen:
 		var secs := (Time.get_ticks_msec() - _screen_since) / 1000.0
 		if _screen.begins_with("game:"):
