@@ -1,6 +1,6 @@
 # Pendientes para retomar
 
-Estado al **29/09/2026** (rama `claude/laughing-ramanujan-tfi3ps`, [PR #1](https://github.com/vepamusic11/PARTY-GAMES/pull/1)). Lo hecho está en el PR y en [PLAN.md](PLAN.md); acá va solo **lo que falta**, ordenado para retomar sin buscar.
+Estado al **03/10/2026** (rama `claude/laughing-ramanujan-tfi3ps`, [PR #1](https://github.com/vepamusic11/PARTY-GAMES/pull/1)). Lo hecho está en el PR y en [PLAN.md](PLAN.md); acá va solo **lo que falta**, ordenado para retomar sin buscar.
 
 ## Cómo retomar (5 minutos)
 
@@ -9,6 +9,18 @@ Estado al **29/09/2026** (rama `claude/laughing-ramanujan-tfi3ps`, [PR #1](https
    `& "D:\Claude\Godot\Godot_v4.4.1-stable_win64_console.exe" --headless --path . --import`
 3. Probar en la PC: `... --path . -- --host` (TV, ventana izquierda) y `... --path . -- --controller` (control, ventana derecha). Para jugar solo: en el lobby, Enter sobre un lugar libre → "Sumar bot".
 4. Pedirle a Claude: *"retomá los pendientes de docs/PENDIENTES.md"*.
+
+## 0. Objetivo de la semana: prueba real el viernes 9/10
+
+El dueño quiere jugar con **una TV real e invitados con sus propios celulares**. Todo lo demás (2.5D de Empujones/Desenfunde, juegos nuevos) queda en pausa hasta después de la prueba para no meter riesgo.
+
+| Frente | Qué resuelve | Estado (03/10) |
+|---|---|---|
+| **Control web servido por la TV** | Los invitados escanean un QR en el lobby y juegan desde el navegador (Android **y iPhone**), sin instalar el APK | Agente trabajando (ADR 0021) |
+| **APK para Google TV** | Que la app aparezca en el menú de la tele, con banner; guía de instalación sin adb; `jugar_en_tv.bat` para la opción PC por HDMI | Agente trabajando |
+| **Auditoría de partida real** | Competencia completa con 4 controles por red, reconexiones, latencia, sesión larga, bug de "¡Que no te deje la cámara!"; guía y planilla para el viernes (`docs/PRUEBA_REAL.md`) | Agente trabajando |
+
+**Plan A para la TV:** la PC con Windows por HDMI (ya funciona: `--host --fullscreen`). **Plan B:** Google TV con el APK.
 
 ## 1. Lo que depende del dueño
 
