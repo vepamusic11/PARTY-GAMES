@@ -15,6 +15,12 @@ const VERSION := 2
 const GAME_ID := "party-games"
 const WS_PORT := 47777
 const DISCOVERY_PORT := 47778
+## Control web (ADR 0022): la TV sirve por HTTP una página que habla este
+## mismo protocolo desde el navegador del celular. Puerto propio, por debajo
+## del WebSocket y sus reintentos (47777–47781) y del UDP (47778). Si está
+## ocupado se prueban los siguientes (HTTP_PORT_ATTEMPTS), que tampoco chocan.
+const HTTP_PORT := 47770
+const HTTP_PORT_ATTEMPTS := 5
 
 # --- Límites de seguridad -----------------------------------------------------
 const MAX_MESSAGE_BYTES := 512
@@ -163,6 +169,31 @@ static func is_valid_room_code(code: Variant) -> bool:
 ## Normaliza lo que el usuario tipea como código: mayúsculas y sin espacios.
 static func normalize_room_code(raw: String) -> String:
 	return raw.strip_edges().to_upper().replace(" ", "")
+
+
+## Enlace del QR del lobby para el control web (ADR 0022):
+##   http://192.168.1.34:47770/K7QX
+## El código va en la ruta y no en una consulta (`?r=…`): sin `?` ni `=` el
+## enlace es más corto y entra en un QR de versión 3 (29 módulos de lado,
+## más grande y fácil de escanear desde el sillón). El puerto real del
+## WebSocket no viaja en el enlace: la TV lo inyecta en la página al
+## servirla (WebControllerServer). Lo que viaja es solo lo que ya se ve en
+## la TV: estar frente a ella = ver el código.
+static func web_join_url(ip: String, http_port: int, code: String) -> String:
+	return "http://%s:%d/%s" % [ip, http_port, code]
+
+
+## Interpreta la ruta de un enlace web_join_url. Devuelve "" si no es una
+## ruta de unirse válida (el servidor la trata como 404) o el código de sala
+## normalizado ("K7QX"). Acepta minúsculas (algunos lectores de QR o
+## teclados las cambian) y nada más: ni `..`, ni barras extra, ni caracteres
+## fuera del alfabeto del código.
+static func parse_web_join_path(path: String) -> String:
+	var parts := path.trim_prefix("/").trim_suffix("/").split("/")
+	if parts.size() != 1:
+		return ""
+	var room := parts[0].to_upper()
+	return room if is_valid_room_code(room) else ""
 
 
 ## Token de sesión: permite reconectarse al mismo lugar sin volver a unirse.
