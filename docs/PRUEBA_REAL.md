@@ -36,8 +36,14 @@ Sale con código 1 si encuentra problemas: pantallas trabadas (intro > 20 s, jue
 | room | 2 + 0 | TV lenta (30 fps + 22 ms/cuadro) | sin problemas; mismas duraciones |
 | room | 3 + 1 | TV lenta (30 fps + 22 ms/cuadro) | sin problemas; mismas duraciones |
 | chaos | 3 + 0 | Wi-Fi cargada | encontró 2 errores (arreglados, §3) |
+| chaos | 3 + 0 y 2 + 1 | con los arreglos | sin problemas |
+| **Después de integrar Google TV y el control web (85dfbe5)** | | | |
+| chaos | 3 + 0 | Wi-Fi cargada | sin problemas |
+| room | 3 + 0 | TV lenta | sin problemas |
+| room | 2 + 1 | Wi-Fi cargada | sin problemas |
+| `node tools/web_e2e.mjs` | 3 navegadores (iPhone apaisado y vertical, Pixel) | Chromium real contra la TV | todo OK (QR, layouts multitáctiles, reconexión, cerrar y reabrir la página, podio, "Salir") |
 | room, xvfb (render real) | 3 + 0 | `user://` vacío (primer arranque) y después con caché | ver §4 |
-| long | 2 + 2 | PLACEHOLDER_LONG | ver §5 |
+| long, xvfb | 2 + 2 | 36 min seguidos: 4 competencias, 48 rondas | sin problemas; memoria plana (§5) |
 
 Ayudas de los eliminados activadas en todas. Con 3–4 jugadores Ping Pong se saltea solo (es de a 2), como corresponde.
 
@@ -62,15 +68,40 @@ Lo que funcionó como dice [PROTOCOL.md](PROTOCOL.md) sin cambios:
 
 **Justicia con cuadros lentos.** Todos los juegos corren en `_physics_process` con paso fijo (1/60 s). Si la TV dibuja menos cuadros, hace varios pasos por cuadro (hasta 8), así que el juego dura lo mismo y todos reciben la entrada con la misma granularidad. Desenfunde y Reloj exacto miden con el reloj del juego (Desenfunde suma lo que pasó desde el último paso, con tope de 2 cuadros). Medido:
 
-PLACEHOLDER_SLOW
+| Corrida | Cuadros (p50 / p95) | Arena | Carrera de toques | Reloj exacto | Pintar | Pool | Carrera de obstáculos |
+|---|---|---|---|---|---|---|---|
+| Normal (headless, 145 fps) | 6,9 / 9–10 ms | 31,6 s | 9,4–9,7 s | 15,2–15,5 s | 49,8 s | 54,8 s | 40–43 s |
+| TV lenta (tope 30 fps + 22 ms por cuadro) | 33,3 / 35–45 ms | 31,6 s | 9,5–9,7 s | 15,2–15,4 s | 49,7–49,8 s | 54,7–54,8 s | 42–43 s |
+| Render por software (xvfb, 10–25 fps reales) | 35–90 / 45–135 ms | 31,6 s | 12,4 s* | 15,9 s | 49,8 s | 54,9 s | 41,7 s |
+
+Las duraciones no cambian con la velocidad de la TV: los juegos con tiempo fijo duran lo mismo al centésimo, y los que dependen de lo que hacen los jugadores (Carrera de toques, Empujones, Esquivar, Karts) varían igual que entre dos partidas normales. *Carrera de toques en xvfb dura más porque los celulares de prueba tocan más lento con la máquina cargada, no por la TV. **Ningún juego se volvió injugable a 30 fps.** Lo que se pierde es suavidad: la pelota de Ping Pong y los autos de Karts avanzan dos pasos por cuadro. Para mirar en el Xiaomi: Pintar el piso, Reloj exacto, Empujones y ¡Que no te deje la cámara! son los más pesados de dibujar (con render por software, p50 de 60–90 ms contra 35–45 ms de Pool o Esquivar).
 
 **Horneado.** Mascotas 3D (en memoria: se hornean **cada vez que se abre la app**), tablero 2.5D de cada juego y piezas 3D (en disco, `user://board25d/`, `user://props3d/`) y música generada (`user://music_cache/`). Mientras algo no está, se dibuja la versión 2D: **no se congela**, como mucho un tirón de una fracción de segundo.
 
-PLACEHOLDER_BAKE
+Medido con render por software (xvfb + llvmpipe: en este contenedor la TV corre a 10–25 fps, más lento que el Xiaomi en CPU), 2–3 celulares por la red:
+
+| | `user://` vacío (primer arranque) | Con caché en disco (segunda vez) |
+|---|---|---|
+| Abrir la app → lobby con todo horneado | 10,5 s (lo que se ve: el lobby al instante, las mascotas pasan de 2D a 3D) | — |
+| Juegos que arrancan antes de terminar de hornear (intro de ~6,5 s) | 6 de 12: Arena, Carrera de toques, Esquivar, Pintar, Karts y ¡Que no te deje la cámara! | 4 de 12: Arena, Carrera de toques, Esquivar y ¡Que no te deje la cámara! |
+| Los demás terminan de hornear en | 0,5–3,2 s de intro | 0–4,8 s de intro |
+| Disco usado | tableros 5 MB, música 15 MB, piezas 0,4 MB, *shaders* 3,7 MB | igual |
+
+Con caché siguen arrancando en 2D los que estrenan **poses de mascota** (que viven en memoria y se hornean de nuevo en cada arranque de la app). Ninguno se congela: la intro sigue su cuenta y el juego arranca a tiempo; durante unos segundos se ven algunas mascotas 2D y alguna pose aparece un cuadro tarde. En el Xiaomi (GPU real, CPU más lenta que esta) hay que medirlo: es la tarea del jueves (§7.1).
 
 ## 5. Sesión larga
 
-PLACEHOLDER_LONGTEXT
+`--scenario=long`, xvfb (render real), 2 celulares + 2 bots, **36 min seguidos: 4 competencias, 48 rondas**, con "Jugar otra vez" y vuelta al lobby. Sin problemas ni errores del motor.
+
+| Momento | RAM estática | Objetos | Nodos | Huérfanos | Texturas |
+|---|---|---|---|---|---|
+| Inicio (lobby) | 107 MB | 2 827 | 592 | 0 | 62 MB |
+| 6 min (primera competencia, juegos nuevos) | 193 MB | 3 270 | 365 | 0 | 242 MB |
+| Podio 1 (9,5 min) | 219 MB | 3 356 | 385 | 0 | 268 MB |
+| Podio 3 (27 min) | 219 MB | 3 363 | 385 | 0 | 267 MB |
+| Podio 4 (36 min) | 219 MB | 3 419 | 385 | 0 | 267 MB |
+
+Crece durante la primera competencia (cada juego nuevo hornea su tablero y sus poses) y después **queda plano**: sin fugas de nodos ni de objetos. Las texturas incluyen el atlas de mascotas (presupuesto 40 MB), el tablero 2.5D del juego en curso, la sala 3D y el render. ~270 MB de texturas y ~220 MB de RAM es mucho para un aparato de 2 GB: no hay crecimiento, pero conviene mirarlo en el Xiaomi (riesgo 6).
 
 ## 6. Riesgos conocidos (no se arreglaron)
 
