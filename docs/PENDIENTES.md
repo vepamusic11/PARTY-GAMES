@@ -22,6 +22,8 @@ El dueño quiere jugar con **una TV real e invitados con sus propios celulares**
 
 **Plan A para la TV:** la PC con Windows por HDMI (ya funciona: `--host --fullscreen`). **Plan B:** Google TV con el APK.
 
+**Prueba real del viernes 9/10 (Google TV + QR):** guía, planilla y resultado de la auditoría en [PRUEBA_REAL.md](PRUEBA_REAL.md). Partidas de punta a punta con celulares por la red: `tools/playtest.gd`.
+
 ## 1. Lo que depende del dueño
 
 | Qué | Por qué | Cómo |
