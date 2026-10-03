@@ -86,6 +86,8 @@ Al unirse, cada jugador recibe un token aleatorio de 128 bits. Si el celular se 
 
 *Ejemplo:* Sofi está jugando, le entra una llamada y la app pasa a segundo plano. Su paleta queda quieta (input neutro), y cuando vuelve a la app sigue siendo la jugadora 2 sin tocar nada.
 
+Muchas veces el sistema deja el socket abierto y la app simplemente deja de hablar: por eso la TV no espera al cierre y da por desconectado a un control que pasa 4 s sin mandar nada (`HostServer.SILENT_MS`; el celular manda un `ping` por segundo). Mientras el socket siga abierto no le vence la reserva: vuelve solo al mandar el próximo mensaje ([PROTOCOL.md](PROTOCOL.md#ping), [PRUEBA_REAL.md](PRUEBA_REAL.md)).
+
 ### Bots: jugadores virtuales
 Para jugar solo o completar la mesa (1 persona + 3 bots, 2 + 2), la TV puede ocupar lugares libres con **bots** (Fácil / Normal / Difícil). Un bot genera **las mismas entradas que un celular** (`axis`/`btn`) en cada paso de física, sin red: mira el estado público del juego (`MiniGame.bot_view()`), decide con reglas simples y tiempo de reacción, y `BotDriver` le pasa la entrada al juego por `on_input` después de validarla con `Protocol.parse_input`. Nunca decide resultados.
 

@@ -30,6 +30,13 @@ const INPUT_RATE_LIMIT_PER_SEC := 90
 ## "look" dispara un aviso a todos los celulares: tope propio, más bajo.
 const LOOK_RATE_LIMIT_PER_SEC := 8
 const RECONNECT_GRACE_MS := 30000
+## Un control unido manda algo al menos cada 1 s (ping; y el estado del
+## control cada 0,25 s mientras juega). Si pasa esto sin recibir nada, el
+## celular se bloqueó o la app quedó en segundo plano con el socket abierto:
+## la TV lo da por desconectado (el juego recibe entrada neutra, en vez de
+## la última, y se ve el aviso), pero NO le cuenta la reserva de lugar
+## mientras el socket siga abierto. Al volver a hablar, vuelve solo.
+const SILENT_MS := 4000
 const INBOUND_BUFFER_BYTES := 4096
 ## Nombres de los bots: el primero libre. Empiezan con "Bot" para que se
 ## entienda también donde no hay lugar para la placa "BOT".
@@ -63,6 +70,8 @@ class _Peer:
 	var window_count := 0
 	var look_window_start := 0
 	var look_window_count := 0
+	var last_seen := 0          # ticks del último mensaje recibido
+	var silent := false         # unido pero mudo más de SILENT_MS (ver arriba)
 
 
 func start(p_port: int = Protocol.WS_PORT, bind_address: String = "*") -> Error:
@@ -273,6 +282,7 @@ func _accept_new_connections() -> void:
 		var peer := _Peer.new()
 		peer.ws = ws
 		peer.opened_at = Time.get_ticks_msec()
+		peer.last_seen = peer.opened_at
 		_peers[_next_peer_key] = peer
 		_next_peer_key += 1
 
@@ -295,6 +305,12 @@ func _poll_peer(key: int, now: int) -> void:
 	if state != WebSocketPeer.STATE_OPEN:
 		return
 
+	if peer.ws.get_available_packet_count() > 0:
+		peer.last_seen = now
+		if peer.silent:
+			_on_peer_awake(peer)
+	elif peer.player_id != 0 and not peer.silent and now - peer.last_seen > SILENT_MS:
+		_on_peer_silent(peer)
 	while peer.ws.get_available_packet_count() > 0:
 		var packet := peer.ws.get_packet()
 		if not peer.ws.was_string_packet():
@@ -468,9 +484,34 @@ func _on_peer_closed(key: int) -> void:
 		return
 	if pid != 0 and _players.has(pid) and _peer_key_for_player(pid) == 0:
 		var p: Dictionary = _players[pid]
+		var was_connected: bool = p.connected  # false si ya estaba mudo: el aviso ya salió.
 		p.connected = false
 		p.disconnected_at = Time.get_ticks_msec()
-		player_disconnected.emit(pid)
+		if was_connected:
+			player_disconnected.emit(pid)
+
+
+## Celular mudo (bloqueado, app en segundo plano): desconectado para el
+## juego y la TV, sin cortar el socket ni empezar la reserva de lugar.
+func _on_peer_silent(peer: _Peer) -> void:
+	peer.silent = true
+	var p: Dictionary = _players.get(peer.player_id, {})
+	if p.is_empty() or not p.connected:
+		return
+	p.connected = false
+	player_disconnected.emit(peer.player_id)
+
+
+## El celular mudo volvió a hablar por el mismo socket.
+func _on_peer_awake(peer: _Peer) -> void:
+	peer.silent = false
+	var p: Dictionary = _players.get(peer.player_id, {})
+	if p.is_empty() or p.connected or _peer_key_for_player(peer.player_id) == 0:
+		return
+	p.connected = true
+	p.disconnected_at = -1
+	player_reconnected.emit(_public_player(p))
+	_send_appearance(p)
 
 
 func _expire_disconnected_players(now: int) -> void:

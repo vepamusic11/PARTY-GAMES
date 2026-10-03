@@ -62,6 +62,8 @@ Todos los layouts nuevos que se sumen antes de publicar la app van en la **misma
 ```
 El host responde `pong` con el mismo `t`. El control calcula la latencia ida y vuelta.
 
+**Señal de vida (obligatoria para cualquier control, también el web):** un control unido manda algo al menos **cada 1 s** (el `ping`; mientras muestra un control, además el `input` cada 0,25 s como keepalive). Si la TV pasa **4 s** (`HostServer.SILENT_MS`) sin recibir nada de un control unido —celular bloqueado o app en segundo plano con el socket todavía abierto—, lo da por **desconectado**: el juego recibe entrada neutra (no se queda con el joystick a fondo) y se ve el aviso "se desconectó". No le corre la reserva de 30 s mientras el socket siga abierto, y apenas vuelve a mandar algo por el mismo socket vuelve a estar conectado (aviso "volvió"), sin `join`. Si el socket se cierra, corre la reserva de siempre y vuelve con `join` + `token`. No cambia mensajes ni `VERSION`.
+
 ### `leave`
 ```json
 {"v":2,"type":"leave"}

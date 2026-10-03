@@ -1913,6 +1913,51 @@ func test_join_play_reconnect() -> void:
 	await process_frame
 
 
+## Celular bloqueado con el socket abierto (app en segundo plano): no manda
+## nada. La TV no puede seguir usando su última entrada (joystick a fondo)
+## ni mostrarlo conectado: a los SILENT_MS lo da por desconectado (el juego
+## recibe entrada neutra), pero sin reserva que venza mientras el socket siga
+## abierto; cuando el celular vuelve a hablar, recupera su lugar solo
+## (docs/PRUEBA_REAL.md).
+func test_silent_phone_counts_as_disconnected() -> void:
+	var port := TEST_PORT + 75
+	var server := HostServer.new()
+	root.add_child(server)
+	check(server.start(port, "127.0.0.1") == OK, "el servidor abre el puerto")
+	var events: Array = []
+	server.player_disconnected.connect(func(pid: int) -> void: events.append(["off", pid]))
+	server.player_reconnected.connect(func(p: Dictionary) -> void: events.append(["on", p.id]))
+	server.player_left.connect(func(pid: int) -> void: events.append(["left", pid]))
+	var c := _client()
+	c.join("127.0.0.1", port, server.room_code, "Pablo")
+	await _until(func() -> bool: return c.state == ControllerClient.State.JOINED)
+	c.send_input(Vector2(1, 0), 0)  # Joystick a fondo justo antes de bloquear.
+	await _frames(3)
+	c.process_mode = Node.PROCESS_MODE_DISABLED  # Bloqueado: la app no corre, el socket sigue.
+	await _until(func() -> bool: return not events.is_empty(), HostServer.SILENT_MS + 2000)
+	check(events == [["off", 1]], "mudo más de %d ms: desconectado (%s)" % [HostServer.SILENT_MS, events])
+	check(server.get_players().size() == 1 and not server.get_players()[0].connected, "conserva el lugar, desconectado")
+	# La reserva de 30 s no corre con el socket abierto (no lo saca de la sala).
+	server._expire_disconnected_players(Time.get_ticks_msec() + HostServer.RECONNECT_GRACE_MS * 2)
+	check(server.get_players().size() == 1, "con el socket abierto no vence la reserva")
+	c.process_mode = Node.PROCESS_MODE_INHERIT  # Se desbloquea.
+	await _until(func() -> bool: return events.size() >= 2, 3000)
+	check(events == [["off", 1], ["on", 1]], "vuelve solo, una vez (%s)" % [events])
+	check(server.get_players()[0].connected and c.state == ControllerClient.State.JOINED and c.player_info.id == 1,
+		"mismo lugar y conectado")
+	# Si después se corta de verdad, avisa una sola vez y empieza la reserva.
+	c.process_mode = Node.PROCESS_MODE_DISABLED
+	await _until(func() -> bool: return events.size() >= 3, HostServer.SILENT_MS + 2000)
+	c._ws.close()
+	c._ws.poll()
+	await create_timer(0.5).timeout
+	check(events.size() == 3 and events[2] == ["off", 1], "el corte después del silencio no repite el aviso (%s)" % [events])
+	check(int(server._players[1].disconnected_at) >= 0, "con el socket cerrado empieza la reserva")
+	server.stop()
+	server.queue_free()
+	await _free_clients()
+
+
 func test_room_capacity() -> void:
 	var server := HostServer.new()
 	root.add_child(server)
