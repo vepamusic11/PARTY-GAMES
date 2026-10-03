@@ -506,3 +506,16 @@ Reglas prácticas al dibujar:
 - **Mascotas como nodos**: en los juegos las mascotas se redibujan en cada frame aunque solo cambie su posición. Ahora que son sprites horneados (ADR 0012) cada una cuesta poco, pero como nodos hijos con `position` no haría falta ni eso.
 - **Horneado en la TV real:** medir en una Google TV cuánto tarda el render de 3 mascotas por cuadro (`Mascot3DBaker.POSES_PER_FRAME`) y ajustar ese número (1 si traba, más si sobra).
 - Medir en el aparato real (Google TV) con el profiler remoto de Godot y el monitor de `Performance`, y ajustar estos presupuestos con esos números.
+
+## Google TV de gama baja (Xiaomi TV Stick 4K, ~2 GB de RAM)
+
+Decisiones en [ADR 0021](adr/0021-google-tv.md): en Android se usa el renderer **Compatibility** (OpenGL ES 3, el mismo de las capturas y el benchmark de la CI) y en la TV la escena se dibuja **a 1080p como máximo** aunque la salida sea 4K.
+
+Memoria estimada de la app en la TV (sin medir todavía en el aparato): atlas de mascotas 25–33 MB (tope `MascotAtlas.BUDGET_BYTES` = 40 MB) + tableros 2.5D horneados 6–8 MB + música + lo que ocupe el motor (sin medir). Google TV deja a una app en primer plano unos cientos de MB en un aparato de 2 GB: hay margen, pero conviene confirmarlo con `adb shell dumpsys meminfo com.iogames.partygame` o el monitor de `Performance` del depurador remoto.
+
+Ideas fáciles si hiciera falta bajarla en la TV (no implementadas):
+
+- `MascotAtlas.BUDGET_BYTES` más bajo en Android TV (p. ej. 24 MB): suelta antes las hojas que no se dibujan; solo cuesta re-hornear al volver a un juego.
+- Hojas del atlas en RGBA4444 o sin la escala 3,4 (mascota anfitriona del lobby) en la TV.
+- Liberar los tableros 2.5D horneados al salir de cada juego (se vuelven a hornear al entrar).
+- Música: el caché de pistas en disco ya existe (`MusicCache`); verificar que en memoria quede solo la pista que suena.
