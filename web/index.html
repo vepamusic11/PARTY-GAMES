@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<!-- La TV reemplaza {{WS_PORT}} por el puerto real del WebSocket al servir la página (ver host/network/web_server.gd). -->
+<meta name="pg-ws-port" content="{{WS_PORT}}">
+<meta name="pg-protocol" content="2">
+<meta name="theme-color" content="#2B9CF5">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="format-detection" content="telephone=no">
+<title>PARTY-GAME · Control</title>
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/controller.css">
+</head>
+<body>
+<div id="bg" aria-hidden="true"><span id="bg-tag"></span></div>
+
+<!-- Unirse: apodo, código de la TV (viene en el enlace del QR) y ¡Unirme! -->
+<section id="join" class="screen">
+  <div class="join-grid">
+    <div class="join-brand">
+      <img class="logo" src="/logo.png" alt="PARTY-GAME" draggable="false">
+      <p class="tagline">Tu celular es el control. La TV es el juego.</p>
+      <p id="tv-address" class="tv-address" hidden></p>
+    </div>
+    <form id="join-form" class="panel join-panel" autocomplete="off" novalidate>
+      <label class="step" for="name"><span class="badge b1">1</span>Tu apodo</label>
+      <div class="field">
+        <svg class="field-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4.2" fill="currentColor"/><path d="M4 20c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5z" fill="currentColor"/></svg>
+        <input id="name" name="name" type="text" maxlength="16" placeholder="¿Cómo te llamás?" autocomplete="nickname" autocapitalize="words" enterkeyhint="next">
+      </div>
+      <label class="step" for="code"><span class="badge b2">2</span>Código de la TV</label>
+      <div class="code-tiles" id="code-tiles">
+        <span class="tile t0"></span><span class="tile t1"></span><span class="tile t2"></span><span class="tile t3"></span>
+        <input id="code" name="code" type="text" maxlength="4" inputmode="text" autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="go" aria-label="Código de la TV (4 letras)">
+      </div>
+      <p class="help">Son las 4 fichas de colores que muestra la TV.</p>
+      <div id="join-status" class="status" hidden><span class="status-badge">!</span><span id="join-status-text"></span></div>
+      <button id="join-btn" class="toy toy-accent toy-big" type="submit"><span class="play-glyph" aria-hidden="true"></span>¡Unirme!</button>
+    </form>
+  </div>
+</section>
+
+<!-- Unido: barra de arriba y, abajo, el control que pide la TV o "¡Mirá la TV!" -->
+<section id="play" class="screen" hidden>
+  <header class="bar">
+    <div class="me pill">
+      <canvas id="me-face" class="me-face" width="64" height="64" aria-hidden="true"></canvas>
+      <span id="me-tag" class="tag">1P</span>
+      <span id="me-name" class="me-name"></span>
+    </div>
+    <div id="hint" class="hint" hidden></div>
+    <div class="bar-right">
+      <div class="pill signal" id="signal" title="Señal con la TV">
+        <svg class="wifi" viewBox="0 0 24 24" aria-hidden="true">
+          <path class="w3" d="M2 8.5a15 15 0 0 1 20 0l-2.1 2.1a12 12 0 0 0-15.8 0z"/>
+          <path class="w2" d="M5.6 12.1a10 10 0 0 1 12.8 0l-2.1 2.1a7 7 0 0 0-8.6 0z"/>
+          <path class="w1" d="M9.2 15.7a5 5 0 0 1 5.6 0L12 18.5z"/>
+        </svg>
+        <span id="ms" class="ms">— ms</span>
+      </div>
+      <button id="sound" class="toy toy-icon" type="button" aria-label="Sonido" aria-pressed="true">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9z" fill="currentColor"/><path class="snd-waves" d="M15.5 8.5a5 5 0 0 1 0 7M18 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path class="snd-off" d="M16 9.5l5 5m0-5l-5 5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
+      </button>
+      <button id="leave" class="toy toy-hold" type="button" aria-label="Salir (mantené apretado)">
+        <svg class="ring" viewBox="0 0 36 36" aria-hidden="true"><circle class="ring-track" cx="18" cy="18" r="15.5"/><circle class="ring-fill" cx="18" cy="18" r="15.5"/></svg>
+        <svg class="power" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v8" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/><path d="M7.2 6.6a7.5 7.5 0 1 0 9.6 0" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>
+        <span>Salir</span>
+      </button>
+    </div>
+  </header>
+
+  <div id="stage">
+    <div id="wait" class="wait">
+      <div class="wait-main">
+        <h1 class="headline"><span class="tv-badge" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2.5" fill="#1D2140"/><rect x="5" y="6" width="14" height="8" rx="1.2" fill="#FFF"/><path d="M9 20h6" stroke="#1D2140" stroke-width="2.4" stroke-linecap="round"/></svg></span>¡Mirá la TV!</h1>
+        <div class="player-card" id="player-card">
+          <span id="card-tag" class="tag card-tag">1P</span>
+          <canvas id="card-face" class="card-face" width="320" height="320" aria-hidden="true"></canvas>
+          <div class="card-name" id="card-name"></div>
+          <div class="card-status" id="card-status">¡Listo para jugar!</div>
+        </div>
+        <p class="wait-sub" id="wait-sub">El juego empieza cuando la TV lo elija</p>
+      </div>
+
+      <div id="picker" class="panel picker" hidden>
+        <h2 class="picker-title"><span class="star" aria-hidden="true"></span>Elegí tu mascota</h2>
+        <div class="style-row">
+          <button class="toy toy-arrow" id="style-prev" type="button" aria-label="Estilo anterior"><span class="arrow-left"></span></button>
+          <div class="style-screen" id="style-name">Antena</div>
+          <button class="toy toy-arrow" id="style-next" type="button" aria-label="Estilo siguiente"><span class="arrow-right"></span></button>
+        </div>
+        <div class="swatches" id="swatches"></div>
+        <div class="color-name" id="color-name">Rojo</div>
+      </div>
+
+      <div id="standing" class="standing" hidden>
+        <div class="standing-band" id="standing-band"></div>
+        <div class="chip" id="standing-round">Ronda 1/3</div>
+        <h2 class="headline standing-cheer" id="standing-cheer">¡Ganaste la ronda!</h2>
+        <div class="standing-row">
+          <div class="medal" id="standing-medal"><span id="standing-medal-text">1°</span></div>
+          <div class="standing-text">
+            <div class="headline standing-main" id="standing-main">+70</div>
+            <div class="standing-total" id="standing-total">Total 170 · vas 2°</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <canvas id="pad" hidden></canvas>
+  </div>
+</section>
+
+<div id="toast" class="toast" hidden role="status"></div>
+<script src="/controller.js"></script>
+</body>
+</html>

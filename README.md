@@ -17,6 +17,11 @@ Juegos cortos para **1 a 4 jugadores en el sillón**: la **TV es la pantalla** y
 | ![Pantalla para unirse](docs/img/ctrl_join.png) | ![Control con joystick](docs/img/ctrl_joy.png) |
 | ![Esperando que empiece el juego](docs/img/ctrl_wait.png) | |
 
+| Control web: escaneás el QR de la TV y jugás desde el navegador, sin instalar nada | |
+|---|---|
+| ![Lobby de la TV con el QR](docs/img/lobby.png) | ![Unirse desde el navegador del celular](docs/img/control_web_join.png) |
+| ![Esperando con el selector de mascota](docs/img/control_web_lobby.png) | ![Joystick + A/B en el navegador](docs/img/control_web_joystick_ab.png) |
+
 > Capturas generadas automáticamente desde el propio proyecto (host + controles reales conectados por WebSocket) con `tools/capture_screens.gd`. La CI las vuelve a generar en cada PR (artefacto `capturas`).
 
 ## Estado
@@ -24,7 +29,8 @@ Juegos cortos para **1 a 4 jugadores en el sillón**: la **TV es la pantalla** y
 **v0.2 · Modo competencia y sistema visual.** Incluye:
 
 - Conexión TV ↔ celulares por Wi-Fi local, con código de sala, reconexión automática y medición de latencia.
-- Descubrimiento automático de la TV en la red (con IP manual como respaldo).
+- **Control web**: la TV muestra un QR; el invitado lo escanea con la cámara (Android o iPhone) y juega desde el navegador, sin instalar nada. Mismo protocolo que la app ([ADR 0022](docs/adr/0022-control-web.md)).
+- Descubrimiento automático de la TV en la red (con IP manual como respaldo) para la app del celular.
 - **Modo competencia**: en el lobby se elige **cuántos juegan** (1–4) y **qué minijuegos entran**; después de cada juego, **resumen por jugador** con puesto, puntaje y puntos ganados; al final, **podio**. Puntos por posición (1° 100 · 2° 70 · 3° 50 · 4° 30). Cada celular muestra **su propio resultado** (puesto, puntos y total).
 - Minijuegos:
   - **Arena de estrellas** (1–4) · joystick
@@ -58,7 +64,7 @@ Juegos cortos para **1 a 4 jugadores en el sillón**: la **TV es la pantalla** y
      godot --path . -- --host          # ventana "TV"
      godot --path . -- --controller    # ventana "celular"
      ```
-4. En la ventana del control: elegí la TV de la lista (o escribí `127.0.0.1`), poné un apodo y el código que muestra la TV.
+4. En la ventana del control: elegí la TV de la lista (o escribí `127.0.0.1`), poné un apodo y el código que muestra la TV. O abrí en el navegador la dirección que muestra el lobby debajo del QR (en la misma PC, `http://127.0.0.1:47770/`): es el control web.
 5. En la TV elegí cuántos juegan (◀ ▶ sobre el selector), marcá los juegos con Enter y apretá **¡A jugar!**. Con el mouse arrastrás como si fuera el dedo. Escape = botón "Atrás" (menú de pausa).
 6. **Solo, sin segundo control:** en el lobby, pará sobre un lugar libre y apretá Enter → "Sumar bot" (Fácil, Normal o Difícil). Así probás cualquier juego con 1 persona + bots.
 
