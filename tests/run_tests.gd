@@ -2021,6 +2021,52 @@ func test_reopened_app_reclaims_slot_by_name() -> void:
 	await _free_clients()
 
 
+## Control web (ADR 0022) en el lobby o en "Mirá la TV": solo manda el ping de
+## setInterval(1 s), que el navegador puede espaciar hasta ~2 s (pestaña en
+## segundo plano, ahorro de batería). Con un ping cada 1,9 s la TV no lo
+## marca desconectado; recién a los SILENT_MS sin nada (JS suspendido).
+func test_web_like_client_pinging_slowly_stays_connected() -> void:
+	var port := TEST_PORT + 78
+	var server := HostServer.new()
+	root.add_child(server)
+	check(server.start(port, "127.0.0.1") == OK, "el servidor abre el puerto")
+	var off: Array = []
+	server.player_disconnected.connect(func(pid: int) -> void: off.append(pid))
+	var ws := WebSocketPeer.new()
+	ws.connect_to_url("ws://127.0.0.1:%d" % port)
+	await _until(func() -> bool:
+		ws.poll()
+		return ws.get_ready_state() == WebSocketPeer.STATE_OPEN)
+	ws.send_text(Protocol.encode(Protocol.T_JOIN, {"room": server.room_code, "name": "Web"}))
+	await _until(func() -> bool:
+		ws.poll()
+		return server.get_players().size() == 1)
+	check(server.get_players().size() == 1, "el cliente tipo web se une")
+	var start := Time.get_ticks_msec()
+	var last_ping := start
+	while Time.get_ticks_msec() - start < 9000:  # Lobby: sin input, ping cada 1,9 s.
+		ws.poll()
+		if Time.get_ticks_msec() - last_ping >= 1900:
+			last_ping = Time.get_ticks_msec()
+			ws.send_text(Protocol.encode(Protocol.T_PING, {"t": last_ping}))
+		await process_frame
+	check(off.is_empty() and server.get_players()[0].connected, "con pings cada 1,9 s sigue conectado (%s)" % [off])
+	var mute_from := Time.get_ticks_msec()
+	while off.is_empty() and Time.get_ticks_msec() - mute_from < HostServer.SILENT_MS + 2000:
+		ws.poll()  # Socket vivo pero sin mandar nada (JS suspendido).
+		await process_frame
+	check(off == [1], "sin nada por %d ms: desconectado" % HostServer.SILENT_MS)
+	ws.send_text(Protocol.encode(Protocol.T_PING, {"t": 1}))  # Vuelve a la pestaña.
+	await _until(func() -> bool:
+		ws.poll()
+		return server.get_players()[0].connected)
+	check(server.get_players()[0].connected, "al volver a mandar, conectado otra vez sin join")
+	ws.close()
+	server.stop()
+	server.queue_free()
+	await process_frame
+
+
 ## El celular pide cerrar (WebSocket close) y se congela antes de terminar:
 ## la TV deja de mandarle mensajes (antes: error "ready_state != STATE_OPEN"
 ## en cada envío) y lo da por desconectado a los CLOSING_TIMEOUT_MS, sin
