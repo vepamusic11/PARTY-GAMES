@@ -45,6 +45,7 @@ Todos los layouts nuevos que se sumen antes de publicar la app van en la **misma
 - `room`: 4 caracteres de `ABCDEFGHJKLMNPQRSTUVWXYZ23456789` (sin I/O/0/1 para no confundir).
 - `name`: se limpia (sin caracteres de control) y se recorta a 16.
 - `token`: opcional. Si coincide con un jugador existente, se reconecta a su lugar.
+- **Sin token, mismo apodo que un jugador desconectado:** recupera ese lugar (mismo id, color, estilo y puntos) con un token nuevo, en el lobby o en medio de la partida. Es el caso de quien cerró la app (o se la cerró el sistema) y la volvió a abrir: el token vivía en la app. Solo vale para lugares **desconectados** dentro de su reserva; con alguien conectado con ese apodo, entra como jugador nuevo (si se puede). Sin cambio de mensajes ni de `VERSION`.
 - `color` / `style`: **opcionales**. Apariencia pedida (ver [Apariencia](#apariencia-color-y-estilo)). Si faltan o no son válidos, se usan los del lugar (1P rojo con antena…) y el `join` se acepta igual. En una reconexión se ignoran: vuelve con la apariencia que tenía.
 - Debe llegar dentro de los **5 segundos** de abierta la conexión, o se corta.
 
@@ -73,6 +74,8 @@ Todos los layouts nuevos que se sumen antes de publicar la app van en la **misma
 {"v":2,"type":"ping","t":123456}
 ```
 El host responde `pong` con el mismo `t`. El control calcula la latencia ida y vuelta.
+
+**Señal de vida (obligatoria para cualquier control, también el web):** un control unido manda algo al menos **cada 1 s** (el `ping`; mientras muestra un control, además el `input` cada 0,25 s como keepalive). Si la TV pasa **4 s** (`HostServer.SILENT_MS`) sin recibir nada de un control unido —celular bloqueado o app en segundo plano con el socket todavía abierto—, lo da por **desconectado**: el juego recibe entrada neutra (no se queda con el joystick a fondo) y se ve el aviso "se desconectó". No le corre la reserva de 30 s mientras el socket siga abierto, y apenas vuelve a mandar algo por el mismo socket vuelve a estar conectado (aviso "volvió"), sin `join`. Si el socket se cierra, corre la reserva de siempre y vuelve con `join` + `token`. No cambia mensajes ni `VERSION`.
 
 ### `leave`
 ```json

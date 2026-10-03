@@ -70,7 +70,8 @@ func leave() -> void:
 
 
 func send_input(axis: Vector2, buttons: int) -> void:
-	if state != State.JOINED:
+	# JOINED pero con el socket ya cortado (todavía no lo vio poll()): no mandar.
+	if state != State.JOINED or _ws.get_ready_state() != WebSocketPeer.STATE_OPEN:
 		return
 	_seq += 1
 	_ws.send_text(Protocol.encode(Protocol.T_INPUT, {
@@ -85,7 +86,7 @@ func send_input(axis: Vector2, buttons: int) -> void:
 func send_look(color_index: int, style: int) -> void:
 	var look := Protocol.parse_look({"color": color_index, "style": style})
 	_look = look  # Si se reconecta a una sala nueva, pide lo último elegido.
-	if state != State.JOINED or look.is_empty():
+	if state != State.JOINED or look.is_empty() or _ws.get_ready_state() != WebSocketPeer.STATE_OPEN:
 		return
 	_ws.send_text(Protocol.encode(Protocol.T_LOOK, look))
 
