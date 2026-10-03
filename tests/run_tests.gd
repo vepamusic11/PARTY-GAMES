@@ -4922,6 +4922,20 @@ func test_boot_selector() -> void:
 	await process_frame
 
 
+## Google TV (docs/adr/0021-google-tv.md): fuera de Android nunca se detecta
+## TV, y con salida 4K la escena se dibuja a 1080p y se agranda.
+func test_boot_tv_mode() -> void:
+	var boot_script: GDScript = load("res://app/boot.gd")
+	if not OS.has_feature("android"):
+		check(not boot_script.is_android_tv(), "en la PC no se detecta Google TV")
+	check(boot_script.tv_render_scale_mode(Vector2i(3840, 2160)) == Window.CONTENT_SCALE_MODE_VIEWPORT,
+		"TV 4K: se dibuja a 1080p y se escala")
+	check(boot_script.tv_render_scale_mode(Vector2i(1920, 1080)) == Window.CONTENT_SCALE_MODE_CANVAS_ITEMS,
+		"TV 1080p: queda como en project.godot")
+	check(boot_script.tv_render_scale_mode(Vector2i(1280, 720)) == Window.CONTENT_SCALE_MODE_CANVAS_ITEMS,
+		"TV 720p: queda como en project.godot")
+
+
 # --- Mascotas 3D horneadas (MascotAtlas, ADR 0012) (agente) --------------------------
 
 ## Sin render (--headless, como la CI): el caché no hornea ni encola nada y
