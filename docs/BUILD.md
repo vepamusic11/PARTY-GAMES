@@ -49,9 +49,18 @@ Si alguien prefiere la app: instalá el mismo `party-game-debug.apk` en su celul
 
 Repetí los pasos 1, 3 y 4 con el APK nuevo. Lo normal hoy: si al instalar dice **"App no instalada"** o **"el paquete entra en conflicto"**, primero **desinstalá** la anterior (**Configuración → Apps → PARTY-GAME → Desinstalar**) y volvé a instalar. Pasa porque cada build de la CI se firma con una clave de prueba distinta. Para que se instale encima sin desinstalar, configurá una vez la *Firma estable* (más abajo, en la sección del celular): son 3 pasos en GitHub y no hay que tocar nada más.
 
-### Alternativa a futuro: un enlace fijo para la app Downloader
+### Lo más fácil: instalar con la app Downloader (sin celular)
 
-La app **Downloader** (de AFTVnews, en Google Play de la TV) baja e instala un APK escribiendo una URL con el control remoto, sin celular. Para eso el APK tiene que estar publicado en una URL fija y pública (por ejemplo un *release* de GitHub). **Hoy no está configurado**: publicar el APK de forma pública es una decisión del dueño del repo.
+La CI publica cada APK que pasa los tests en un *pre-release* de GitHub con una **dirección fija** (autorizado por el dueño):
+
+`https://github.com/vepamusic11/PARTY-GAMES/releases/download/prueba/party-game.apk`
+
+1. En la TV, con las **opciones de desarrollador** activadas (paso 2.1), instalá **Downloader** (de AFTVnews) desde Google Play.
+2. **Configuración → Apps → Seguridad y restricciones → Fuentes desconocidas** → activá **Downloader**.
+3. Abrí Downloader y escribí la dirección (o su **código de números**, abajo) → **Go** → **Instalar** → **Abrir**.
+4. Para actualizar: lo mismo; la dirección siempre baja la última versión. Si dice que el paquete entra en conflicto, desinstalá la anterior primero (ver *Actualizar a una versión nueva*).
+
+**Código de solo números:** en **https://go.aftvnews.com** pegá la dirección de arriba y te da un código (ej. `12345`) para escribir en Downloader en vez de la dirección. Como la dirección no cambia, el código sirve para todas las versiones.
 
 ### Si algo falla en la TV
 
@@ -59,20 +68,9 @@ La app **Downloader** (de AFTVnews, en Google Play de la TV) baja e instala un A
 - **Los celulares no ven la TV:** misma Wi-Fi (no invitados); abajo en el lobby de la TV está la dirección para escribirla a mano en el celular.
 - **Va lenta:** anotá con qué juego. La TV dibuja a 1080p como máximo y usa OpenGL ES 3 (ver [adr/0021-google-tv.md](adr/0021-google-tv.md)).
 
-### Pendiente: APK con Gradle (aparecer en la fila de apps de la TV, con banner)
+### APK con Gradle (fila de apps de la TV, con banner)
 
-Para que la app aparezca sola en el launcher de Google TV con su banner, Godot 4.4 exige exportar con **Use Gradle Build**. En el código ya está todo menos el último paso:
-
-- Banner 320×180: `assets/brand/android/banner_320x180.png`, generado con `tools/make_android_icons.gd`.
-- Plugin de editor `addons/android_tv/` (activado en `project.godot`): al exportar con Gradle copia el banner al proyecto Gradle, agrega `android:banner` al manifiesto y declara `touchscreen`, `leanback` y `wifi` como **no requeridos**. Sin Gradle no hace nada.
-- Probado en un contenedor Linux con Godot 4.4.1: `--install-android-build-template` instala la plantilla en `android/` (fuera del repo por `.gitignore`) y el plugin deja bien el manifiesto y el banner; el build de Gradle no se pudo completar ahí porque la red no deja bajar el plugin de Android de Google Maven. En la CI de GitHub sí hay acceso.
-
-Lo que falta (toca la CI; decisión del dueño):
-
-1. En `export_presets.cfg`: `gradle_build/use_gradle_build=true` y `package/show_in_android_tv=true`.
-2. En el job `apk` de la CI: guardar también `templates/android_source.zip` de las plantillas (y cambiar la clave de la caché), instalar en el SDK `platforms;android-34`, `build-tools;34.0.0` y `ndk;23.2.8568313` (lo que pide `android/build/config.gradle` de Godot 4.4.1), exportar con `godot --headless --path . --install-android-build-template --export-debug "Android" …` y verificar con `aapt2 dump badging` que estén `leanback-launchable-activity`, `banner=` y `uses-feature-not-required` de touchscreen y leanback.
-
-Los dos cambios van juntos: con el preset en Gradle y el job viejo, el job `apk` falla.
+Para que la app aparezca sola en el launcher de Google TV con su banner, Godot 4.4 exige exportar con **Use Gradle Build**. La CI lo hace así (job `apk`): activa Gradle y `show_in_android_tv` en el preset solo durante el export (el preset del repo queda sin Gradle, para exportar en cualquier PC), instala la plantilla con `--install-android-build-template` y el SDK que pide (`platforms;android-34`, `build-tools;34.0.0`, `ndk;23.2.8568313`), y verifica con `aapt2 dump badging` que estén `leanback-launchable-activity`, `banner=`, touchscreen/leanback no requeridos, las dos arquitecturas y `web/`. El plugin `addons/android_tv/` copia el banner (`assets/brand/android/banner_320x180.png`) y agrega `android:banner` al manifiesto; sin Gradle no se declara (si no, Godot no deja exportar). Si Gradle falla, la CI arma igual el APK sin Gradle (sin fila de apps) y deja un aviso.
 
 ## Jugar con la PC conectada a la TV (HDMI)
 

@@ -100,16 +100,24 @@ jobs:
           path: ${{ runner.temp }}/benchmark.*
           if-no-files-found: ignore
 
-  # APK de prueba (debug) para instalar en un celular Android sin Android
-  # Studio: Actions → la corrida → Artifacts → party-game-debug-apk (ver la
-  # sección "Probar con tu celular Android" de docs/BUILD.md).
+  # APK de prueba (debug): UN SOLO APK para el celular (control) y para la
+  # Google TV / Android TV (pantalla). En la TV aparece en el launcher (con
+  # banner) y abre directo como TV; en el celular muestra el selector
+  # (app/boot.gd). Descarga: Actions → la corrida → Artifacts →
+  # party-game-debug-apk.
+  # Ver docs/BUILD.md y docs/adr/0021-google-tv.md.
+  #
+  # Se arma con *Gradle build* porque Godot 4.4 solo agrega la categoría
+  # LEANBACK_LAUNCHER (aparecer en la TV) con Gradle. La carpeta `android/`
+  # NO se versiona: la instala acá `--install-android-build-template`, y el
+  # plugin addons/android_tv le agrega el banner y las características de TV.
   # Job aparte y en paralelo: no demora ni puede romper los tests.
   # Firma: keystore DEBUG efímero creado acá (nunca en el repo). Si existe el
   # secreto ANDROID_DEBUG_KEYSTORE_BASE64 se usa ese, así todas las builds
   # tienen la misma firma y se instalan una encima de la otra.
   apk:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 40
     env:
       # SHA-512 oficiales de https://github.com/godotengine/godot-builds/releases
       # (archivo SHA512-SUMS.txt de la versión). Al cambiar GODOT_VERSION hay
@@ -117,6 +125,11 @@ jobs:
       GODOT_SHA512: ef4e76880a514257175544952c61191106fdef3095b909bafed9fcbeb230c3e5533920a0f3012882dd4bbde83028a67549825794e2d2c3cf76eba7918b71370e
       TEMPLATES_SHA512: 8f461c7d6e91a0fbabfc95b1e4ca70ff1732c6f2920956a16b086ec2a85b5f7e238baf4dbce60dcc5630fae3bcb9a1fa2ae2027b92cb495c02d082705715e441
       APK_NAME: party-game-debug.apk
+      # Versiones que pide la plantilla Gradle de Godot 4.4.1
+      # (android/build/config.gradle: compileSdk, buildTools, ndkVersion).
+      ANDROID_PLATFORM: android-34
+      ANDROID_BUILD_TOOLS: 34.0.0
+      ANDROID_NDK_VERSION: 23.2.8568313
     steps:
       - uses: actions/checkout@v4
 
@@ -136,13 +149,15 @@ jobs:
           godot --version
 
       # El paquete oficial trae las plantillas de TODAS las plataformas
-      # (~1,2 GB); se guardan solo las de Android (~125 MB) en caché.
+      # (~1,2 GB); se guardan en caché solo las de Android que se usan:
+      # android_debug.apk (respaldo sin Gradle) y android_source.zip (la
+      # plantilla Gradle que instala --install-android-build-template).
       - name: Caché de plantillas de exportación de Android
         id: templates
         uses: actions/cache@v4
         with:
           path: ~/.local/share/godot/export_templates/${{ env.GODOT_VERSION }}.stable
-          key: godot-android-templates-${{ env.GODOT_VERSION }}-${{ env.TEMPLATES_SHA512 }}
+          key: godot-android-gradle-templates-${{ env.GODOT_VERSION }}-${{ env.TEMPLATES_SHA512 }}
 
       - name: Descargar plantillas de exportación (con SHA-512)
         if: steps.templates.outputs.cache-hit != 'true'
@@ -152,19 +167,34 @@ jobs:
           echo "${TEMPLATES_SHA512}  $RUNNER_TEMP/templates.tpz" | sha512sum -c -
           dir="$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
           mkdir -p "$dir"
-          unzip -q -j "$RUNNER_TEMP/templates.tpz" templates/android_debug.apk templates/version.txt -d "$dir"
+          unzip -q -j "$RUNNER_TEMP/templates.tpz" templates/android_debug.apk templates/android_source.zip templates/version.txt -d "$dir"
           rm "$RUNNER_TEMP/templates.tpz"
           ls -la "$dir"
 
-      # El runner trae el Android SDK en $ANDROID_HOME. Godot necesita adb
-      # (platform-tools) y apksigner (build-tools; prefiere la 34, su target SDK).
-      - name: Revisar el Android SDK del runner
+      # El runner trae el Android SDK en $ANDROID_HOME. Gradle necesita la
+      # plataforma, las build-tools y el NDK de la plantilla; Godot, adb y
+      # apksigner. Se instala solo lo que falte.
+      - name: Android SDK para Gradle
         run: |
           echo "ANDROID_HOME=$ANDROID_HOME"
-          if [ ! -x "$ANDROID_HOME/platform-tools/adb" ] || ! ls "$ANDROID_HOME"/build-tools/*/apksigner >/dev/null 2>&1; then
-            (yes || true) | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "platform-tools" "build-tools;34.0.0" >/dev/null
+          need=()
+          [ -x "$ANDROID_HOME/platform-tools/adb" ] || need+=("platform-tools")
+          [ -f "$ANDROID_HOME/platforms/$ANDROID_PLATFORM/android.jar" ] || need+=("platforms;$ANDROID_PLATFORM")
+          [ -x "$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS/apksigner" ] || need+=("build-tools;$ANDROID_BUILD_TOOLS")
+          [ -f "$ANDROID_HOME/ndk/$ANDROID_NDK_VERSION/source.properties" ] || need+=("ndk;$ANDROID_NDK_VERSION")
+          if [ ${#need[@]} -gt 0 ]; then
+            echo "Instalando: ${need[*]}"
+            (yes || true) | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "${need[@]}" >/dev/null
           fi
-          ls "$ANDROID_HOME/build-tools"
+          ls "$ANDROID_HOME/platforms" "$ANDROID_HOME/build-tools" "$ANDROID_HOME/ndk"
+
+      - name: Caché de Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-godot-${{ env.GODOT_VERSION }}-${{ runner.os }}
 
       - name: Keystore debug y configuración del editor
         env:
@@ -175,11 +205,13 @@ jobs:
             # Sin saltos de línea ni espacios: tolera un base64 pegado desde Windows.
             printf '%s' "$DEBUG_KEYSTORE_BASE64" | tr -d '\r\n ' | base64 -d > "$ks"
             echo "Firma: keystore debug del secreto ANDROID_DEBUG_KEYSTORE_BASE64 (estable entre builds)."
+            echo "FIRMA=estable (secreto ANDROID_DEBUG_KEYSTORE_BASE64)" >> "$GITHUB_ENV"
           else
             keytool -genkeypair -keystore "$ks" -storepass android -keypass android \
               -alias androiddebugkey -dname "CN=Android Debug,O=Android,C=US" \
               -keyalg RSA -keysize 2048 -validity 3650 -noprompt
             echo "Firma: keystore debug efímero (cambia en cada build)."
+            echo "FIRMA=efímera (para actualizar hay que desinstalar la anterior)" >> "$GITHUB_ENV"
           fi
           # Godot lo toma de estas variables (no queda en export_presets.cfg).
           {
@@ -205,21 +237,81 @@ jobs:
 
       # versionCode = número de corrida: cada APK nuevo es "más nuevo" que el
       # anterior y Android lo acepta como actualización (si la firma coincide).
-      - name: Exportar APK debug
+      # --install-android-build-template instala la plantilla Gradle en
+      # android/ (no versionada) justo antes de exportar; después el plugin
+      # addons/android_tv le pone el banner, y recién ahí corre Gradle.
+      - name: Exportar APK debug (Gradle, celular + Google TV)
+        id: gradle
+        continue-on-error: true
         run: |
-          sed -i "s/^version\/code=.*/version\/code=${GITHUB_RUN_NUMBER}/" export_presets.cfg
+          # El preset del repo queda sin Gradle (así se exporta en cualquier PC
+          # sin el SDK completo); acá se activa Gradle y la fila de apps de la TV.
+          sed -i -e "s/^version\/code=.*/version\/code=${GITHUB_RUN_NUMBER}/" \
+                 -e 's/^gradle_build\/use_gradle_build=.*/gradle_build\/use_gradle_build=true/' \
+                 -e 's/^package\/show_in_android_tv=.*/package\/show_in_android_tv=true/' export_presets.cfg
           mkdir -p builds/android
+          godot --headless --path . --install-android-build-template \
+            --export-debug "Android" "$PWD/builds/android/$APK_NAME"
+          test -s "builds/android/$APK_NAME"
+
+      # Respaldo si Gradle falla: el APK sin Gradle (como antes). Sirve igual
+      # en el celular y como TV, pero en la Google TV NO aparece en la fila de
+      # apps (se abre desde Configuración → Apps). Queda un aviso en la corrida.
+      - name: Respaldo sin Gradle (solo si falló Gradle)
+        if: steps.gradle.outcome == 'failure'
+        run: |
+          sed -i -e 's/^gradle_build\/use_gradle_build=.*/gradle_build\/use_gradle_build=false/' \
+                 -e 's/^package\/show_in_android_tv=.*/package\/show_in_android_tv=false/' export_presets.cfg
+          rm -f "builds/android/$APK_NAME"
           godot --headless --path . --export-debug "Android" "$PWD/builds/android/$APK_NAME"
           test -s "builds/android/$APK_NAME"
-          apksigner=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
-          "$apksigner" verify --print-certs "builds/android/$APK_NAME"
-          size=$(du -h "builds/android/$APK_NAME" | cut -f1)
+          echo "TV_LAUNCHER=no" >> "$GITHUB_ENV"
+          echo "::warning::Falló el APK con Gradle: se usa el APK sin Gradle (en la Google TV no aparece en la fila de apps; abrirlo desde Configuración → Apps)."
+
+      # Que el APK sea de verdad apto para TV y celular, y que traiga el
+      # control web (res://web/). Si algo falta, el job falla.
+      - name: Verificar APK (firma, manifiesto de TV, arquitecturas, web/)
+        run: |
+          apk="builds/android/$APK_NAME"
+          bt=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$bt/apksigner" verify --print-certs "$apk"
+          badging=$("$bt/aapt2" dump badging "$apk")
+          echo "$badging" | grep -v -E "^(locales|densities|application-label-)"
+          fail=0
+          need() { echo "$badging" | grep -q -E "$1" || { echo "::error::Falta en el APK: $2"; fail=1; }; }
+          need "^launchable-activity:" "LAUNCHER (aparecer en el celular)"
+          if [ "${TV_LAUNCHER:-si}" != "no" ]; then
+            need "^leanback-launchable-activity:" "LEANBACK_LAUNCHER (aparecer en el launcher de la TV)"
+            need "^application: .*banner='" "banner de Android TV (android:banner)"
+            need "uses-feature-not-required: name='android.hardware.touchscreen'" "touchscreen no requerido"
+            need "uses-feature-not-required: name='android.software.leanback'" "leanback no requerido"
+          fi
+          need "^native-code: .*'arm64-v8a'" "arquitectura arm64-v8a"
+          need "^native-code: .*'armeabi-v7a'" "arquitectura armeabi-v7a (Google TV de 32 bits)"
+          for p in INTERNET ACCESS_NETWORK_STATE ACCESS_WIFI_STATE CHANGE_WIFI_MULTICAST_STATE; do
+            need "uses-permission: name='android.permission.$p'" "permiso $p"
+          done
+          # Archivos del control web: tienen que viajar tal cual (assets/web/…).
+          # Si Godot importa alguno (imágenes, fuentes), en el APK queda solo
+          # la versión importada: hay que marcarlo "Keep File" (docs/BUILD.md).
+          listing=$(unzip -Z1 "$apk")
+          for f in $(git ls-files web | grep -v -E '(^|/)\.|\.import$'); do
+            echo "$listing" | grep -qx "assets/$f" || { echo "::error file=$f::no está en el APK tal cual (¿Godot lo importa? ver docs/BUILD.md)"; fail=1; }
+          done
+          exit $fail
+
+      - name: Resumen
+        run: |
+          apk="builds/android/$APK_NAME"
+          size=$(du -h "$apk" | cut -f1)
           {
-            echo "### APK de prueba (debug)"
+            echo "### APK de prueba (debug): celular + Google TV"
             echo ""
             echo "- Archivo: \`$APK_NAME\` ($size), versionCode ${GITHUB_RUN_NUMBER}, commit \`${GITHUB_SHA::7}\`"
+            echo "- Firma: ${FIRMA}"
+            echo "- Fila de apps de la Google TV: ${TV_LAUNCHER:-si} (no = salió el respaldo sin Gradle)"
             echo "- Descarga: **Artifacts → party-game-debug-apk** (abajo en esta página)"
-            echo "- Cómo instalarlo y conectarlo a la TV: docs/BUILD.md → *Probar con tu celular Android*"
+            echo "- Cómo instalarlo en la TV y en el celular: docs/BUILD.md"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@v4
@@ -229,3 +321,51 @@ jobs:
           if-no-files-found: error
           retention-days: 14
           compression-level: 0  # El APK ya viene comprimido.
+
+  # Publica el APK de prueba en un pre-release de GitHub con tag fijo
+  # `prueba`, para instalarlo en la Google TV con la app Downloader escribiendo
+  # siempre la misma dirección (autorizado por el dueño, 03/10/2026):
+  #   https://github.com/vepamusic11/PARTY-GAMES/releases/download/prueba/party-game.apk
+  # Solo si pasaron los tests y el APK, y nunca desde PRs de forks. Es el único
+  # job con permiso de escritura.
+  publicar-apk:
+    needs: [tests, apk]
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    concurrency:
+      group: publicar-apk-prueba
+      cancel-in-progress: false
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: party-game-debug-apk
+          path: dl
+
+      - name: Publicar en el pre-release "prueba"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          REF: ${{ github.head_ref || github.ref_name }}
+          # En un PR, GITHUB_SHA es el commit de merge temporal: usar el de la rama.
+          SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          cp dl/party-game-debug.apk party-game.apk
+          notes="Build de PRUEBA (firmada en modo debug, no es una versión publicada).
+          Rama ${REF}, commit ${SHA::7}, corrida ${GITHUB_RUN_NUMBER}.
+          Instalar en la Google TV con la app Downloader: https://github.com/${REPO}/releases/download/prueba/party-game.apk
+          Guía: docs/BUILD.md"
+          if gh release view prueba -R "$REPO" >/dev/null 2>&1; then
+            gh release upload prueba party-game.apk --clobber -R "$REPO"
+            gh release edit prueba --prerelease --notes "$notes" -R "$REPO"
+          else
+            gh release create prueba party-game.apk --prerelease --target "$SHA" \
+              --title "PARTY-GAME · prueba" --notes "$notes" -R "$REPO"
+          fi
+          url="https://github.com/${REPO}/releases/download/prueba/party-game.apk"
+          curl -sSfLI "$url" | grep -i -E "^(HTTP|content-length)" || true
+          echo "### APK publicado para Downloader" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "$url" >> "$GITHUB_STEP_SUMMARY"
