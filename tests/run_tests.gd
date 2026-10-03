@@ -1,6 +1,7 @@
 extends SceneTree
 ## Tests automáticos, sin dependencias externas. Se corren headless:
 ##   godot --headless --path . -s res://tests/run_tests.gd
+##   … -- --only=web     (solo los tests cuyo nombre contiene "web"; para iterar)
 ## Sale con código 0 si todo pasa y 1 si algo falla (lo usa la CI).
 
 ## Puertos de test por DEBAJO del rango efímero de Linux (32768–60999). En
@@ -27,9 +28,13 @@ func _run() -> void:
 	# carpeta propia, nunca en la de la TV.
 	MusicCache.dir = TEST_MUSIC_CACHE
 	MusicCache.clear()
+	var only := ""
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--only="):
+			only = arg.trim_prefix("--only=")
 	for method in get_method_list():
 		var n: String = method.name
-		if n.begins_with("test_"):
+		if n.begins_with("test_") and (only.is_empty() or n.contains(only)):
 			_current = n
 			var before := _failed
 			await call(n)
@@ -5635,3 +5640,329 @@ func test_board25d_games_draw_projected() -> void:
 	Board25DBaker.fake_render = false
 	Board25DBaker.release_after_sec = 2.0
 	Board25DBaker.reset()
+
+
+# --- Control web (ADR 0022): enlace del QR, servidor HTTP y lobby ---------------------
+
+func test_web_join_url_and_path() -> void:
+	check(Protocol.web_join_url("192.168.1.34", Protocol.HTTP_PORT, "K7QX") == "http://192.168.1.34:47770/K7QX", "enlace del QR")
+	check(Protocol.parse_web_join_path("/K7QX") == "K7QX" and Protocol.parse_web_join_path("/k7qx/") == "K7QX", "la ruta del QR da el código (también en minúsculas)")
+	for bad in ["/", "/K7QX/47778", "/K7Q", "/AB0I", "/../K7QX", "/K7QX/../x", "/nope.txt", "/index.html", "", "/K7QX?r=1"]:
+		check(Protocol.parse_web_join_path(bad).is_empty(), "ruta que no es de unirse: %s" % bad)
+	# El enlace entra en un QR chico (versión 3, 29 módulos) aun con la IP más
+	# larga y el último puerto de reintento: se lee desde el sillón.
+	var short := PMCQr.encode(Protocol.web_join_url("10.0.0.2", Protocol.HTTP_PORT, "K7QX"), JoinQr.ECC)
+	var long := PMCQr.encode(Protocol.web_join_url("192.168.100.100", Protocol.HTTP_PORT + 4, "K7QX"), JoinQr.ECC)
+	check(short != null and short.version <= 3 and long != null and long.version <= 3, "QR de versión ≤ 3 (%d, %d)" % [short.version if short else 0, long.version if long else 0])
+	check(Protocol.HTTP_PORT + Protocol.HTTP_PORT_ATTEMPTS <= Protocol.WS_PORT and Protocol.HTTP_PORT + Protocol.HTTP_PORT_ATTEMPTS <= Protocol.DISCOVERY_PORT,
+		"los puertos HTTP no chocan con el WebSocket ni el UDP")
+
+
+func test_sort_lan_ips() -> void:
+	var sorted := WebControllerServer.sort_lan_ips(["127.0.0.1", "172.27.16.1", "::1", "fe80::1", "169.254.3.4", "10.0.0.8", "192.168.1.34", "8.8.8.8", 42, "192.168.1.34"])
+	var expected: Array[String] = ["192.168.1.34", "10.0.0.8", "172.27.16.1", "8.8.8.8"]
+	check(sorted == expected, "la Wi-Fi de casa primero, WSL/Hyper-V después, sin loopback ni repetidas: %s" % [sorted])
+	check(WebControllerServer.sort_lan_ips([]).is_empty() and WebControllerServer.sort_lan_ips(["::1"]).is_empty(), "sin IPv4 útil: vacío")
+
+
+## GET/HEAD con HTTPClient contra el servidor web de la TV. Devuelve
+## {"code": int, "headers": Dictionary (claves en minúsculas), "body": PackedByteArray}.
+func _http(port: int, path: String, method: int = HTTPClient.METHOD_GET) -> Dictionary:
+	var http := HTTPClient.new()
+	http.connect_to_host("127.0.0.1", port)
+	var start := Time.get_ticks_msec()
+	while http.get_status() in [HTTPClient.STATUS_CONNECTING, HTTPClient.STATUS_RESOLVING] and Time.get_ticks_msec() - start < 3000:
+		http.poll()
+		await process_frame
+	if http.get_status() != HTTPClient.STATUS_CONNECTED:
+		return {"code": -1, "headers": {}, "body": PackedByteArray()}
+	http.request(method, path, PackedStringArray())
+	while http.get_status() == HTTPClient.STATUS_REQUESTING and Time.get_ticks_msec() - start < 3000:
+		http.poll()
+		await process_frame
+	var out := {"code": http.get_response_code(), "headers": {}, "body": PackedByteArray()}
+	var headers := http.get_response_headers_as_dictionary()
+	for key: String in headers:
+		out.headers[key.to_lower()] = headers[key]
+	var body := PackedByteArray()  # Local: sacar el array del diccionario daría una copia.
+	while http.get_status() == HTTPClient.STATUS_BODY and Time.get_ticks_msec() - start < 3000:
+		http.poll()
+		if http.get_status() == HTTPClient.STATUS_BODY:
+			body.append_array(http.read_response_body_chunk())
+		await process_frame
+	out.body = body
+	http.close()
+	return out
+
+
+## Manda bytes crudos y devuelve lo que contesta hasta que la TV cierra (o
+## pasa `timeout_ms`). Guarda la conexión en `holder` para mirar su estado.
+func _raw_http(port: int, payload: PackedByteArray, timeout_ms: int = 2500, holder: Array = []) -> String:
+	var tcp := StreamPeerTCP.new()
+	tcp.connect_to_host("127.0.0.1", port)
+	var start := Time.get_ticks_msec()
+	while tcp.get_status() == StreamPeerTCP.STATUS_CONNECTING and Time.get_ticks_msec() - start < 2000:
+		tcp.poll()
+		await process_frame
+	if not payload.is_empty():
+		tcp.put_data(payload)
+	var got := PackedByteArray()
+	while Time.get_ticks_msec() - start < timeout_ms:
+		tcp.poll()
+		if tcp.get_status() != StreamPeerTCP.STATUS_CONNECTED:
+			break
+		var n := tcp.get_available_bytes()
+		if n > 0:
+			got.append_array(tcp.get_partial_data(n)[1])
+		await process_frame
+	# Lo que quedó en el buffer tras el cierre (la respuesta llega junto con el FIN).
+	tcp.poll()
+	var rest := tcp.get_available_bytes() if tcp.get_status() == StreamPeerTCP.STATUS_CONNECTED else 0
+	if rest > 0:
+		got.append_array(tcp.get_partial_data(rest)[1])
+	holder.append(tcp)
+	return got.get_string_from_ascii()
+
+
+func test_web_server_serves_files() -> void:
+	var port := TEST_PORT + 80
+	var web := WebControllerServer.new()
+	root.add_child(web)
+	check(web.start(port, 12345, "127.0.0.1", 1) == OK and web.port == port, "abre el puerto HTTP")
+	var r := await _http(port, "/")
+	check(r.code == 200 and str(r.headers.get("content-type", "")).begins_with("text/html"), "GET / -> 200 html (%s)" % r.code)
+	var html := (r.body as PackedByteArray).get_string_from_utf8()
+	check(html.contains('name="pg-ws-port" content="12345"') and not html.contains("{{WS_PORT}}"), "inyecta el puerto real del WebSocket")
+	check(str(r.headers.get("x-content-type-options", "")) == "nosniff", "nosniff")
+	var csp := str(r.headers.get("content-security-policy", ""))
+	check(csp.contains("default-src 'none'") and csp.contains("connect-src ws://127.0.0.1:12345") and csp.contains("script-src 'self'"),
+		"CSP: solo la TV y el WebSocket a la misma IP y puerto (%s)" % csp)
+	check(int(r.headers.get("content-length", 0)) == (r.body as PackedByteArray).size(), "Content-Length correcto")
+	r = await _http(port, "/K7QX")
+	check(r.code == 200 and (r.body as PackedByteArray).get_string_from_utf8().contains("<!doctype html>"), "la ruta del QR sirve la página")
+	r = await _http(port, "/K7QX?x=1")
+	check(r.code == 200, "la consulta se ignora")
+	r = await _http(port, "/controller.js")
+	check(r.code == 200 and str(r.headers.get("content-type", "")).begins_with("text/javascript")
+		and (r.body as PackedByteArray) == FileAccess.get_file_as_bytes("res://web/controller.js"), "GET /controller.js: el archivo tal cual")
+	r = await _http(port, "/fredoka-bold.woff2")
+	check(r.code == 200 and str(r.headers.get("content-type", "")) == "font/woff2"
+		and (r.body as PackedByteArray).size() == FileAccess.get_file_as_bytes("res://web/fredoka-bold.woff2.bin").size()
+		and str(r.headers.get("cache-control", "")).contains("max-age"), "la fuente (archivo .bin) sale como font/woff2 y se cachea")
+	r = await _http(port, "/controller.css", HTTPClient.METHOD_HEAD)
+	check(r.code == 200 and int(r.headers.get("content-length", 0)) > 100 and (r.body as PackedByteArray).is_empty(), "HEAD: cabeceras sin cuerpo")
+	r = await _http(port, "/nope.txt")
+	check(r.code == 404, "archivo que no está: 404 (%s)" % r.code)
+	r = await _http(port, "/", HTTPClient.METHOD_POST)
+	check(r.code == 405 and str(r.headers.get("allow", "")) == "GET, HEAD", "POST: 405 con Allow")
+	# Rutas armadas a mano (HTTPClient las normalizaría): van crudas.
+	var raw := await _raw_http(port, "GET /../project.godot HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n".to_utf8_buffer())
+	check(raw.begins_with("HTTP/1.1 404"), "`..` no sale del mapa de rutas: %s" % raw.get_slice("\r\n", 0))
+	raw = await _raw_http(port, "GET /web/index.html HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n".to_utf8_buffer())
+	check(raw.begins_with("HTTP/1.1 404"), "la ruta de disco no es una ruta pública")
+	raw = await _raw_http(port, "GET /%2e%2e/project.godot HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n".to_utf8_buffer())
+	check(raw.begins_with("HTTP/1.1 404"), "sin decodificar porcentajes")
+	check(web.requests_served >= 10, "cuenta las respuestas (%d)" % web.requests_served)
+	await process_frame
+	check(web.active_connections() == 0, "cierra después de responder")
+	web.queue_free()
+	await process_frame
+
+
+func test_web_server_rejects_garbage() -> void:
+	var port := TEST_PORT + 81
+	var web := WebControllerServer.new()
+	web.header_timeout_ms = 300
+	root.add_child(web)
+	web.start(port, Protocol.WS_PORT, "127.0.0.1", 1)
+	var raw := await _raw_http(port, ("GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nX-Pad: " + "a".repeat(5000) + "\r\n\r\n").to_utf8_buffer())
+	check(raw.begins_with("HTTP/1.1 431"), "cabecera gigante: 431 (%s)" % raw.get_slice("\r\n", 0))
+	raw = await _raw_http(port, "esto no es http\r\n\r\n".to_utf8_buffer())
+	check(raw.begins_with("HTTP/1.1 400"), "basura: 400")
+	raw = await _raw_http(port, "GET / HTTP/1.1\r\n\r\n".to_utf8_buffer())
+	check(raw.begins_with("HTTP/1.1 400"), "sin Host: 400 (no se puede armar la CSP)")
+	raw = await _raw_http(port, "GET / HTTP/1.1\r\nHost: evil<script>\r\n\r\n".to_utf8_buffer())
+	check(raw.begins_with("HTTP/1.1 400"), "Host raro: 400")
+	raw = await _raw_http(port, "GET / HTTP/1.1\r\nHost: [::1]:47770\r\n\r\n".to_utf8_buffer())
+	check(raw.begins_with("HTTP/1.1 200") and raw.contains("connect-src ws://[::1]:%d" % Protocol.WS_PORT), "Host IPv6 entre corchetes")
+	raw = await _raw_http(port, ("GET / HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n" + "x".repeat(100)).to_utf8_buffer())
+	check(raw.begins_with("HTTP/1.1 200"), "lo que sobra después de la cabecera se descarta")
+	raw = await _raw_http(port, "POST / HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 5\r\n\r\nhello".to_utf8_buffer())
+	check(raw.begins_with("HTTP/1.1 405"), "POST con cuerpo: 405")
+	# Conexión que no manda nada: se corta sola al vencer el tiempo.
+	var holder: Array = []
+	var start := Time.get_ticks_msec()
+	raw = await _raw_http(port, PackedByteArray(), 2000, holder)
+	var elapsed := Time.get_ticks_msec() - start
+	check(raw.is_empty() and elapsed < 1800 and (holder[0] as StreamPeerTCP).get_status() != StreamPeerTCP.STATUS_CONNECTED,
+		"sin cabecera en %d ms: la TV cierra sin responder (%d ms)" % [web.header_timeout_ms, elapsed])
+	# Cabecera a medias (sin el final): también se corta.
+	raw = await _raw_http(port, "GET / HTTP/1.1\r\nHost: 127".to_utf8_buffer(), 2000, holder)
+	check(raw.is_empty() and (holder[1] as StreamPeerTCP).get_status() != StreamPeerTCP.STATUS_CONNECTED, "cabecera incompleta: se corta")
+	web.queue_free()
+	await process_frame
+
+
+func test_web_server_many_connections() -> void:
+	var port := TEST_PORT + 82
+	var web := WebControllerServer.new()
+	web.header_timeout_ms = 400
+	root.add_child(web)
+	web.start(port, Protocol.WS_PORT, "127.0.0.1", 1)
+	var peers: Array[StreamPeerTCP] = []
+	for i in WebControllerServer.MAX_CONNECTIONS + 8:
+		var tcp := StreamPeerTCP.new()
+		tcp.connect_to_host("127.0.0.1", port)
+		peers.append(tcp)
+	await _until(func() -> bool:
+		for p in peers:
+			p.poll()
+		return web.active_connections() >= WebControllerServer.MAX_CONNECTIONS, 2000)
+	check(web.active_connections() <= WebControllerServer.MAX_CONNECTIONS, "nunca más de %d a la vez (%d)" % [WebControllerServer.MAX_CONNECTIONS, web.active_connections()])
+	# Las mudas se cierran al vencer (400 ms) y la TV queda limpia.
+	await _until(func() -> bool:
+		for p in peers:
+			p.poll()
+		return web.active_connections() == 0, 3000)
+	check(web.active_connections() == 0, "las mudas se cierran al vencer (%d quedan)" % web.active_connections())
+	var r := await _http(port, "/index.html")
+	check(r.code == 200, "después de la avalancha sigue sirviendo")
+	for p in peers:
+		p.disconnect_from_host()
+	web.queue_free()
+	await process_frame
+
+
+## El bundle embebido (respaldo para el APK) tiene que ser idéntico a web/.
+## Si falla: godot --headless --path . -s res://tools/build_web_bundle.gd
+func test_web_bundle_in_sync() -> void:
+	var tool: Script = load("res://tools/build_web_bundle.gd")
+	var names: PackedStringArray = tool.list_files()
+	check(names.size() >= 5 and "index.html" in names and "controller.js" in names, "archivos del control web: %s" % [names])
+	var bundled: Array = WebBundle.names()
+	bundled.sort()
+	check(Array(names) == bundled, "mismos archivos en el bundle (regenerar con tools/build_web_bundle.gd): %s vs %s" % [names, bundled])
+	for n in names:
+		check(WebBundle.get_file(n) == FileAccess.get_file_as_bytes("res://web/" + n), "%s: el bundle está viejo, regenerar con tools/build_web_bundle.gd" % n)
+		# Godot importa fuentes e imágenes y el original no viaja en el export:
+		# esos archivos van con extensión .bin (y sin .import).
+		var ext := n.get_extension().to_lower()
+		check(not ext in ["png", "jpg", "jpeg", "webp", "svg", "ttf", "otf", "woff", "woff2", "wav", "ogg", "mp3"],
+			"%s: Godot lo importaría y no llegaría al APK; renombrarlo a .bin" % n)
+		check(not FileAccess.file_exists("res://web/" + n + ".import"), "%s: no debería tener .import" % n)
+	check(WebBundle.get_file("no-existe").is_empty(), "archivo desconocido: vacío")
+	# Cada ruta pública del servidor apunta a un archivo que existe.
+	for path: String in WebControllerServer.ROUTES:
+		var file: String = WebControllerServer.ROUTES[path][0]
+		check(file in names, "la ruta %s apunta a %s, que no está en web/" % [path, file])
+	# Peso total razonable para una Wi-Fi de casa (< 600 KB).
+	var total := 0
+	for n in names:
+		total += FileAccess.get_file_as_bytes("res://web/" + n).size()
+	check(total < 600 * 1024, "peso total del control web: %d KB" % (total / 1024))
+
+
+## El JS copia constantes del protocolo: tienen que coincidir con Protocol.
+func test_web_client_matches_protocol() -> void:
+	var js := FileAccess.get_file_as_string("res://web/controller.js")
+	check(js.contains("VERSION: %d," % Protocol.VERSION), "misma versión de protocolo")
+	check(js.contains("WS_PORT: %d," % Protocol.WS_PORT), "mismo puerto por defecto")
+	check(js.contains('ROOM_ALPHABET: "%s"' % Protocol.ROOM_CODE_ALPHABET), "mismo alfabeto del código")
+	var colors: Array[String] = []
+	for c in Protocol.MASCOT_COLORS:
+		colors.append('"#%s"' % c.to_html(false).to_upper())
+	check(js.contains("COLORS: [%s]" % ", ".join(colors)), "misma paleta de mascotas")
+	var names: Array[String] = []
+	for n in Protocol.MASCOT_COLOR_NAMES:
+		names.append('"%s"' % n)
+	check(js.contains("COLOR_NAMES: [%s]" % ", ".join(names)), "mismos nombres de colores")
+	var styles: Array[String] = []
+	for n in PlayerAvatar.STYLE_NAMES:
+		styles.append('"%s"' % n)
+	check(js.contains("STYLE_NAMES: [%s]" % ", ".join(styles)), "mismos estilos de mascota")
+	var layouts: Array[String] = []
+	for l in Protocol.LAYOUTS:
+		layouts.append('"%s"' % l)
+	check(js.contains("LAYOUTS: [%s]" % ", ".join(layouts)), "mismos layouts")
+	var kinds: Array[String] = []
+	for k in Protocol.FEEDBACK_KINDS:
+		kinds.append('"%s"' % k)
+	check(js.contains("FEEDBACK: [%s]" % ", ".join(kinds)), "mismos tipos de feedback")
+	check(js.contains("NAME_MAX: %d," % Protocol.NAME_MAX_LENGTH), "mismo largo de apodo")
+	# Regla del proyecto ("nunca BBCode"): los textos de la red solo con textContent.
+	check(not js.contains("innerHTML") and not js.contains("outerHTML") and not js.contains("insertAdjacentHTML") and not js.contains("document.write"),
+		"el JS nunca inyecta HTML")
+	check(not js.contains("eval(") and not js.contains("new Function("), "sin eval")
+	var html := FileAccess.get_file_as_string("res://web/index.html")
+	check(html.contains('content="{{WS_PORT}}"') and not html.contains("<script>") and not html.contains("style=\""),
+		"la página deja el puerto al servidor y no tiene scripts ni estilos en línea (CSP)")
+	var css := FileAccess.get_file_as_string("res://web/controller.css")
+	check(not css.contains("color-mix(") and not css.contains("@import") and not css.contains("http"), "CSS sin color-mix (Safari 15) ni recursos externos")
+
+
+func test_lobby_join_info_and_qr() -> void:
+	var lobby := LobbyScreen.new()
+	root.add_child(lobby)
+	await process_frame
+	lobby.set_join_info("K7QX", ["192.168.1.34", "172.27.16.1"] as Array[String], Protocol.HTTP_PORT, Protocol.WS_PORT)
+	check(lobby.join_url() == "http://192.168.1.34:47770/K7QX", "el QR codifica la IP más probable: %s" % lobby.join_url())
+	var qr: JoinQr = lobby._qr
+	check(qr.has_code() and qr.version() <= 3, "QR generado (versión %d)" % qr.version())
+	await process_frame
+	check(qr.module_px() >= 8, "módulos de ≥ 8 px a 1080p (%d)" % qr.module_px())
+	check(lobby._address.text == "192.168.1.34:47770", "dirección para escribir a mano: %s" % lobby._address.text)
+	check(lobby._other_ips.visible and lobby._other_ips.text.contains("172.27.16.1"), "las otras IP en chico")
+	check(lobby._app_line.text.contains("puerto %d" % Protocol.WS_PORT), "la app sigue teniendo su puerto a la vista")
+	check(lobby._code_box.get_child_count() == 4, "cuatro fichas del código")
+	# El mismo texto no regenera; otro código sí.
+	var tex_before: Variant = qr._tex
+	lobby.set_join_info("K7QX", ["192.168.1.34", "172.27.16.1"] as Array[String], Protocol.HTTP_PORT, Protocol.WS_PORT)
+	check(qr._tex == tex_before, "mismo enlace: el QR no se regenera")
+	lobby.set_join_info("AB23", ["192.168.1.34"] as Array[String], Protocol.HTTP_PORT, Protocol.WS_PORT)
+	check(qr._tex != tex_before and lobby.join_url().ends_with("/AB23") and not lobby._other_ips.visible, "otro código: QR nuevo, sin otras IP")
+	# Sin servidor web (puerto 0) o sin red: sin QR, con aviso.
+	lobby.set_join_info("AB23", ["192.168.1.34"] as Array[String], 0, Protocol.WS_PORT)
+	check(not qr.has_code() and lobby.join_url().is_empty(), "sin control web no hay QR")
+	lobby.set_join_info("AB23", [] as Array[String], Protocol.HTTP_PORT, Protocol.WS_PORT)
+	check(not qr.has_code() and lobby._address.text == "sin red", "sin red: lo dice")
+	# La textura del QR: tinta sobre papel, 1 px por módulo, con margen claro.
+	var m := PMCQr.encode("http://192.168.1.34:47770/K7QX", JoinQr.ECC)
+	var img := JoinQr.to_image(m)
+	check(img.get_width() == m.size + JoinQr.QUIET_ZONE * 2 and img.get_pixel(0, 0).is_equal_approx(UiTheme.PAPER)
+		and img.get_pixel(JoinQr.QUIET_ZONE, JoinQr.QUIET_ZONE).is_equal_approx(UiTheme.INK), "textura de 1 px por módulo con margen")
+	lobby.queue_free()
+	await process_frame
+
+
+## La TV levanta el servidor web junto al WebSocket y le pasa el puerto real.
+func test_host_serves_web_controller() -> void:
+	var host := HostMain.new()
+	host.server_port = TEST_PORT + 90
+	host.web_port = TEST_PORT + 91
+	host.announce = false
+	root.add_child(host)
+	await process_frame
+	check(host.web.is_listening() and host.web.port == TEST_PORT + 91, "servidor web abierto")
+	var url := host._lobby.join_url()
+	check(url.ends_with(":%d/%s" % [TEST_PORT + 91, host.server.room_code]), "el QR del lobby lleva el puerto web y el código: %s" % url)
+	var r := await _http(TEST_PORT + 91, "/" + host.server.room_code)
+	check(r.code == 200 and (r.body as PackedByteArray).get_string_from_utf8().contains('content="%d"' % (TEST_PORT + 90)),
+		"la página lleva el puerto real del WebSocket")
+	# Sin el puerto web (ocupado por otro programa, 5 intentos): la TV sigue, sin QR.
+	var blockers: Array[TCPServer] = []
+	for i in Protocol.HTTP_PORT_ATTEMPTS:
+		var b := TCPServer.new()
+		b.listen(TEST_PORT + 95 + i, "*")
+		blockers.append(b)
+	var host2 := HostMain.new()
+	host2.server_port = TEST_PORT + 92
+	host2.web_port = TEST_PORT + 95
+	host2.announce = false
+	root.add_child(host2)
+	await process_frame
+	check(host2.server.is_listening() and host2._lobby.join_url().is_empty() and not host2._lobby._qr.has_code(), "sin puerto web: la TV sigue sin QR")
+	for b in blockers:
+		b.stop()
+	host.queue_free()
+	host2.queue_free()
+	await process_frame
