@@ -32,7 +32,20 @@
     STYLE_NAMES: ["Antena", "Oso", "Gato", "Brote", "Robot", "Diablito", "Conejo"],
   };
   const SEND_HZ = 30, KEEPALIVE_MS = 250, PING_MS = 1000, DEAD_ZONE = 0.12;
-  const MAX_RECONNECT = 8, CONNECT_TIMEOUT_MS = 4000, HOLD_MS = 1000;
+  const CONNECT_TIMEOUT_MS = 6000, HOLD_MS = 1000;
+  // Reconexión (ver ADR 0022, "Condiciones feas"): la TV contesta cada ping
+  // (1 s). Sin noticias de la TV por RX_STALE_MS la señal se marca mala; por
+  // RX_DEAD_MS, con la página a la vista, la conexión se da por muerta aunque
+  // el navegador la crea abierta (Wi-Fi cortado: el socket no se entera por
+  // minutos). Se reintenta con backoff 0,5→5 s durante GIVE_UP_MS (si ya se
+  // había unido) o JOIN_GIVE_UP_MS (si todavía no).
+  const RX_STALE_MS = 2500, RX_DEAD_MS = 6000, GIVE_UP_MS = 90000, JOIN_GIVE_UP_MS = 12000;
+  // Sala llena o partida en curso: se reintenta solo cada RETRY_JOIN_MS
+  // mientras el invitado se quede en la pantalla de unirse.
+  const RETRY_JOIN_MS = 5000, RETRY_JOIN_FOR_MS = 15 * 60000;
+  // El aviso "Se cortó la conexión" aparece si reconectar tarda más que esto
+  // (al desbloquear el celular reconecta en ~0,3 s: sin parpadeo).
+  const BANNER_DELAY_MS = 900;
   const HINT_MAX = 48, LABEL_MAX = 12;
   const LAYOUT_HINTS = {
     joystick: "Mové tu mascota con el joystick",
@@ -41,6 +54,24 @@
     joystick_ab: "Movete con el joystick y usá A y B",
   };
   const LEAVE_HINT = "Mantené apretado «Salir» para irte";
+  // Textos para el invitado cuando algo falla: sin jerga, qué pasó y qué hacer.
+  const MSG = {
+    bad_room: "Ese código no es el de la TV. Fijate las 4 fichas de colores en la pantalla.",
+    stale_room: "Ese código ya no sirve: la TV se reinició. Escaneá otra vez el QR de la TV (o escribí el código nuevo).",
+    room_full: "¡La sala está llena! Pedile a quien maneja la TV que sume un lugar. Dejá esta pantalla abierta: entrás apenas haya lugar.",
+    game_in_progress: "Están en medio de una partida. Dejá esta pantalla abierta: entrás apenas termine.",
+    place_lost: "Estuviste afuera un rato y se liberó tu lugar. Dejá esta pantalla abierta: volvés a entrar apenas termine la partida.",
+    bad_name: "Ese apodo no se puede usar. Probá con otro.",
+    bad_version: "Esta página y la TV son de versiones distintas. Escaneá otra vez el QR de la TV.",
+    unreachable: "No encontramos la TV. Fijate que el juego esté abierto en la TV y que tu celular esté en la misma Wi-Fi.",
+    offline: "Tu celular no tiene conexión. Conectate a la Wi-Fi de la casa (la misma de la TV) y tocá ¡Unirme!",
+    timeout: "La TV no respondió a tiempo. Probá de nuevo.",
+    kicked: "La TV te sacó de la sala. Si fue sin querer, tocá ¡Unirme!",
+    replaced: "Abriste el control en otra pestaña o en otro navegador. Seguí jugando ahí, o tocá ¡Unirme! para jugar desde acá.",
+    gave_up: "No pudimos volver a conectar con la TV. Fijate que la TV siga con el juego abierto y que estés en su misma Wi-Fi, y tocá ¡Unirme!",
+    tv_gone: "La TV cerró el juego. Cuando vuelva a abrirlo, escaneá otra vez el QR de la TV.",
+  };
+  const RETRY_REASONS = ["room_full", "game_in_progress", "place_lost"];
   const INK = "#1D2140", PAPER = "#FFFFFF", ACCENT = "#FFC83D", DISH = "#2A3163", DISH_RIM = "#454E8C";
   const KEY_NEUTRAL = "#D5DBEA", SHADOW = "rgba(18,26,77,0.22)", GLASS = "rgba(255,255,255,0.55)";
   const LEAF = "#8BE36B", EAR_INNER = "#EE5A32", BUNNY_INNER = "#FFB3C7", METAL = "#C3CADB", SHOE = "#262B4D";
@@ -118,34 +149,56 @@
   const ROOM_FROM_URL = isValidRoom(urlRoom) ? urlRoom : "";
 
   // --- Red --------------------------------------------------------------------
+  // Estados: idle (sin sala), connecting (primera vez, sin lugar guardado),
+  // joined, reconnecting (con token: se cortó, se recargó la página o se
+  // volvió de segundo plano).
   const net = {
     ws: null, state: "idle", room: "", name: "", token: "", look: {},
     seq: 0, attempt: 0, timer: 0, connectTimer: 0, pingTimer: 0, lastPing: 0, rtt: -1,
+    lastRx: 0,          // performance.now() del último mensaje de la TV
+    lostAt: 0,          // desde cuándo se está intentando (para rendirse)
+    everJoined: false,  // ¿esta página llegó a estar unida? (cambia los mensajes)
+    hadToken: false,    // ¿el intento usa un lugar guardado?
+    tvClosed: false,    // el juego de la TV no está: cerró (1001) o rechaza la conexión al instante
+    refused: 0,         // intentos seguidos rechazados al instante (puerto cerrado: juego cerrado)
+    openedAt: 0, wsOpen: false,
     info: null, // {id, name, color, colorIndex, style, taken}
     url() { return "ws://" + location.hostname + ":" + WS_PORT; },
     join(room, name, look) {
+      clearTimeout(this.timer);
       this.room = room; this.name = name; this.look = look || {};
       this.token = store.get("room", "") === room ? store.get("token", "") : "";
-      this.attempt = 0; this.rtt = -1;
-      this.open("connecting");
+      this.hadToken = !!this.token; this.everJoined = false; this.tvClosed = false;
+      this.attempt = 0; this.rtt = -1; this.lostAt = performance.now();
+      // Con un lugar guardado (recarga, volver a escanear) se insiste como en una reconexión.
+      this.open(this.token ? "reconnecting" : "connecting");
     },
     open(newState) {
       this.closeSocket();
+      clearTimeout(this.timer);
       this.state = newState;
+      this.openedAt = performance.now(); this.wsOpen = false;
       let ws;
       try { ws = new WebSocket(this.url()); } catch (e) { this.onClosed(1006, ""); return; }
       this.ws = ws;
-      clearTimeout(this.connectTimer);
-      this.connectTimer = setTimeout(() => { if (this.ws === ws && ws.readyState !== WebSocket.OPEN) { ws.close(); } }, CONNECT_TIMEOUT_MS);
-      ws.onopen = () => { if (this.ws !== ws) return; this.sendJoin(); };
-      ws.onmessage = (ev) => { if (this.ws === ws) this.handle(ev.data); };
+      // Sin bienvenida a tiempo (TV colgada, Wi-Fi que pierde todo): se corta
+      // sin esperar al navegador, que puede tardar minutos en rendirse.
+      this.connectTimer = setTimeout(() => { if (this.ws === ws && this.state !== "joined") this.dropAndRetry(); }, CONNECT_TIMEOUT_MS);
+      ws.onopen = () => { if (this.ws !== ws) return; this.wsOpen = true; this.refused = 0; this.sendJoin(); };
+      ws.onmessage = (ev) => { if (this.ws === ws) { this.lastRx = performance.now(); this.handle(ev.data); } };
       ws.onclose = (ev) => { if (this.ws !== ws) return; this.ws = null; this.onClosed(ev.code, ev.reason); };
       ws.onerror = () => { /* onclose llega igual */ };
     },
     closeSocket() {
       clearTimeout(this.connectTimer); clearInterval(this.pingTimer);
-      if (this.ws) { const old = this.ws; this.ws = null; old.onclose = null; old.onmessage = null; try { old.close(); } catch (e) { /* nada */ } }
+      if (this.ws) {
+        const old = this.ws; this.ws = null;
+        old.onopen = null; old.onclose = null; old.onmessage = null; old.onerror = null;
+        try { old.close(); } catch (e) { /* nada */ }
+      }
     },
+    // Da la conexión por muerta ya (aunque el navegador la crea abierta) y reintenta.
+    dropAndRetry() { this.closeSocket(); this.onClosed(1006, ""); },
     send(type, payload) {
       if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return false;
       const msg = Object.assign({}, payload || {}, { v: PROTO.VERSION, type });
@@ -176,7 +229,16 @@
       this.token = ""; store.del("token"); store.del("room");
       if (this.ws) { try { this.ws.close(1000, "bye"); } catch (e) { /* nada */ } }
       this.closeSocket(); clearTimeout(this.timer);
-      this.info = null;
+      this.info = null; this.everJoined = false;
+    },
+    // La página se va (Atrás del navegador, recarga, pestaña cerrada) o
+    // queda guardada en la caché de páginas (bfcache): se cierra la conexión
+    // sin "bye", así la TV le guarda el lugar 30 s. Si la página vuelve
+    // (pageshow), wake() reconecta con el token.
+    suspend() {
+      if (this.state !== "joined" && this.state !== "reconnecting") return;
+      this.closeSocket(); clearTimeout(this.timer);
+      this.state = "reconnecting"; this.lostAt = performance.now();
     },
     handle(raw) {
       if (typeof raw !== "string" || raw.length === 0 || raw.length > 4096) return;
@@ -188,23 +250,23 @@
           const id = isNum(m.playerId) ? Math.floor(m.playerId) : 0;
           if (id < 1 || id > PROTO.MAX_PLAYERS) return;
           const wasReconnecting = this.state === "reconnecting";
+          const outageMs = this.everJoined ? performance.now() - this.lostAt : 0;
+          clearTimeout(this.connectTimer);
           this.token = typeof m.token === "string" && /^[0-9a-f]{32}$/i.test(m.token) ? m.token : "";
           const colorIndex = parseColorIndex(m.colorIndex);
           const hex = typeof m.color === "string" && /^[0-9a-f]{6}$/i.test(m.color) ? "#" + m.color.toUpperCase() : (colorIndex >= 0 ? PROTO.COLORS[colorIndex] : PROTO.COLORS[id - 1]);
           this.info = { id, name: sanitizeName(m.name) || this.name, color: hex, colorIndex, style: parseStyleIndex(m.style), taken: [] };
-          this.state = "joined"; this.attempt = 0;
+          this.state = "joined"; this.attempt = 0; this.everJoined = true; this.hadToken = !!this.token; this.tvClosed = false;
           store.set("token", this.token); store.set("room", this.room);
           clearInterval(this.pingTimer);
-          this.pingTimer = setInterval(() => this.ping(), PING_MS);
+          this.pingTimer = setInterval(() => this.heartbeat(), PING_MS);
           this.ping();
-          ui.onJoined(wasReconnecting);
+          ui.onJoined(wasReconnecting, outageMs);
           ui.onPhase(PROTO.PHASES.includes(m.phase) ? m.phase : "lobby");
           break;
         }
         case "reject":
-          this.state = "idle"; this.token = ""; store.del("token");
-          this.closeSocket();
-          ui.onRejected(typeof m.reason === "string" ? m.reason.slice(0, 32) : "unknown");
+          this.reject(typeof m.reason === "string" ? m.reason.slice(0, 32) : "unknown");
           break;
         case "layout": {
           const layout = PROTO.LAYOUTS.includes(m.layout) ? m.layout : "wait";
@@ -235,24 +297,62 @@
       }
     },
     ping() { this.lastPing = performance.now(); this.send("ping", { t: Math.round(this.lastPing) }); },
-    onClosed(code, reason) {
-      clearInterval(this.pingTimer);
-      if (this.state === "idle") return;
-      if (code === 4000) { this.state = "idle"; this.token = ""; store.del("token"); ui.onRejected(reason || "unknown"); return; }
-      if (this.state === "connecting") { this.state = "idle"; ui.onRejected("unreachable"); return; }
-      if (!this.token) { this.state = "idle"; ui.onGaveUp(); return; }
-      if (this.state === "joined") ui.onConnectionLost();
-      this.attempt += 1;
-      if (this.attempt > MAX_RECONNECT) { this.state = "idle"; ui.onGaveUp(); return; }
-      this.state = "reconnecting";
-      const delay = Math.min(500 * Math.pow(2, this.attempt - 1), 5000);
-      clearTimeout(this.timer);
-      this.timer = setTimeout(() => this.open("reconnecting"), delay);
+    // Cada PING_MS mientras está unido: ping y vigilancia de la conexión.
+    heartbeat() {
+      const quiet = performance.now() - this.lastRx;
+      // Solo con la página a la vista: en segundo plano los timers se espacian
+      // y la TV igual lo marca "no responde" hasta que vuelva.
+      if (quiet > RX_DEAD_MS && document.visibilityState === "visible") { this.dropAndRetry(); return; }
+      if (quiet > RX_STALE_MS) ui.setSignal("lost", -1);
+      this.ping();
     },
-    // Al volver a la pestaña (pantalla bloqueada, otra app): reintentar ya.
+    reject(reason) {
+      const wasPlaced = this.hadToken || this.everJoined;
+      this.state = "idle"; this.token = ""; store.del("token");
+      this.closeSocket(); clearTimeout(this.timer);
+      ui.onRejected(reason, wasPlaced);
+    },
+    onClosed(code, reason) {
+      clearInterval(this.pingTimer); clearTimeout(this.connectTimer);
+      if (this.state === "idle") return;
+      if (code === 4000) { this.reject(reason || "unknown"); return; }
+      // Otra pestaña (u otro navegador) tomó este lugar con el mismo token: no
+      // pelearse por él (se echarían una a la otra para siempre).
+      if (code === 4001) { this.state = "idle"; clearTimeout(this.timer); ui.onReplaced(); return; }
+      // Sin respuesta del juego: 1001 (la TV lo cerró) o dos intentos rechazados
+      // al instante (la TV está, pero el juego no escucha). Si en cambio tarda
+      // y vence (CONNECT_TIMEOUT_MS), es la Wi-Fi o el juego en pausa.
+      if (!this.wsOpen && code !== 4000 && performance.now() - this.openedAt < 1500) this.refused += 1; else if (this.wsOpen) this.refused = 0;
+      if (code === 1001 || this.refused >= 2) this.tvClosed = true;
+      const now = performance.now();
+      if (this.state === "joined") { this.lostAt = now; this.rtt = -1; ui.onConnectionLost(); }
+      if (this.state === "connecting") {
+        // Primera vez y sin lugar guardado: un reintento (Wi-Fi floja) y, si no, avisar.
+        if (this.attempt >= 1) { this.state = "idle"; ui.onRejected(navigator.onLine === false ? "offline" : "unreachable", false); return; }
+      } else if (now - this.lostAt > (this.everJoined ? GIVE_UP_MS : JOIN_GIVE_UP_MS)) {
+        this.state = "idle";
+        if (this.everJoined) ui.onGaveUp(this.tvClosed); else ui.onRejected(navigator.onLine === false ? "offline" : "unreachable", false);
+        return;
+      }
+      this.attempt += 1;
+      const delay = this.attempt === 1 ? 200 : Math.min(500 * Math.pow(2, this.attempt - 2), 5000);  // 0,2 · 0,5 · 1 · 2 · 4 · 5 s…
+      if (this.state !== "connecting") this.state = "reconnecting";
+      clearTimeout(this.timer);
+      this.timer = setTimeout(() => { if (this.state === "reconnecting" || this.state === "connecting") this.open(this.state); }, delay);
+      ui.onRetrying();
+    },
+    // Al volver a la página (pantalla desbloqueada, otra app, pestaña, bfcache,
+    // Wi-Fi que volvió): si estaba reintentando, probar ya; si estaba unida y la
+    // TV no habló hace rato, el socket puede estar muerto aunque diga "abierto"
+    // (iOS los corta al bloquear): reconectar en vez de esperar.
     wake() {
-      if (this.state === "reconnecting") { clearTimeout(this.timer); this.open("reconnecting"); }
-      else if (this.state === "joined" && (!this.ws || this.ws.readyState !== WebSocket.OPEN)) { this.onClosed(1006, ""); }
+      if (this.state === "reconnecting" || this.state === "connecting") {
+        this.lostAt = Math.max(this.lostAt, performance.now() - (this.everJoined ? GIVE_UP_MS : JOIN_GIVE_UP_MS) / 2);
+        if (!this.ws) { clearTimeout(this.timer); this.open(this.state); }
+      } else if (this.state === "joined") {
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN || performance.now() - this.lastRx > RX_STALE_MS) this.dropAndRetry();
+        else this.ping();
+      }
     },
   };
 
@@ -261,13 +361,17 @@
   const TONES = { point: [[880, 0.06], [1320, 0.08]], hit: [[220, 0.12], [160, 0.14]], win: [[660, 0.08], [880, 0.08], [1100, 0.08], [1320, 0.18]], lose: [[300, 0.12], [220, 0.2]],
     go: [[990, 0.1]], count: [[660, 0.06]], tap: [[1200, 0.03]], select: [[1000, 0.04]], join: [[700, 0.06], [1050, 0.1]], pop: [[800, 0.05]] };
   let audioCtx = null, soundOn = store.get("sound", true);
+  // WebAudio solo arranca dentro de un gesto (iOS: touchend/click; Chrome:
+  // pointerdown). Al volver de segundo plano Safari lo deja "interrupted" (no
+  // "suspended"): cualquier estado que no sea "running" se reanuda en el
+  // próximo toque. En iPhone, con el interruptor de silencio puesto no suena.
   function unlockAudio() {
     if (!soundOn) return;
     try {
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) return;
       if (!audioCtx) audioCtx = new AC();
-      if (audioCtx.state === "suspended") audioCtx.resume();
+      if (audioCtx.state !== "running") { const p = audioCtx.resume(); if (p && p.catch) p.catch(() => { /* sin gesto válido: el próximo toque */ }); }
     } catch (e) { audioCtx = null; }
   }
   function tone(kind) {
@@ -283,10 +387,21 @@
   }
   function buzz(kind) { try { if (navigator.vibrate && VIBES[kind]) navigator.vibrate(VIBES[kind]); } catch (e) { /* iPhone: no vibra */ } }
   function feedback(kind) { buzz(kind); tone(kind); if (kind === "hit" || kind === "lose") ui.setMood("sad", 1800); if (kind === "win" || kind === "point") ui.setMood("happy", 1800); }
-  let wakeLock = null;
+  // Pantalla encendida (Chrome 84+, Safari 16.4+). El navegador la suelta al
+  // pasar a segundo plano: se pide de nuevo al volver y en cada toque (Safari
+  // puede pedir un gesto). Sin Wake Lock (iPhone con iOS < 16.4) la pantalla
+  // se apaga sola: al desbloquear, wake() reconecta.
+  let wakeLock = null, wakePending = false;
   async function keepAwake() {
-    try { if ("wakeLock" in navigator && !wakeLock) { wakeLock = await navigator.wakeLock.request("screen"); wakeLock.addEventListener("release", () => { wakeLock = null; }); } } catch (e) { wakeLock = null; }
+    if (!("wakeLock" in navigator) || wakeLock || wakePending || document.visibilityState !== "visible") return;
+    wakePending = true;
+    try {
+      const lock = await navigator.wakeLock.request("screen");
+      wakeLock = lock;
+      lock.addEventListener("release", () => { if (wakeLock === lock) wakeLock = null; });
+    } catch (e) { wakeLock = null; } finally { wakePending = false; }
   }
+  function letSleep() { const lock = wakeLock; wakeLock = null; if (lock) lock.release().catch(() => { /* nada */ }); }
 
   // --- Mascota (cabeza y cuerpo, dibujados en canvas) --------------------------------
   // Versión chica de PlayerAvatar: cara blanca, ojos, cachetes y el accesorio
@@ -385,17 +500,21 @@
     picker: $("picker"), styleName: $("style-name"), stylePrev: $("style-prev"), styleNext: $("style-next"), swatches: $("swatches"), colorName: $("color-name"),
     standing: $("standing"), standingBand: $("standing-band"), standingRound: $("standing-round"), standingCheer: $("standing-cheer"), standingMedal: $("standing-medal"),
     standingMedalText: $("standing-medal-text"), standingMain: $("standing-main"), standingTotal: $("standing-total"), toast: $("toast"),
+    net: $("net"), netTitle: $("net-title"), netSub: $("net-sub"),
   };
 
   const ui = {
     phase: "lobby", layout: "wait", mood: "normal", moodTimer: 0, toastTimer: 0, standingShown: false, lefty: store.get("lefty", false),
+    bannerTimer: 0, bannerTick: 0, retryTimer: 0, retryReason: "", retrySince: 0, backArmed: false,
     init() {
       el.name.value = store.get("name", "");
       if (ROOM_FROM_URL) this.setCode(ROOM_FROM_URL);
       el.tvAddress.textContent = location.host;
       el.tvAddress.hidden = false;
-      el.code.addEventListener("input", () => { const v = normalizeRoom(el.code.value).slice(0, 4); if (el.code.value !== v) el.code.value = v; this.paintTiles(); });
-      el.code.addEventListener("focus", () => this.paintTiles(true));
+      el.code.addEventListener("input", () => { const v = normalizeRoom(el.code.value).slice(0, 4); if (el.code.value !== v) el.code.value = v; this.paintTiles(); this.stopRetry(); });
+      el.name.addEventListener("input", () => this.stopRetry());
+      el.code.addEventListener("focus", () => { this.paintTiles(true); this.revealField(el.code); });
+      el.name.addEventListener("focus", () => this.revealField(el.name));
       el.code.addEventListener("blur", () => this.paintTiles(false));
       el.name.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); (isValidRoom(el.code.value) ? el.joinBtn : el.code).focus(); if (isValidRoom(el.code.value)) this.submit(); } });
       el.form.addEventListener("submit", (e) => { e.preventDefault(); this.submit(); });
@@ -404,10 +523,22 @@
       this.initHold();
       this.initPicker();
       pad.init();
-      document.addEventListener("pointerdown", unlockAudio, { capture: true, passive: true });
+      // Audio y pantalla encendida necesitan un gesto: se piden en cada toque
+      // (pointerdown para Chrome; touchend y click para Safari).
+      const onGesture = () => { unlockAudio(); if (!el.play.hidden) { keepAwake(); this.armBack(); } };
+      for (const type of ["pointerdown", "touchend", "click"]) document.addEventListener(type, onGesture, { capture: true, passive: true });
       document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { net.wake(); keepAwake(); } else { pad.releaseAll(); } });
       window.addEventListener("pageshow", () => net.wake());
-      window.addEventListener("resize", () => { pad.resize(); this.paintFaces(); });
+      window.addEventListener("pagehide", () => { pad.releaseAll(); net.suspend(); });
+      window.addEventListener("online", () => { net.wake(); this.updateBanner(); });
+      window.addEventListener("offline", () => { if (net.state === "joined") net.dropAndRetry(); this.updateBanner(); });
+      window.addEventListener("popstate", () => this.onBack());
+      this.initViewport();
+      // iOS Safari ignora user-scalable=no: sin esto, pellizcar o tocar dos
+      // veces rápido agranda la página en medio de un juego.
+      for (const type of ["gesturestart", "gesturechange"]) document.addEventListener(type, (e) => e.preventDefault(), { passive: false });
+      document.addEventListener("touchmove", (e) => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
+      document.addEventListener("dblclick", (e) => e.preventDefault(), { passive: false });
       document.addEventListener("contextmenu", (e) => e.preventDefault());
       // Volver a la sala sin pasar por el formulario si hay un lugar guardado
       // (pantalla recargada, pestaña cerrada y abierta): la TV reconecta por token.
@@ -418,6 +549,42 @@
         net.join(savedRoom, savedName, this.savedLook());
       }
     },
+    // Girar el celular, la barra de Safari que aparece o se va, el teclado:
+    // iOS avisa el cambio de tamaño antes de tenerlo listo, así que se
+    // acomoda en el próximo cuadro y otra vez un rato después. Al girar se
+    // sueltan los dedos (la geometría del control cambia debajo de ellos).
+    initViewport() {
+      let raf = 0, late = 0;
+      const relayout = () => { pad.resize(); this.paintFaces(); };
+      const onChange = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(relayout); clearTimeout(late); late = setTimeout(relayout, 350); };
+      window.addEventListener("resize", onChange);
+      window.addEventListener("orientationchange", () => { pad.releaseAll(); onChange(); });
+      if (window.visualViewport) window.visualViewport.addEventListener("resize", onChange);
+      // Las letras del control se dibujan en canvas: redibujar cuando llegue Fredoka.
+      if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { pad.dirty = true; pad.draw(); this.paintFaces(); }).catch(() => { /* nada */ });
+    },
+    // Celular chico: que el teclado no tape el campo que se está escribiendo.
+    revealField(input) {
+      setTimeout(() => { try { input.scrollIntoView({ block: "center", behavior: "smooth" }); } catch (e) { input.scrollIntoView(); } }, 300);
+    },
+    // "Atrás" del navegador en medio de un juego: la primera vez solo avisa
+    // (hay una entrada extra en el historial, creada en un toque para que
+    // Chrome la respete). Si insiste, la página se va y la TV le guarda el
+    // lugar 30 s (pagehide).
+    armBack() {
+      if (this.backArmed || !window.history || !history.pushState) return;
+      try { history.pushState({ pg: "guard" }, ""); this.backArmed = true; } catch (e) { /* nada */ }
+    },
+    disarmBack() {
+      if (!this.backArmed) return;
+      this.backArmed = false;
+      try { history.back(); } catch (e) { /* nada */ }
+    },
+    onBack() {
+      if (!this.backArmed) return;
+      this.backArmed = false;
+      if (!el.play.hidden) this.toast("Para irte, mantené apretado «Salir»");
+    },
     savedLook() { const look = {}; const c = parseColorIndex(store.get("color", -1)), s = parseStyleIndex(store.get("style", -1)); if (c >= 0) look.color = c; if (s >= 0) look.style = s; return look; },
     setCode(code) { el.code.value = code; this.paintTiles(); },
     paintTiles(focused) {
@@ -427,62 +594,106 @@
     },
     submit() {
       const name = sanitizeName(el.name.value), code = normalizeRoom(el.code.value);
+      this.stopRetry();
       if (!name) { this.setStatus("Contanos cómo te llamás: escribí tu apodo.", true); el.name.focus(); return; }
       if (!isValidRoom(code)) { this.setStatus("El código son 4 letras o números: copialo de las fichas de la TV.", true); el.code.focus(); return; }
       store.set("name", name);
       el.name.blur(); el.code.blur();
-      this.setStatus("Conectando con la TV…", false);
+      this.setStatus(navigator.onLine === false ? "Tu celular no tiene conexión: probando igual…" : "Conectando con la TV…", false);
       unlockAudio();
       net.join(code, name, this.savedLook());
     },
     setStatus(msg, isError) {
+      const same = el.statusText.textContent === msg && !el.status.hidden;
       el.statusText.textContent = msg;
       el.status.hidden = !msg;
       el.status.classList.toggle("info", !isError);
+      if (same) return;  // El mismo aviso otra vez (reintento automático): sin sacudón.
+      // Apaisado o con zoom el aviso puede quedar abajo del borde: que se vea.
+      if (msg) requestAnimationFrame(() => { if (!el.join.hidden) try { el.status.scrollIntoView({ block: "nearest" }); } catch (e) { /* nada */ } });
       el.status.classList.remove("shake");
       if (isError && msg) { void el.status.offsetWidth; el.status.classList.add("shake"); }
     },
     showJoin(msg) {
       pad.setLayout("wait", {});
       this.clearStanding();
+      this.hideBanner();
+      this.disarmBack();
+      letSleep();
       el.play.hidden = true; el.join.hidden = false;
       el.bg.classList.remove("joined", "dark");
       document.documentElement.style.setProperty("--bg-top", "#2B9CF5"); document.documentElement.style.setProperty("--bg-bottom", "#BFE4FF");
       this.setStatus(msg, !!msg);
       this.setSignal("lost", -1);
     },
-    onJoined(wasReconnecting) {
-      const info = net.info;
+    onJoined(wasReconnecting, outageMs) {
+      this.stopRetry();
+      const fromJoinScreen = !el.join.hidden;
       el.join.hidden = true; el.play.hidden = false;
+      this.hideBanner();
       this.applyInfo();
       if (!wasReconnecting) { tone("join"); buzz("go"); }
-      else this.toast("¡Volviste a tu lugar!");
+      else if (fromJoinScreen || outageMs > 1500) this.toast("¡Volviste a tu lugar!");
       el.cardStatus.textContent = "¡Listo para jugar!"; el.cardStatus.classList.remove("warn");
       keepAwake();
       this.setSignal(net.rtt < 0 ? "good" : this.levelFor(net.rtt), net.rtt);
       this.updatePicker();
-      void info;
     },
-    onRejected(reason) {
-      const messages = {
-        bad_room: "Ese código no es el de la TV. Fijate las 4 fichas de colores en la pantalla.",
-        room_full: "¡La sala está llena! Pedile a quien tiene el control de la TV que sume un lugar.",
-        game_in_progress: "Están en medio de una partida. Esperá a que termine y volvé a probar.",
-        bad_name: "Ese apodo no se puede usar. Probá con otro.",
-        bad_version: "Esta página y la TV son de versiones distintas. Recargá la página.",
-        unreachable: "No encontramos la TV. ¿Están los dos en la misma Wi-Fi?",
-        timeout: "La TV no respondió a tiempo. Probá de nuevo.",
-      };
-      const auto = el.join.hidden === false && el.status.classList.contains("info") && el.statusText.textContent.startsWith("Volviendo");
-      this.showJoin(auto && reason === "bad_room" ? "" : (messages[reason] || ("No se pudo unir (" + reason + "). Probá de nuevo.")));
+    // La TV no lo dejó entrar (o lo sacó). `wasPlaced`: tenía un lugar (estaba
+    // unido o volvía con un lugar guardado), así un "código equivocado" quiere
+    // decir que la TV se reinició y "partida en curso", que se le venció el lugar.
+    onRejected(reason, wasPlaced) {
+      let key = reason;
+      if (wasPlaced && reason === "bad_room") key = "stale_room";
+      if (reason === "game_in_progress" && (wasPlaced || this.retryReason === "place_lost")) key = "place_lost";
+      if (key === "stale_room") { store.del("room"); if (el.code.value === net.room) this.setCode(""); }
+      this.showJoin(MSG[key] || "Algo salió mal al unirte. Probá de nuevo.");
+      if (RETRY_REASONS.includes(key)) this.scheduleRetry(key); else this.stopRetry();
     },
+    onReplaced() { this.showJoin(MSG.replaced); },
     onConnectionLost() {
       el.cardStatus.textContent = "Reconectando…"; el.cardStatus.classList.add("warn");
       this.setSignal("lost", -1);
-      this.toast("Se cortó la conexión con la TV. Reconectando…");
       pad.releaseAll();
+      // El aviso grande aparece solo si tarda (al desbloquear reconecta en un instante).
+      clearTimeout(this.bannerTimer);
+      this.bannerTimer = setTimeout(() => this.showBanner(), navigator.onLine === false ? 0 : BANNER_DELAY_MS);
     },
-    onGaveUp() { this.showJoin("Se cortó la conexión con la TV. Volvé a unirte cuando quieras."); },
+    onRetrying() { if (!el.net.hidden) this.updateBanner(); },
+    onGaveUp(tvClosed) { this.showJoin(tvClosed ? MSG.tv_gone : MSG.gave_up); },
+    // Aviso grande sobre el control mientras se reconecta: qué pasó y que se
+    // está intentando, sin jerga. Se actualiza solo cada segundo.
+    showBanner() {
+      if (el.play.hidden || net.state === "joined" || net.state === "idle") return;
+      el.net.hidden = false;
+      this.updateBanner();
+      clearInterval(this.bannerTick);
+      this.bannerTick = setInterval(() => this.updateBanner(), 1000);
+    },
+    hideBanner() { clearTimeout(this.bannerTimer); clearInterval(this.bannerTick); el.net.hidden = true; },
+    updateBanner() {
+      if (el.net.hidden) return;
+      const secs = (performance.now() - net.lostAt) / 1000;
+      let title = "Se cortó la conexión", sub = "Reconectando con la TV…";
+      if (navigator.onLine === false) { title = "Tu celular se quedó sin Wi-Fi"; sub = "Conectate otra vez a la Wi-Fi de la casa: volvés solo a tu lugar."; }
+      else if (net.tvClosed) { title = "No encontramos el juego en la TV"; sub = "¿Se cerró en la TV? Cuando vuelva a abrirse, te reconectamos."; }
+      else if (secs > 10) sub = "Seguimos probando. Fijate que la TV siga con el juego abierto y que tu celular siga en la Wi-Fi de la casa.";
+      el.netTitle.textContent = title; el.netSub.textContent = sub;
+    },
+    // Sala llena o partida en curso: reintenta solo cada 5 s mientras el
+    // invitado se quede en esta pantalla sin tocar nada.
+    scheduleRetry(reason) {
+      if (this.retryReason !== reason) { this.retryReason = reason; this.retrySince = performance.now(); }
+      clearTimeout(this.retryTimer);
+      if (performance.now() - this.retrySince > RETRY_JOIN_FOR_MS) { this.retryReason = ""; return; }
+      this.retryTimer = setTimeout(() => {
+        if (!this.retryReason || el.join.hidden || net.state !== "idle") return;
+        const name = sanitizeName(el.name.value), code = normalizeRoom(el.code.value);
+        if (!name || !isValidRoom(code)) return;
+        net.join(code, name, this.savedLook());
+      }, RETRY_JOIN_MS);
+    },
+    stopRetry() { clearTimeout(this.retryTimer); this.retryReason = ""; },
     onLayout(layout, data) {
       const prev = this.layout;
       this.layout = layout;
@@ -660,10 +871,15 @@
     },
     resize() {
       if (el.pad.hidden) return;
-      const r = el.stage.getBoundingClientRect();
-      this.dpr = Math.min(window.devicePixelRatio || 1, 2);
-      this.W = Math.max(1, Math.round(r.width)); this.H = Math.max(1, Math.round(r.height));
-      el.pad.width = Math.round(this.W * this.dpr); el.pad.height = Math.round(this.H * this.dpr);
+      // El canvas ocupa el escenario menos las zonas seguras (muesca, barra de
+      // inicio del iPhone): CSS lo recorta y acá se mide lo que quedó.
+      const r = el.pad.getBoundingClientRect();
+      // Hasta 2× alcanza para que se vea nítido; 3× (iPhone Pro) gasta el doble de memoria y de dibujo.
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const W = Math.max(1, Math.round(r.width)), H = Math.max(1, Math.round(r.height));
+      if (W === this.W && H === this.H && dpr === this.dpr && el.pad.width === Math.round(W * dpr)) return;
+      this.dpr = dpr; this.W = W; this.H = H;
+      el.pad.width = Math.round(W * dpr); el.pad.height = Math.round(H * dpr);
       this.dirty = true; this.draw();
     },
     portrait() { return this.H > this.W; },
@@ -835,7 +1051,9 @@
     },
     pill(ctx, s, cx, y) {
       ctx.font = "700 15px Fredoka, Nunito, system-ui, sans-serif";
-      const w = ctx.measureText(s).width + 32, h = 32, x = cx - w / 2;
+      const w = ctx.measureText(s).width + 32, h = 32;
+      cx = clamp(cx, Math.min(w / 2 + 6, this.W / 2), Math.max(this.W - w / 2 - 6, this.W / 2));  // Pantalla angosta: que no se corte.
+      const x = cx - w / 2;
       ctx.beginPath(); ctx.roundRect(x, y, w, h, 16); ctx.fillStyle = GLASS; ctx.fill();
       this.text(ctx, s, cx, y + h / 2 + 1, 15, INK, false);
     },
@@ -882,7 +1100,7 @@
       const fs = Math.round(r * (label.length <= 2 ? 0.4 : 0.26));
       this.text(ctx, label, x0, fy + 1, fs, PAPER, true);
       // En vertical B queda arriba de A: su texto va encima para que A no lo tape.
-      if (caption) this.text(ctx, caption, x0, label === "B" && this.portrait() ? y0 - r * 1.3 - 14 : y0 + r * 1.44 + 16, 17, PAPER, true);
+      if (caption) this.text(ctx, caption, x0, label === "B" && this.portrait() ? y0 - r * 1.3 - 14 : Math.min(y0 + r * 1.44 + 16, this.H - 12), 17, PAPER, true);
     },
     drawSlider(ctx) {
       const margin = this.W * 0.08, y = this.H * (this.portrait() ? 0.5 : 0.46), v = this.slider.value;
@@ -919,6 +1137,9 @@
 
   // Para las pruebas de punta a punta (tools/web_e2e.mjs): estado observable, sin tocar nada.
   window.__pg = { get state() { return net.state; }, get info() { return net.info; }, get layout() { return ui.layout; }, get phase() { return ui.phase; }, get rtt() { return net.rtt; },
+    get banner() { return el.net.hidden ? "" : el.netTitle.textContent + " · " + el.netSub.textContent; },
+    get status() { return el.join.hidden || el.status.hidden ? "" : el.statusText.textContent; },
+    get retrying() { return ui.retryReason; },
     drop() { if (net.ws) net.ws.close(); } };
 
   ui.init();
