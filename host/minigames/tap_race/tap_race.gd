@@ -167,7 +167,6 @@ func _draw() -> void:
 	if not _v25:
 		_track.draw(self)
 	var tags: Array = []
-	var marks: Array = []  # Marcador de salida "¿cuál soy yo?" sobre cada mascota.
 	for i in players.size():
 		var p: Dictionary = players[i]
 		var y := lanes.position.y + LANE_HEIGHT * i
@@ -181,7 +180,6 @@ func _draw() -> void:
 			# Cada toque es medio paso: la mascota corre al ritmo del dedo.
 			{"t": anim_time + p.slot, "walk": _taps[p.id] * 0.5 if _taps[p.id] > 0 else -1.0,
 				"look": Vector2(1, 0), "wave": _taps[p.id] >= TAPS_TO_WIN})
-		marks.append([p, _screen(feet), MASCOT_SCALE * d])
 		if _v25:
 			# En perspectiva el marco se corre y a la izquierda no queda lugar
 			# para el cartel [1P | nombre]: globito y nombre van con la mascota.
@@ -193,7 +191,8 @@ func _draw() -> void:
 			UiTheme.text_on(p.color), tag.end.x - 16.0 - (tag.position.x + 68.0))
 	if not tags.is_empty():
 		draw_player_tags(tags)
-	draw_start_markers(marks)
+	# Sin marcador de salida: los carriles van apilados y el cartel [1P | nombre]
+	# de cada uno ya dice cuál es cuál.
 	var center := "Meta: %d" % TAPS_TO_WIN
 	draw_hud(_taps, center, "flag")
 	draw_countdown(_countdown)

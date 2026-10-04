@@ -620,8 +620,7 @@ func _draw() -> void:
 		marks.circle(c, 9.5 * d, p.color, 16)
 		marks.circle(c + Vector2(-3, -3) * d, 3.0 * d, Color(1, 1, 1, 0.6), 8)
 	marks.flush(self)
-	draw_player_tags(tags)
-	draw_start_markers(tags)
+	draw_player_tags(tags)  # Sin marcador de salida: carriles apilados, cada uno con su cartel [1P | nombre].
 	draw_hud(meters(), clock_text(DURATION_SEC - _elapsed), "clock")
 	if _countdown > 0.0:
 		draw_text_centered("%d" % ceili(_countdown), SCREEN / 2.0, 260, UiTheme.PAPER, 22)

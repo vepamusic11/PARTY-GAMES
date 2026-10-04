@@ -771,7 +771,7 @@ func _draw() -> void:
 		draw_text_centered(_announce, Vector2(center.x, VIEW.position.y + 110.0), int(lerpf(40.0, 64.0, pop_k)),
 			UiTheme.ACCENT, 14)
 	elif in_grace():
-		_draw_go_right_hint(Vector2(center.x, VIEW.position.y + 110.0))
+		_draw_go_right_hint(Vector2(center.x, VIEW.end.y - 64.0))  # Abajo: las mascotas salen arriba y en el medio.
 
 
 ## Durante la gracia del arranque: "¡Corré a la derecha!" con dos flechas que

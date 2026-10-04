@@ -478,20 +478,27 @@ func draw_start_markers(entries: Array) -> void:
 	var alpha := clampf(left / UiTheme.START_MARK_FADE, 0.0, 1.0)
 	var bounce := 0.0 if UiTheme.reduce_motion else absf(sin(anim_time * 5.0)) * UiTheme.START_MARK_BOUNCE
 	var s := UiTheme.START_MARK_ARROW
-	var top := UiTheme.HUD_TOP + UiTheme.HUD_CLOCK_H + s * 2.2 + UiTheme.START_MARK_FONT
+	var font := UiTheme.START_MARK_FONT
+	var top := UiTheme.HUD_TOP + UiTheme.HUD_CLOCK_H + s * 1.2 + font
 	for e: Array in entries:
 		var p: Dictionary = e[0]
 		var feet: Vector2 = e[1]
 		var u: float = e[2] if e.size() > 2 else 0.8
+		var name_offset: float = e[3] if e.size() > 3 else 26.0
 		var col: Color = p.get("color", UiTheme.PAPER)
-		# La punta de la flecha, arriba del globito 1P–4P (y nunca sobre el marcador).
+		# La punta de la flecha, arriba del globito 1P–4P. Si la mascota está
+		# pegada al marcador (el globito ya se corrió a un costado), la flecha
+		# va debajo de los pies apuntando hacia arriba, con el nombre más abajo.
 		var tip := feet + Vector2(0, -118.0 * u - 14.0 - UiTheme.TAG_BUBBLE.y - bounce)
-		tip.y = maxf(tip.y, top)
-		var c := tip + Vector2(0, -s * 0.6)
-		UiTheme.draw_arrow(self, c, s + 10.0, Vector2.DOWN, Color(UiTheme.INK, alpha))
-		UiTheme.draw_arrow(self, c, s, Vector2.DOWN, Color(col, alpha))
-		UiTheme.draw_text(self, str(p.get("name", "")), c + Vector2(0, -s * 0.7 - UiTheme.START_MARK_FONT * 0.6),
-			UiTheme.START_MARK_FONT, Color(UiTheme.PAPER, alpha), UiTheme.START_MARK_OUTLINE, Color(UiTheme.INK, alpha))
+		var dir := Vector2.DOWN
+		if tip.y - s * 1.2 - font < top:
+			dir = Vector2.UP
+			tip = feet + Vector2(0, maxf(name_offset, 0.0) + 24.0 + bounce)
+		var c := tip - dir * s * 0.6
+		UiTheme.draw_arrow(self, c, s + 10.0, dir, Color(UiTheme.INK, alpha))
+		UiTheme.draw_arrow(self, c, s, dir, Color(col, alpha))
+		UiTheme.draw_text(self, str(p.get("name", "")), c - dir * (s * 0.7 + font * 0.6),
+			font, Color(UiTheme.PAPER, alpha), UiTheme.START_MARK_OUTLINE, Color(UiTheme.INK, alpha))
 
 
 ## Marcador superior común a todos los juegos, como en la maqueta:

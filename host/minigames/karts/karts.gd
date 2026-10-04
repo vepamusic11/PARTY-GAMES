@@ -844,8 +844,7 @@ func _draw() -> void:
 		_add_cockpit(rim, feet, p.color, d)
 		rim.flush(self)
 		tags.append([p, feet, MASCOT_SCALE * d, NAME_OFFSET])
-	draw_player_tags(tags)
-	draw_start_markers(tags)
+	draw_player_tags(tags)  # Sin marcador de salida: los karts salen pegados y se pisarían los nombres.
 	_draw_effects()
 	for p: Dictionary in sorted:
 		var k: Kart = _karts[p.id]
