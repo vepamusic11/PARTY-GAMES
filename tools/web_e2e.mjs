@@ -13,6 +13,7 @@
 // Sale con código 1 si alguna comprobación falla. Necesita xvfb-run y godot en el PATH.
 import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
+import { networkInterfaces } from "node:os";
 import { loadPlaywright, CHROMIUM, TvProcess, touch } from "./web_e2e_lib.mjs";
 
 const { chromium, devices } = await loadPlaywright();
@@ -50,7 +51,9 @@ try {
   const base = `http://127.0.0.1:${httpPort}`;
 
   // --- Navegadores -------------------------------------------------------------------
-  const browser = await chromium.launch({ executablePath: CHROMIUM, args: ["--no-sandbox", "--autoplay-policy=no-user-gesture-required"] });
+  // Sin proxy: todo es local, y un proxy del entorno (https_proxy) puede
+  // llevarse el WebSocket a la IP de la red.
+  const browser = await chromium.launch({ executablePath: CHROMIUM, args: ["--no-sandbox", "--autoplay-policy=no-user-gesture-required", "--no-proxy-server"] });
   const mk = (dev, extra = {}) => browser.newContext({ ...dev, deviceScaleFactor: 2, locale: "es-AR", permissions: [], ...extra });
   const iphoneL = devices["iPhone 13 landscape"], iphoneP = devices["iPhone 13"], pixel = devices["Pixel 5 landscape"];
   const ctxA = await mk(iphoneL), ctxB = await mk(iphoneP), ctxC = await mk(pixel);
@@ -66,7 +69,11 @@ try {
   ok(/connect-src ws:\/\/127\.0\.0\.1:\d+/.test(csp || ""), "CSP con el WebSocket a la misma IP: " + csp);
   await pageB.goto(`${base}/`); await pageB.waitForLoadState("networkidle");
   await shot(pageB, "join_iphone_port");
-  await pageC.goto(`${base}/${code}`); await pageC.waitForLoadState("networkidle");
+  // Pablo entra por la IP de la red (como en la casa: http://192.168.x.x), que
+  // no es un "contexto seguro": el navegador no ofrece Wake Lock.
+  const lan = Object.values(networkInterfaces()).flat().find((i) => i && i.family === "IPv4" && !i.internal);
+  const baseC = lan ? `http://${lan.address}:${httpPort}` : base;
+  await pageC.goto(`${baseC}/${code}`); await pageC.waitForLoadState("networkidle");
 
   await pageA.fill("#name", "Juli"); await pageA.click("#join-btn");
   await pageA.waitForFunction(() => window.__pg.state === "joined", null, { timeout: 20000 });
@@ -78,6 +85,14 @@ try {
   await pageB.waitForFunction(() => window.__pg.state === "joined", null, { timeout: 20000 });
   await pageC.fill("#name", "Pablo"); await pageC.click("#join-btn");
   await pageC.waitForFunction(() => window.__pg.state === "joined", null, { timeout: 20000 });
+  // Pantalla encendida: con Wake Lock o, sin él, con el video en bucle.
+  await pageA.waitForFunction(() => window.__pg.awake !== "none", null, { timeout: 4000 }).catch(() => null);
+  ok((await pageA.evaluate(() => window.__pg.awake)) !== "none", "pantalla encendida en localhost (" + await pageA.evaluate(() => window.__pg.awake) + ")");
+  if (lan) {
+    ok(!(await pageC.evaluate(() => window.isSecureContext || "wakeLock" in navigator)), `por la IP de la red (${lan.address}) no hay Wake Lock`);
+    await pageC.waitForFunction(() => window.__pg.awake === "video", null, { timeout: 4000 }).catch(() => null);
+    ok((await pageC.evaluate(() => window.__pg.awake)) === "video", "sin Wake Lock, la pantalla sigue encendida con el video en bucle");
+  } else console.log("  (sin IP de red: no se prueba la pantalla encendida sin Wake Lock)");
   let ps = await players();
   ok(ps.length === 3 && ps.map((p) => p.name).join() === "Juli,Tomi,Pablo", "la TV tiene a los 3 (" + ps.map((p) => p.name).join(", ") + ")");
   await sleep(1200);

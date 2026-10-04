@@ -17,6 +17,7 @@ Todo lo que el juego usa y **no** escribimos nosotros va anotado acá: código, 
 | Qué | Versión | Autor | Licencia | Dónde está | Origen |
 |---|---|---|---|---|---|
 | Codificador QR `PMCQr` (`qr.gd`, `qr_matrix.gd`, copiados sin cambios de `addons/phone_mass_controllers/qr/`) | commit `8c87cb6` (14/09/2026) | splatterfacegames | MIT | `addons/pmc_qr/` ([LICENSE](addons/pmc_qr/LICENSE)) | [splatterfacegames/godot-phone-mass-controllers](https://github.com/splatterfacegames/godot-phone-mass-controllers) |
+| Videos de pantalla encendida (`webm` y `mp4` embebidos, copiados sin cambios de `src/media.js`) | 0.12.0 | Rich Tibbett | MIT | `web/keepawake.js` (licencia completa en el encabezado del archivo, que viaja con la página) | [richtr/NoSleep.js](https://github.com/richtr/NoSleep.js) |
 
 ## Fuentes
 

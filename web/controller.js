@@ -388,21 +388,60 @@
   }
   function buzz(kind) { try { if (navigator.vibrate && VIBES[kind]) navigator.vibrate(VIBES[kind]); } catch (e) { /* iPhone: no vibra */ } }
   function feedback(kind) { buzz(kind); tone(kind); if (kind === "hit" || kind === "lose") ui.setMood("sad", 1800); if (kind === "win" || kind === "point") ui.setMood("happy", 1800); }
-  // Pantalla encendida (Chrome 84+, Safari 16.4+). El navegador la suelta al
-  // pasar a segundo plano: se pide de nuevo al volver y en cada toque (Safari
-  // puede pedir un gesto). Sin Wake Lock (iPhone con iOS < 16.4) la pantalla
-  // se apaga sola: al desbloquear, wake() reconecta.
-  let wakeLock = null, wakePending = false;
+  // Pantalla encendida. El navegador la suelta al pasar a segundo plano: se
+  // pide de nuevo al volver y en cada toque (Safari pide un gesto).
+  // - Wake Lock (Chrome 84+, Safari 16.4+) solo existe en un "contexto
+  //   seguro" (https o localhost). La página llega por http:// a la IP de la
+  //   TV, así que en la prueba real casi nunca está.
+  // - Sin Wake Lock: un video chiquito en bucle (keepawake.js, el truco de
+  //   NoSleep.js): mientras se reproduce un video, el celular no apaga la
+  //   pantalla. Ejemplo: en el resumen de 12 s o en la intro nadie toca nada
+  //   y un iPhone con bloqueo a los 30 s quedaría a oscuras y desconectado.
+  // Si nada funciona, la pantalla se apaga sola y al desbloquear wake() reconecta.
+  let wakeLock = null, wakePending = false, awakeVideo = null;
   async function keepAwake() {
-    if (!("wakeLock" in navigator) || wakeLock || wakePending || document.visibilityState !== "visible") return;
+    if (document.visibilityState !== "visible") return;
+    if (!("wakeLock" in navigator)) { playAwakeVideo(); return; }
+    if (wakeLock || wakePending) return;
     wakePending = true;
     try {
       const lock = await navigator.wakeLock.request("screen");
       wakeLock = lock;
       lock.addEventListener("release", () => { if (wakeLock === lock) wakeLock = null; });
-    } catch (e) { wakeLock = null; } finally { wakePending = false; }
+    } catch (e) { wakeLock = null; playAwakeVideo(); } finally { wakePending = false; }
   }
-  function letSleep() { const lock = wakeLock; wakeLock = null; if (lock) lock.release().catch(() => { /* nada */ }); }
+  function letSleep() {
+    const lock = wakeLock; wakeLock = null;
+    if (lock) lock.release().catch(() => { /* nada */ });
+    if (awakeVideo && !awakeVideo.paused) { try { awakeVideo.pause(); } catch (e) { /* nada */ } }
+  }
+  // El video no se agrega a la página (no se ve) y su sonido es silencio.
+  // play() necesita un gesto la primera vez: se llama en cada toque.
+  function playAwakeVideo() {
+    const media = window.PG_KEEPAWAKE_MEDIA;
+    if (!media) return;
+    if (!awakeVideo) {
+      const v = document.createElement("video");
+      v.setAttribute("title", "PARTY-GAME · pantalla encendida");
+      v.setAttribute("playsinline", ""); v.setAttribute("webkit-playsinline", "");
+      v.preload = "auto";
+      for (const [type, src] of [["webm", media.webm], ["mp4", media.mp4]]) {
+        const s = document.createElement("source"); s.type = "video/" + type; s.src = src; v.appendChild(s);
+      }
+      // El webm dura 1 s y va en bucle; el mp4 es más largo y se rebobina
+      // antes del final (en iOS el "loop" de un video oculto se corta).
+      v.addEventListener("loadedmetadata", () => {
+        if (v.duration <= 1) v.loop = true;
+        else v.addEventListener("timeupdate", () => { if (v.currentTime > 0.5) v.currentTime = Math.random(); });
+      });
+      awakeVideo = v;
+    }
+    if (!awakeVideo.paused) return;
+    try {
+      const p = awakeVideo.play();
+      if (p && typeof p.catch === "function") p.catch(() => { /* sin gesto todavía: el próximo toque */ });
+    } catch (e) { /* nada */ }
+  }
 
   // --- Mascota (cabeza y cuerpo, dibujados en canvas) --------------------------------
   // Versión chica de PlayerAvatar: cara blanca, ojos, cachetes y el accesorio
@@ -528,7 +567,7 @@
       // (pointerdown para Chrome; touchend y click para Safari).
       const onGesture = () => { unlockAudio(); if (!el.play.hidden) { keepAwake(); this.armBack(); } };
       for (const type of ["pointerdown", "touchend", "click"]) document.addEventListener(type, onGesture, { capture: true, passive: true });
-      document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { net.wake(); keepAwake(); } else { pad.releaseAll(); } });
+      document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { net.wake(); if (!el.play.hidden) keepAwake(); } else { pad.releaseAll(); letSleep(); } });
       window.addEventListener("pageshow", () => net.wake());
       window.addEventListener("pagehide", () => { pad.releaseAll(); net.suspend(); });
       window.addEventListener("online", () => { net.wake(); this.updateBanner(); });
@@ -602,6 +641,7 @@
       el.name.blur(); el.code.blur();
       this.setStatus(navigator.onLine === false ? "Tu celular no tiene conexión: probando igual…" : "Conectando con la TV…", false);
       unlockAudio();
+      keepAwake();  // Este toque es el gesto: así la pantalla no se apaga esperando en el lobby.
       net.join(code, name, this.savedLook());
     },
     setStatus(msg, isError) {
@@ -1144,6 +1184,7 @@
     get banner() { return el.net.hidden ? "" : el.netTitle.textContent + " · " + el.netSub.textContent; },
     get status() { return el.join.hidden || el.status.hidden ? "" : el.statusText.textContent; },
     get retrying() { return ui.retryReason; },
+    get awake() { return wakeLock ? "lock" : awakeVideo && !awakeVideo.paused ? "video" : "none"; },
     get pad() { return { layout: pad.layout, value: pad.stick.value, id: pad.stick.id, o: [pad.stick.ox, pad.stick.oy], W: pad.W, H: pad.H, routes: [...pad.routes] }; },
     drop() { if (net.ws) net.ws.close(); } };
 

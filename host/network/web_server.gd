@@ -36,6 +36,7 @@ const ROUTES := {
 	"/index.html": ["index.html", "text/html; charset=utf-8", false],
 	"/controller.css": ["controller.css", "text/css; charset=utf-8", false],
 	"/controller.js": ["controller.js", "text/javascript; charset=utf-8", false],
+	"/keepawake.js": ["keepawake.js", "text/javascript; charset=utf-8", false],
 	"/fredoka-bold.woff2": ["fredoka-bold.woff2.bin", "font/woff2", true],
 	"/fredoka-semibold.woff2": ["fredoka-semibold.woff2.bin", "font/woff2", true],
 	"/logo.png": ["logo.png.bin", "image/png", true],
@@ -276,7 +277,7 @@ func _host_header(lines: PackedStringArray) -> String:
 ## Política de contenido: todo de la propia TV; el WebSocket solo a la misma
 ## dirección que sirvió la página y al puerto real del juego.
 func _csp(host: String) -> String:
-	return ("default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; "
+	return ("default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; media-src data:; "
 		+ "connect-src ws://%s:%d; base-uri 'none'; form-action 'none'; frame-ancestors 'none'") % [host, ws_port]
 
 
