@@ -37,6 +37,8 @@ extends SceneTree
 ##   --max-fps=20      TV lenta: tope de cuadros por segundo (Engine.max_fps)
 ##   --lobby=60        segundos en el lobby antes de arrancar (como la gente
 ##                     eligiendo mascota): mide el horneado del primer arranque
+##   --census          memoria de texturas por dueño (tools/texture_census.gd)
+##                     a los 4 s de cada juego y en cada muestra de memoria
 ##
 ## La entrada viaja SIEMPRE por la red. Los celulares "dirigidos" deciden qué
 ## apretar con el mismo cerebro que los bots de la TV (mirando el juego, como
@@ -90,6 +92,8 @@ var _bake_sec: Dictionary = {}
 var _bake_game := ""
 var _bake_from := 0
 var _boot_ready_sec := -1.0
+var _census := false
+const TextureCensus := preload("res://tools/texture_census.gd")
 
 
 func _initialize() -> void:
@@ -122,6 +126,8 @@ func _run() -> void:
 			_lobby_wait = maxf(0.0, float(arg.trim_prefix("--lobby=")))
 		elif arg.begins_with("--slow-ms="):
 			_slow_ms = maxi(0, int(arg.trim_prefix("--slow-ms=")))
+		elif arg == "--census":
+			_census = true
 		elif arg.begins_with("--max-fps="):
 			Engine.max_fps = maxi(1, int(arg.trim_prefix("--max-fps=")))
 	if _games.is_empty():
@@ -567,6 +573,9 @@ func _sample_memory(label: String) -> void:
 		"mascots_mb": MascotAtlas.memory_bytes() / 1048576.0,
 		"boards_mb": Board25DBaker.memory_bytes() / 1048576.0,
 	}
+	if _census:
+		m["census"] = TextureCensus.take(self)
+		_log("  " + TextureCensus.line(m.census))
 	_mem.append(m)
 	_log("Memoria (%s): %.1f MB estática, %d objetos, %d nodos, %d huérfanos, %d recursos, %.1f MB texturas (mascotas %.1f, tableros %.1f)" % [
 		label, m.static_mb, m.objects, m.nodes, m.orphans, m.resources, m.texture_mb, m.mascots_mb, m.boards_mb])
@@ -605,6 +614,10 @@ func _on_frame() -> void:
 			_log("  %s terminó en %.1f s" % [id, secs])
 		if s.begins_with("game:") or s == "summary" or s == "final" or s.begins_with("intro"):
 			_log("→ %s" % s)
+		if _census and (s.begins_with("game:") or s == "final" or s == "lobby"):
+			create_timer(4.0).timeout.connect(func() -> void:
+				if _screen == s:
+					_sample_memory(s))
 		_screen = s
 		_screen_since = Time.get_ticks_msec()
 		_stuck_reported = false
@@ -663,6 +676,8 @@ func _report() -> void:
 		if f.size() < 10:
 			continue
 		print("  %-18s %6.1f %6.1f %6.1f %7.1f  ·  %5.1f  (%d cuadros)" % [k, _pct(f, 0.5), _pct(f, 0.95), _pct(f, 0.99), f[f.size() - 1], _pct(p, 0.95), f.size()])
+	if _census:
+		print("\nFuentes (tamaño/contorno: KB de glifos): " + TextureCensus.font_detail())
 	if not _mem.is_empty():
 		print("\nMemoria:")
 		for m in _mem:

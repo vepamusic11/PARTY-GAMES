@@ -12,6 +12,8 @@ extends SceneTree
 const TEST_PORT := 28990
 ## Carpeta de la caché de música de los tests (ver _run).
 const TEST_MUSIC_CACHE := "user://test_music_cache/"
+## Ídem, hojas de mascotas horneadas (MascotDiskCache).
+const TEST_MASCOT_CACHE := "user://test_mascot_cache/"
 
 var _passed := 0
 var _failed := 0
@@ -28,6 +30,8 @@ func _run() -> void:
 	# carpeta propia, nunca en la de la TV.
 	MusicCache.dir = TEST_MUSIC_CACHE
 	MusicCache.clear()
+	MascotDiskCache.dir = TEST_MASCOT_CACHE
+	MascotDiskCache.clear()
 	var only := ""
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--only="):
@@ -40,6 +44,7 @@ func _run() -> void:
 			await call(n)
 			print(("  ok    " if _failed == before else "  FALLA ") + n)
 	MusicCache.clear()
+	MascotDiskCache.clear()
 	print("\n%d ok, %d fallas\n" % [_passed, _failed])
 	await process_frame
 	quit(1 if _failed > 0 else 0)
@@ -5326,6 +5331,134 @@ func test_mascot_atlas_cache() -> void:
 	check(MascotAtlas.pose_count() == 0 and MascotAtlas.memory_bytes() == 0 and MascotAtlas.is_idle(), "clear() deja todo vacío")
 	MascotAtlas.fake_render = false
 	MascotAtlas.release_after_msec = MascotAtlas.RELEASE_AFTER_MSEC
+
+
+## Caché en disco de las hojas de mascotas (MascotDiskCache, ADR 0023):
+## ida y vuelta, firma, archivos rotos o viejos (se borran sin errores) y tope.
+func test_mascot_disk_cache() -> void:
+	check(MascotDiskCache.dir == TEST_MASCOT_CACHE, "los tests no usan la caché de la TV")
+	MascotDiskCache.clear()
+	var sig := MascotDiskCache.signature()
+	check(sig.length() == 32 and sig == MascotDiskCache.compute_signature(MascotDiskCache.signature_parts()),
+		"firma estable (%s)" % sig)
+	# La firma cambia si cambia el código de la mascota, un shader o Props3D.VERSION.
+	var parts := MascotDiskCache.signature_parts()
+	check(parts[2] == Props3D.VERSION and (parts[4] as Array).size() == MascotDiskCache.SOURCES.size() + MascotDiskCache.SHADERS.size(),
+		"la firma incluye Props3D.VERSION, el código y los shaders")
+	check(not str((parts[4] as Array)[0]).is_empty() and not str((parts[4] as Array)[3]).is_empty(),
+		"hashea mascot_3d.gd y mascot_atlas.gd")
+	for i: int in [2, 4]:
+		var other := parts.duplicate(true)
+		if i == 2:
+			other[2] = int(other[2]) + 1
+		else:
+			(other[4] as Array)[0] = "otro código"
+		check(MascotDiskCache.compute_signature(other) != sig, "la firma cambia con la parte %d" % i)
+	# Ida y vuelta: dos poses de 8×10 en una hoja de 16×10.
+	var cell := Vector2i(8, 10)
+	var img := Image.create(16, 10, false, Image.FORMAT_RGBA8)
+	img.fill_rect(Rect2i(0, 0, 8, 10), Color(1, 0, 0, 0.5))
+	img.fill_rect(Rect2i(8, 0, 8, 10), Color(0, 0, 1, 1))
+	var regions := {"idle@0": Rect2(0, 0, 8, 10), "blink@0": Rect2(8, 0, 8, 10)}
+	var red := Protocol.mascot_color(0)
+	var path := MascotDiskCache.save_sheet(sig, red.to_rgba32(), 3, 1, cell, regions, img)
+	check(not path.is_empty() and FileAccess.file_exists(path) and not FileAccess.file_exists(path + ".tmp"),
+		"guarda la hoja (sin temporal)")
+	var back := MascotDiskCache.load_sheet(path, sig)
+	check(not back.is_empty() and back.regions == regions and back.cell == cell and int(back.style) == 3
+		and int(back.tier) == 1 and int(back.color) == red.to_rgba32(), "se lee el encabezado igual")
+	check(not back.is_empty() and (back.image as Image).get_data() == img.get_data(), "y la imagen, píxel por píxel")
+	var found := MascotDiskCache.scan(sig)
+	check(found.size() == 1 and found[0].path == path and found[0].regions == regions, "scan() la encuentra")
+	# Otra firma (versión vieja de la app): se descarta y se borra.
+	check(MascotDiskCache.load_sheet(path, "0".repeat(32)).is_empty() and not FileAccess.file_exists(path),
+		"una hoja de otra versión se descarta y se borra")
+	# Archivos rotos: vacío, cortado, basura, encabezado imposible, pose fuera de la imagen.
+	path = MascotDiskCache.save_sheet(sig, red.to_rgba32(), 3, 1, cell, regions, img)
+	var good := FileAccess.get_file_as_bytes(path)
+	var count_at := 4 + 4 + 4 + sig.length() + 4 * 5
+	var many := good.duplicate()
+	many.encode_u32(count_at, 100000)
+	var outside := good.duplicate()
+	outside.encode_u32(count_at + 4 + 4 + "idle@0".length(), 4000)  # x de la primera pose: fuera de la imagen.
+	var bad_tier := good.duplicate()
+	bad_tier.encode_u32(count_at - 12, 99)
+	for bad: PackedByteArray in [PackedByteArray(), good.slice(0, good.size() / 2), "no soy una mascota".to_utf8_buffer(),
+			good.slice(0, 30), many, outside, bad_tier, good + PackedByteArray([1, 2, 3])]:
+		_write_bytes(path, bad)
+		check(MascotDiskCache.load_sheet(path, sig).is_empty() and not FileAccess.file_exists(path),
+			"una hoja rota (%d bytes) no rompe y se borra" % bad.size())
+	_write_bytes(path, good)
+	_write_bytes(path.get_base_dir().path_join("x.mpose.tmp"), PackedByteArray([1]))
+	_write_bytes(path.get_base_dir().path_join("roto.mpose"), good.slice(0, 40))
+	found = MascotDiskCache.scan(sig)
+	check(found.size() == 1 and MascotDiskCache.list_files().size() == 1
+		and not FileAccess.file_exists(path.get_base_dir().path_join("x.mpose.tmp")),
+		"scan() borra las rotas y los temporales y deja la buena")
+	check(MascotDiskCache.save_sheet(sig, 0, 0, 0, cell, {}, img).is_empty()
+		and MascotDiskCache.save_sheet("", 0, 0, 0, cell, regions, img).is_empty()
+		and MascotDiskCache.save_sheet(sig, 0, 0, 0, cell, regions, Image.create(4, 4, false, Image.FORMAT_RGB8)).is_empty(),
+		"no guarda hojas vacías, sin firma o en otro formato")
+	# Tope: con lugar para dos hojas, al guardar la tercera se borra la más vieja.
+	MascotDiskCache.max_bytes = good.size() * 2 + good.size() / 2
+	MascotDiskCache.save_sheet(sig, red.to_rgba32(), 3, 2, cell, regions, img)
+	var last := MascotDiskCache.save_sheet(sig, red.to_rgba32(), 4, 1, cell, regions, img)
+	check(MascotDiskCache.total_bytes() <= MascotDiskCache.max_bytes and MascotDiskCache.list_files().size() == 2
+		and FileAccess.file_exists(last), "la caché no pasa del tope (%d archivos, %d bytes) y la última queda" % [
+		MascotDiskCache.list_files().size(), MascotDiskCache.total_bytes()])
+	MascotDiskCache.max_bytes = MascotDiskCache.MAX_BYTES
+	# Apagada: ni lee ni escribe.
+	MascotDiskCache.enabled = false
+	check(MascotDiskCache.load_sheet(last, sig).is_empty() and MascotDiskCache.save_sheet(sig, 1, 0, 0, cell, regions, img).is_empty(),
+		"apagada no toca el disco")
+	MascotDiskCache.enabled = true
+	MascotDiskCache.clear()
+	check(MascotDiskCache.list_files().is_empty(), "clear() vacía la caché")
+
+
+## MascotAtlas lee del disco las poses que faltan antes de hornearlas (desde
+## el segundo arranque, la TV casi no hornea) y lo recién horneado se guarda.
+func test_mascot_atlas_disk() -> void:
+	MascotDiskCache.clear()
+	MascotAtlas.clear()
+	MascotAtlas.reset_disk()
+	MascotAtlas.fake_render = true
+	MascotAtlas.disk_in_headless = true
+	var red := Protocol.mascot_color(0)
+	var tier := MascotAtlas.tier_for(0.8)
+	var cell := Mascot3DBaker.atlas_cell_px(MascotAtlas.TIERS_U[tier])
+	var img := Image.create(cell.x * 2, cell.y, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0.2, 0.6, 0.9, 1.0))
+	var sig := MascotDiskCache.signature()
+	var path := MascotDiskCache.save_sheet(sig, red.to_rgba32(), 2, tier, cell,
+		{"idle@0": Rect2(0, 0, cell.x, cell.y), "blink@0": Rect2(cell.x, 0, cell.x, cell.y)}, img)
+	# Otra hoja de la misma apariencia, rota: se descarta sin errores.
+	var broken := MascotDiskCache.save_sheet(sig, red.to_rgba32(), 2, tier, cell,
+		{"look_l@0": Rect2(0, 0, cell.x, cell.y)}, img)
+	var loads := int(MascotAtlas.stats.disk_loads)
+	MascotAtlas.prewarm([{"color": red, "style": 2}], 0.8, ["idle@0", "blink@0", "look_l@0", "look_r@0"])
+	check(MascotAtlas.pending_count() == 4, "4 poses pendientes")
+	_write_bytes(broken, FileAccess.get_file_as_bytes(broken).slice(0, 60))
+	for i in 30:
+		await process_frame
+		if MascotAtlas.pending_count() <= 2 and MascotAtlas._load_task == -1 and i > 10:
+			break
+	var f := MascotAtlas.lookup(red, 2, 0.8, "blink@0")
+	check(f.size() == 4 and (f[1] as Rect2) == Rect2(cell.x, 0, cell.x, cell.y), "la pose sale del disco con su región")
+	check(int(MascotAtlas.stats.disk_loads) == loads + 1 and MascotAtlas.pending_count() == 2,
+		"una hoja leída; quedan 2 por hornear (%d)" % MascotAtlas.pending_count())
+	check(not FileAccess.file_exists(broken) and FileAccess.file_exists(path), "la rota se borró, la buena queda")
+	# Lo horneado se guarda en un hilo y queda en el índice.
+	var shot := Image.create(cell.x, cell.y, false, Image.FORMAT_RGBA8)
+	MascotAtlas._save_queue.append({"rgba": red.to_rgba32(), "style": 2, "tier": tier, "cell": cell,
+		"regions": {"look_r@0": Rect2(0, 0, cell.x, cell.y)}, "image": shot, "key": 0})
+	MascotAtlas.flush_disk()
+	check(MascotDiskCache.list_files().size() == 2, "lo horneado quedó en el disco")
+	MascotAtlas.clear()
+	MascotAtlas.reset_disk()
+	MascotAtlas.fake_render = false
+	MascotAtlas.disk_in_headless = false
+	MascotDiskCache.clear()
 
 
 ## Sin escalón de luz entre celdas: el shader de plástico usa la dirección
