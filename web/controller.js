@@ -861,11 +861,14 @@
     pos(e) { const r = el.pad.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; },
     setColor(c) { this.color = c; this.dirty = true; this.draw(); },
     setLayout(layout, data) {
-      this.releaseAll();
+      // El mismo control otra vez (solo cambió el texto, o la TV lo repite):
+      // el dedo apoyado sigue valiendo. Otro control: se sueltan todos.
+      const same = layout === this.layout && layout !== "wait";
+      if (!same) { this.releaseAll(); this.slider.value = 0; }
       this.layout = layout; this.data = data || {};
       this.labelA = cleanText(this.data.a, LABEL_MAX); this.labelB = cleanText(this.data.b, LABEL_MAX);
       this.label = cleanText(this.data.label, LABEL_MAX) || "A";
-      this.slider.value = 0; this.lastBtn = -1; this.lastAxis = [NaN, NaN];
+      this.lastBtn = -1; this.lastAxis = [NaN, NaN];  // Se reenvía el estado en el próximo tick.
       el.pad.hidden = layout === "wait";
       if (layout !== "wait") { this.resize(); this.animate(); }
     },
@@ -1140,6 +1143,7 @@
     get banner() { return el.net.hidden ? "" : el.netTitle.textContent + " · " + el.netSub.textContent; },
     get status() { return el.join.hidden || el.status.hidden ? "" : el.statusText.textContent; },
     get retrying() { return ui.retryReason; },
+    get pad() { return { layout: pad.layout, value: pad.stick.value, id: pad.stick.id, o: [pad.stick.ox, pad.stick.oy], W: pad.W, H: pad.H, routes: [...pad.routes] }; },
     drop() { if (net.ws) net.ws.close(); } };
 
   ui.init();

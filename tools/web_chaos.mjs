@@ -122,7 +122,7 @@ try {
   console.log("\n· Wi-Fi cargada (120–300 ms y 5 % de retransmisiones de 0,3–1,2 s)");
   for (const p of [A, B, C]) p.px.setConditions({ latency: 120, jitter: 180, stallChance: 0.05 });
   await tv.cmd('layout joystick {"hint":"Wi-Fi cargada"}');
-  await A.page.waitForFunction(() => window.__pg.layout === "joystick", null, { timeout: 5000 }).catch(() => null);
+  await A.page.waitForFunction(() => document.getElementById("hint").textContent === "Wi-Fi cargada", null, { timeout: 8000 }).catch(() => null);
   const fromLossy = tv.lines.length;
   let box = await A.page.locator("#pad").boundingBox();
   let o = { x: box.x + box.width * 0.3, y: box.y + box.height * 0.5 };
