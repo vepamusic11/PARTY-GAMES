@@ -38,14 +38,15 @@ func decide(view: Dictionary, delta: float) -> Dictionary:
 	var cam := float(view.get("cam", 0.0))
 	var cam_speed := float(view.get("cam_speed", 0.0))
 	var max_speed := float(view.get("max_speed", 470.0))
-	# Objetivo: el medio-derecha de la cámara (más adelante con habilidad).
-	var goal := Vector2(cam + float(view.get("view_w", 1712.0)) * lerpf(0.5, 0.72, skill), _goal_y)
-	var to := goal - me
-	var dist := to.length()
-	var desired := to / dist * max_speed * clampf(dist / 120.0, 0.2, 1.0) if dist > 1.0 else Vector2.ZERO
-	# Nunca más lento que la cámara; cerca del borde izquierdo, a fondo.
-	desired.x = maxf(desired.x, cam_speed * 1.15)
-	if me.x - cam < 320.0:
+	var view_w := float(view.get("view_w", 1712.0))
+	# Quedarse en el medio de la cámara (un poco más adelante con habilidad):
+	# ni cerca del borde que te deja ni pegado al derecho, donde los
+	# obstáculos aparecen sin tiempo para reaccionar.
+	var ahead := me.x - cam
+	var want := view_w * lerpf(0.42, 0.58, skill)
+	var desired := Vector2(cam_speed + clampf((want - ahead) * 1.2, -150.0, 320.0),
+		clampf((_goal_y - me.y) * 4.0, -max_speed, max_speed))
+	if ahead < 320.0:
 		desired.x = max_speed
 	return {"axis": _toward(desired, v) * speed, "btn": 0}
 
@@ -62,9 +63,11 @@ func _choose_lane(view: Dictionary, me: Vector2) -> float:
 	var top := float(view.get("top", 72.0)) + 12.0
 	var bottom := float(view.get("bottom", 670.0)) - 12.0
 	var objs := _objects_ahead(view, me.x)
-	var horizon := lerpf(380.0, 760.0, skill)
+	# Avanza más o menos con la cámara: mira lo que viene en los próximos
+	# 1,6–3 s según habilidad.
+	var vx := maxf(float(view.get("cam_speed", 0.0)) + 60.0, 200.0)
+	var horizon := vx * lerpf(1.6, 3.0, skill)
 	var margin := float(view.get("body_radius", 30.0)) * lerpf(0.9, 1.5, skill)
-	var vx := maxf(float(view.get("cam_speed", 0.0)) + 150.0, 250.0)
 	var vy := float(view.get("max_speed", 470.0)) * 0.8
 	var when0 := float(view.get("elapsed", 0.0))
 	var best := me.y
