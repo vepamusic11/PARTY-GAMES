@@ -28,6 +28,7 @@ var info: Dictionary
 var unavailable_reason := ""
 var _thumb: Texture2D  ## Diorama o captura; null: ninguna de las dos (dibujo de respaldo).
 var _is_diorama := false  ## La ilustración es el diorama 3D (sin marco ni etiqueta del control encima).
+var _art_released := false  ## Soltada por el perfil de poca memoria (ver release_art).
 
 ## id -> Texture2D (o null si no hay): cada miniatura se carga una sola vez
 ## y la comparten la tarjeta y la intro.
@@ -50,6 +51,32 @@ func _init(p_info: Dictionary) -> void:
 	focus_entered.connect(_on_focus.bind(true))
 	focus_exited.connect(_on_focus.bind(false))
 	resized.connect(func() -> void: pivot_offset = size / 2.0)
+
+
+## Perfil de poca memoria (LowMemory, ADR 0023): mientras el lobby no se ve
+## la tarjeta suelta su ilustración (≈ 0,9 MB en la placa con mipmaps) y la
+## vuelve a cargar al volver (unos ms). Sin el perfil no se llama.
+func release_art() -> void:
+	if _thumb == null:
+		return
+	_thumb = null
+	_art_released = true
+	queue_redraw()
+
+
+func restore_art() -> void:
+	if not _art_released:
+		return
+	_art_released = false
+	_thumb = card_art(str(info.get("id", "")))
+	queue_redraw()
+
+
+## Olvida las ilustraciones cargadas (las tarjetas y la intro que las usan
+## las conservan hasta soltarlas).
+static func release_caches() -> void:
+	_thumb_cache.clear()
+	_diorama_cache.clear()
 
 
 func set_unavailable(reason: String) -> void:

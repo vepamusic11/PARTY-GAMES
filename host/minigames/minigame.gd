@@ -287,6 +287,23 @@ static func result_from_scores(scores: Dictionary, summary: String = "") -> Dict
 ## los tests, que avanzan el juego a mano y más rápido que el tiempo real;
 ## si solo llamaran a _physics_process, un juego con finish_after() no
 ## terminaría nunca.
+## Nodos que pidieron redibujarse en este cuadro (ver request_redraw).
+var _redraw_queue: Array[CanvasItem] = []
+
+
+## Pide redibujar `item` (el juego, si no se pasa) UNA vez por cuadro, en
+## _process, en vez de en cada paso de física. Concepto: lo pedido con
+## queue_redraw() se dibuja al final de cada paso de física, y con la TV a
+## menos de 60 fps hay 2 o más pasos por cuadro: el juego se dibujaba entero
+## en cada uno y solo se veía el último. Pedido acá se dibuja una vez por
+## cuadro con el estado del último paso: lo mismo en pantalla, la mitad de CPU
+## de dibujo a 30 fps (PERFORMANCE.md). Usarlo en _physics_process.
+func request_redraw(item: CanvasItem = null) -> void:
+	var it: CanvasItem = self if item == null else item
+	if not it in _redraw_queue:
+		_redraw_queue.append(it)
+
+
 func simulate_frame(delta: float) -> void:
 	_physics_process(delta)
 	_process(delta)
@@ -294,6 +311,11 @@ func simulate_frame(delta: float) -> void:
 
 func _process(delta: float) -> void:
 	anim_time += delta
+	if not _redraw_queue.is_empty():
+		for item in _redraw_queue:
+			if is_instance_valid(item):
+				item.queue_redraw()
+		_redraw_queue.clear()
 	if _finale_left >= 0.0:
 		_finale_left -= delta
 		if _finale_left < 0.0:

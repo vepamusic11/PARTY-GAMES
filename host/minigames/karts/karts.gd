@@ -436,7 +436,7 @@ func _physics_process(delta: float) -> void:
 	if is_finished():
 		return
 	advance(delta)
-	queue_redraw()
+	request_redraw()
 
 
 ## Avanza el juego `delta` segundos reales en pasos fijos de FIXED_DT: a
@@ -853,7 +853,8 @@ func _draw() -> void:
 			var place := _finish_order.find(k.pid) + 1
 			UiTheme.draw_medal(self, _screen(k.pos) + Vector2(52, -46) * d, MEDAL_R * d, place)
 		elif k.wrong_way >= WRONG_WAY_SEC and fmod(anim_time, 0.6) < 0.4:
-			UiTheme.draw_text(self, "¡Al revés!", _screen(k.pos) + Vector2(0, 50) * d, roundi(HINT_SIZE * d), UiTheme.PAPER, 8, UiTheme.DANGER)
+			LowMemory.draw_text_sized(self, "¡Al revés!", _screen(k.pos) + Vector2(0, 50) * d, roundi(HINT_SIZE * d), HINT_SIZE,
+				UiTheme.PAPER, 8, UiTheme.DANGER)
 	_draw_banners()
 	var center := _hud_center()
 	draw_hud(places(), center[0], center[1])
@@ -898,7 +899,7 @@ func _draw_banners() -> void:
 		draw_text_centered(_end_text, mid, COUNT_SIZE / 2, UiTheme.ACCENT, 18)
 	elif _banner_t > 0.0:
 		var pop := 1.0 + 0.15 * maxf(0.0, (_banner_t - BANNER_SEC + 0.25) / 0.25)
-		draw_text_centered(_banner, mid, roundi(BANNER_SIZE * pop), UiTheme.ACCENT, 14)
+		LowMemory.draw_text_sized(self, _banner, mid, roundi(BANNER_SIZE * pop), BANNER_SIZE, UiTheme.ACCENT, 14)
 
 
 func _draw_effects() -> void:

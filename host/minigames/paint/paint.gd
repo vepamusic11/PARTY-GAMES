@@ -234,7 +234,7 @@ func _physics_process(delta: float) -> void:
 			_end_wait -= delta
 			if _end_wait <= 0.0:
 				finish(result_from_scores(_tiles, "Más baldosas gana"))
-	queue_redraw()
+	request_redraw()
 
 
 func _move_players(delta: float) -> void:

@@ -20,6 +20,7 @@ extends SceneTree
 ##                                    también 2d o 3d. Default: 3d, como el
 ##                                    juego. ADR 0012)
 ##   … -- --no-props3d               (sin piezas 3D horneadas: el dibujo 2D, para comparar)
+##   … -- --low-memory               (perfil "TV de poca memoria", ADR 0023)
 ##   … -- --board=both               (juegos con escenario 2.5D horneado, ej.
 ##                                    Pintar el piso: dos veces seguidas, plano
 ##                                    y 2.5D, alternando cuál va primero; también
@@ -117,6 +118,8 @@ func _run() -> void:
 			_mascot_modes.assign(["2d", "3d"] if m == "both" else [m])
 		elif arg == "--no-props3d":
 			Props3D.enabled = false
+		elif arg == LowMemory.ARG_ON:
+			LowMemory.apply(true)  # Perfil "TV de poca memoria" (ADR 0023).
 		elif arg.begins_with("--board="):
 			var b := arg.trim_prefix("--board=")
 			_board_modes.assign(["plano", "25d"] if b == "both" else [b])
@@ -320,11 +323,14 @@ func _measure(scene: String, mode: String = "3d") -> void:
 		"atlas_mb": MascotAtlas.memory_bytes() / 1048576.0,
 		"board": _board_mode,
 		"board_mb": Board25DBaker.memory_bytes() / 1048576.0,
+		# Memoria de texturas total del proceso (acumula lo de las escenas anteriores).
+		"texture_mb": Performance.get_monitor(Performance.RENDER_TEXTURE_MEM_USED) / 1048576.0,
+		"static_mb": Performance.get_monitor(Performance.MEMORY_STATIC) / 1048576.0,
 	}
 	_results.append(row)
-	print("  %-17s proceso %6.2f ms  scripts %5.2f ms (p95 %5.2f)  render %6.2f ms  draws %4.0f  objetos %5.0f  atlas %4.1f MB%s" % [
+	print("  %-17s proceso %6.2f ms  scripts %5.2f ms (p95 %5.2f)  render %6.2f ms  draws %4.0f  objetos %5.0f  atlas %4.1f MB  texturas %5.1f MB%s" % [
 		scene, row.process_avg_ms, row.script_avg_ms, row.script_p95_ms, row.render_avg_ms, row.draw_calls, row.objects,
-		row.atlas_mb, "  (horneó %d durante la medición)" % row.bakes_during if row.bakes_during > 0 else ""])
+		row.atlas_mb, row.texture_mb, "  (horneó %d durante la medición)" % row.bakes_during if row.bakes_during > 0 else ""])
 
 
 ## El frame arranca con el primer paso de física o, si no hay, con el proceso.

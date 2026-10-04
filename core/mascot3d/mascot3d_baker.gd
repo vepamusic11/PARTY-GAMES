@@ -239,6 +239,9 @@ class Job extends RefCounted:
 	var state := State.NEW
 	var ok := false
 	var texture: ImageTexture
+	## La misma imagen de texture (RGBA8), para guardarla en el disco
+	## (MascotDiskCache). Quien la use la suelta.
+	var image: Image
 	var regions: Dictionary = {}   ## nombre -> Rect2 (px) en texture.
 	var bytes := 0
 	## Medición: ms de CPU del peor cuadro, total de CPU y cuadros usados.
@@ -325,6 +328,7 @@ class Job extends RefCounted:
 				stage = "upload"
 				texture = ImageTexture.create_from_image(_img)
 				bytes = _img.get_width() * _img.get_height() * 4
+				image = _img
 				_img = null
 				for i in poses.size():
 					regions[poses[i].name] = Rect2(Vector2(i % _cols * cell.x, i / _cols * cell.y), Vector2(cell))

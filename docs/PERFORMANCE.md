@@ -405,6 +405,33 @@ Mascotas con las proporciones de la maqueta y plástico "jugoso" (dos uniforms m
 - **Horneado de las mascotas**: el modelo tiene las mismas piezas (más grandes, no más): mismo tiempo de horneado (~0,13 s por jugador para 10 poses de lobby, `Mascot3DBaker.last_report`).
 - **Dioramas**: 660×260 en vez de 648×240 (+8 % de píxeles, ~25 KB por juego en WebP); siguen siendo una textura por tarjeta, sin 3D en la TV.
 
+### Un dibujo por cuadro (04/10)
+
+Los juegos pedían `queue_redraw()` en `_physics_process`, y Godot dibuja lo pedido al final de **cada paso de física**. Con la TV a menos de 60 fps hay dos o más pasos por cuadro (física a paso fijo, [PRUEBA_REAL.md §4](PRUEBA_REAL.md)): el juego se dibujaba entero en cada paso y solo se veía el último. Ahora piden `MiniGame.request_redraw()` (o `request_redraw(capa)`) y `MiniGame._process` hace un solo `queue_redraw()` por cuadro, con el estado del último paso: **igual en pantalla**, la mitad de CPU de dibujo cuando la TV va a 30 fps. Medido con un envoltorio que separa lógica y dibujo (xvfb, 4 jugadores): un dibujo de Karts cuesta ~2,2 ms y su lógica ~0,2 ms; de Pool, ~2,1 y ~0,1.
+
+`tools/benchmark.gd --only=<juegos>`, la punta sin el cambio (`993e7d3`) y con el cambio, una corrida de cada uno con el candado de Godot tomado (xvfb + llvmpipe: los juegos van a ~30 fps, o sea 2 pasos por cuadro, como en una TV lenta):
+
+| Escena | Scripts prom. (ms) | Scripts p95 (ms) | Draw calls |
+|---|---:|---:|---:|
+| arena | 2,65 → **1,81** | 3,73 → **2,31** | 31 → 30 |
+| pingpong | 1,47 → **1,34** | 1,90 → **1,78** | 34 → 34 |
+| tap_race | 1,91 → **1,60** | 2,44 → **2,11** | 30 → 29 |
+| stop_clock | 2,09 → **1,32** | 3,23 → **1,90** | 63 → 62 |
+| dodge | 3,07 → **2,38** | 4,40 → **3,13** | 39 → 33 |
+| paint | 3,10 → **2,08** | 4,33 → **2,75** | 47 → 48 |
+| sumo | 3,73 → **2,15** | 4,65 → **2,67** | 103 → 101 |
+| sumo_tarde | 4,25 → **2,31** | 6,06 → **2,98** | 92 → 94 |
+| **karts** | 6,44 → **3,69** | **9,95 → 5,40** | 39 → 40 |
+| scroller | 3,93 → **2,23** | 5,62 → **2,98** | 72 → 73 |
+| memory | 3,29 → **1,92** | 4,53 → **2,34** | 40 → 44 |
+| quickdraw | 3,22 → **1,84** | 4,28 → **2,29** | 40 → 38 |
+| **pool** | 5,66 → **3,40** | **8,04 → 4,77** | 32 → 32 |
+| **hurdles** | 5,76 → **2,97** | 7,85 → **3,71** | 36 → 35 |
+
+- Karts y Pool eran los únicos por encima de los 8 ms de p95 (en la corrida completa de esa misma tarde también Carrera de obstáculos, 8,18): ahora todos quedan en ≤ 5,4 ms. Menús, lobby y celular no cambian (no son `MiniGame`).
+- Las pantallas fuera de los juegos (intro, resumen, podio) ya redibujaban solo al cambiar.
+- Con el perfil de poca memoria (`--low-memory`) el CPU por cuadro es el mismo: Scripts p95 2,50 (paint) · 2,31 (sumo) · 5,62 (karts) · 3,29 ms (scroller) en una corrida aparte.
+
 ## Qué se cambió y por qué
 
 ### 1. Capas estáticas que se dibujan una sola vez
@@ -504,7 +531,7 @@ Reglas prácticas al dibujar:
 ## Próximos pasos posibles
 
 - **Empujones mientras se achica la isla**: el anillo recortado y el borde se redibujan en cada frame. Se podría redibujar por saltos (cada pocos px de radio), pero se vería distinto: se dejó exacto.
-- **Redibujar en `_process` en vez de `_physics_process`**: si la TV no llega a 60 fps, hay dos pasos de física por frame y los juegos se dibujan dos veces. Mover el `queue_redraw()` a `_process` evita ese trabajo extra justo cuando más falta hace.
+- ~~**Redibujar en `_process` en vez de `_physics_process`**~~: hecho el 04/10 (`MiniGame.request_redraw`, ver [Un dibujo por cuadro](#un-dibujo-por-cuadro-0410)).
 - **Mascotas como nodos**: en los juegos las mascotas se redibujan en cada frame aunque solo cambie su posición. Ahora que son sprites horneados (ADR 0012) cada una cuesta poco, pero como nodos hijos con `position` no haría falta ni eso.
 - **Horneado en la TV real:** medir en una Google TV cuánto tarda el render de 3 mascotas por cuadro (`Mascot3DBaker.POSES_PER_FRAME`) y ajustar ese número (1 si traba, más si sobra).
 - Medir en el aparato real (Google TV) con el profiler remoto de Godot y el monitor de `Performance`, y ajustar estos presupuestos con esos números.
@@ -513,11 +540,76 @@ Reglas prácticas al dibujar:
 
 Decisiones en [ADR 0021](adr/0021-google-tv.md): en Android se usa el renderer **Compatibility** (OpenGL ES 3, el mismo de las capturas y el benchmark de la CI) y en la TV la escena se dibuja **a 1080p como máximo** aunque la salida sea 4K.
 
-Memoria estimada de la app en la TV (sin medir todavía en el aparato): atlas de mascotas 25–33 MB (tope `MascotAtlas.BUDGET_BYTES` = 40 MB) + tableros 2.5D horneados 6–8 MB + música + lo que ocupe el motor (sin medir). Google TV deja a una app en primer plano unos cientos de MB en un aparato de 2 GB: hay margen, pero conviene confirmarlo con `adb shell dumpsys meminfo com.iogames.partygame` o el monitor de `Performance` del depurador remoto.
+Memoria medida en la PC (xvfb) y lo que se hizo para bajarla: ver la sección siguiente. En el aparato, confirmarlo con `adb shell dumpsys meminfo com.iogames.partygame` o el monitor de `Performance` del depurador remoto.
 
-Ideas fáciles si hiciera falta bajarla en la TV (no implementadas):
+### TV de poca memoria (ADR 0023)
 
-- `MascotAtlas.BUDGET_BYTES` más bajo en Android TV (p. ej. 24 MB): suelta antes las hojas que no se dibujan; solo cuesta re-hornear al volver a un juego.
-- Hojas del atlas en RGBA4444 o sin la escala 3,4 (mascota anfitriona del lobby) en la TV.
-- Liberar los tableros 2.5D horneados al salir de cada juego (se vuelven a hornear al entrar).
-- Música: el caché de pistas en disco ya existe (`MusicCache`); verificar que en memoria quede solo la pista que suena.
+Decisión en [ADR 0023](adr/0023-tv-de-poca-memoria.md): **caché en disco de las mascotas horneadas** (siempre) y **perfil "TV de poca memoria"** (`LowMemory`: automático en Android con ≤ ~3 GB de RAM; en la PC con `-- --low-memory`). Sin el perfil, en la PC todo se ve y se comporta igual que antes salvo la caché en disco.
+
+**Cómo medir** (xvfb + llvmpipe; `XDG_DATA_HOME=<carpeta>` para empezar con `user://` vacío):
+
+```bash
+# Competencia con el censo de texturas por dueño a los 4 s de cada juego (tools/texture_census.gd)
+xvfb-run … -s res://tools/playtest.gd -- --scenario=room --humans=2 --bots=2 --summary=4 --census [--low-memory]
+# Sesión larga (dos competencias) con el perfil forzado
+xvfb-run … -s res://tools/playtest.gd -- --scenario=long --minutes=11 --summary=4 --census --low-memory
+# Arranque: cuánto tarda el lobby en tener todas las mascotas 3D
+xvfb-run … -s res://tools/playtest.gd -- --scenario=room --humans=3 --lobby=25 --games=arena,dodge,karts
+```
+
+`--census` imprime `texturas = mascotas · tableros · piezas · viewports · nodos · dioramas · fuentes · otros` (lo que no se puede atribuir: buffers del render, el retroceso de un `CanvasGroup`), las estadísticas del atlas (horneadas, pedidas tarde, soltadas, leídas del disco) y, al final, los tamaños de letra cacheados y las poses pedidas tarde. El benchmark suma las columnas `texture_mb`/`static_mb` al JSON y acepta `--low-memory`.
+
+#### De dónde salían los ~265 MB de texturas
+
+Censo de una competencia completa (2 celulares + 2 bots, 12 juegos) sobre la punta sin este cambio (`da82eb6`), a los 4 s de cada juego:
+
+| Momento | Texturas | Letras | Mascotas | Tableros | Piezas 3D | Viewports | Otros (dioramas, logo, `CanvasGroup`…) | RAM estática |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Arena (1.er juego) | 100,9 MB | 23,5 | 16,3 | 5,9 | 6,7 | 28,1 | 20,4 | 112,7 MB |
+| Karts (7.º) | 184,2 MB | 49,9 | 39,2 | 11,9 | 6,7 | 25,6 | 50,9 | 146,2 MB |
+| ¡Que no te deje la cámara! (8.º) | 236,6 MB | 105,4 | 39,3 | 5,9 | 6,7 | 20,8 | 58,5 | 197,4 MB |
+| Carrera de obstáculos (12.º) | 272,0 MB | 118,9 | 39,8 | 11,9 | 6,7 | 28,7 | 66,0 | 212,9 MB |
+| Podio | 260,2 MB | 122,9 | 39,8 | 5,9 | 6,7 | 20,3 | 64,6 | 216,7 MB |
+
+- **Letras, ~120 MB** (y otro tanto de RAM: el motor guarda cada textura de glifos también como imagen). Cada combinación de tamaño y contorno que se dibuja (o se mide) deja un caché propio; desde 65 px su textura es de 1024×1024 (2 MB) aunque tenga tres letras. Títulos de la intro (104 px con tres contornos), cuentas regresivas (240 y 260 px), resumen, podio… y sobre todo los carteles que **laten cambiando el tamaño de letra**: el de vueltas de Karts pasaba por 76…87 px con contorno → 24 cachés, ~48 MB de una sola vez.
+- **Mascotas, 40 MB**: el presupuesto del atlas, lleno desde el 2.º juego.
+- **Viewports, 20–28 MB**: la ventana de 1080p (color + profundidad ≈ 16 MB), el escenario del fondo a media resolución (≈ 4 MB), los retratos del marcador y, mientras se hornea, el viewport de las mascotas (≈ 8 MB).
+- **Otros**: dioramas del lobby (8,5 MB) y logo (2,9 MB), que quedaban cargados toda la competencia; el retroceso de pantalla completa que reserva el `CanvasGroup` de Esquivar la primera vez (≈ 10,6 MB, el motor no lo suelta); el resto no se puede atribuir desde GDScript.
+
+#### Con el perfil
+
+| | Sin el perfil (antes) | Con `--low-memory` |
+|---|---:|---:|
+| Texturas, durante los juegos | 100–272 MB (crece juego a juego) | **77–97 MB** (plano) |
+| Texturas en el podio | 260–265 MB | **80 MB** (podio 1: 80,7 · podio 2: 79,6) |
+| RAM estática en el podio | 217–220 MB | **103–105 MB** |
+| Letras | 23 → 123 MB | 7–10 MB (29–32 tamaños) |
+| Atlas de mascotas | 40 MB | 23–28 MB |
+| Dioramas y logo en los juegos | 11,4 MB | 0 |
+
+Se ve igual: capturas de `tools/capture_screens.gd` antes (sin el perfil) y después con `--low-memory` en [poca_memoria_comparacion.png](img/poca_memoria_comparacion.png) (intro, Karts, podio; solo cambia lo que depende del tiempo o del azar, igual que entre dos corridas de la misma punta). Sin el perfil, las capturas de la punta con y sin este cambio difieren entre sí lo mismo que dos corridas de la misma punta (código de sala, QR, momento de la animación).
+
+`--scenario=long --minutes=11 --low-memory`, 2 celulares + 2 bots, dos competencias seguidas (24 rondas, 19,5 min): sin problemas ni errores del motor, memoria plana (103,0 → 105,3 MB de RAM y 80,7 → 79,6 MB de texturas entre el podio 1 y el 2), tiempos entre cuadros iguales a los de la corrida sin el perfil (xvfb). Objetivo orientativo cumplido: < 150 MB de texturas y < 200 MB de RAM.
+
+Qué hace cada parte (`core/low_memory.gd`):
+
+- **Letras**: al cambiar de pantalla (con el barrido tapando) `LowMemory.purge_fonts()` suelta los cachés de más de 32 px; la pantalla nueva arma solo los suyos (decenas de glifos, una vez). Los textos de tamaño animado (cartel de vueltas y "¡Al revés!" de Karts, anuncio de ¡Que no te deje la cámara!) pasan por `LowMemory.draw_text_sized`: con el perfil se dibujan al tamaño base y se escalan con la transformación (un caché); sin el perfil, al tamaño pedido como siempre.
+- **Mascotas**: presupuesto de 24 MB. Lo soltado vuelve **del disco** (unos ms), no se vuelve a hornear. Para que el presupuesto chico no suelte lo que se va a usar: las poses precalentadas del juego en curso quedan protegidas hasta que termina (`MascotAtlas.protect_game`/`unprotect`; sin esto se soltaban en la intro y se horneaban dos veces) y la mascota del marcador, que se dibuja una vez en un SubViewport, queda fijada (`MascotAtlas.pin`; sin esto cada aviso `changed` la volvía a pedir y leer).
+- **Lobby**: `LobbyScreen.release_art()`/`restore_art()` sueltan y recargan dioramas y logo al salir y al volver.
+- **Tableros**: fuera de los juegos, `Board25DBaker.release_unused()` suelta los que nadie dibuja (ej. la sala de una intro).
+
+#### Caché en disco de las mascotas (siempre, también sin el perfil)
+
+`MascotDiskCache` (`user://mascot_cache/`): cada hoja horneada se guarda en un hilo (PNG + encabezado con firma, apariencia, tamaño y regiones de cada pose); al arrancar se lee el índice en un hilo y, antes de hornear una pose, se busca en el disco. Firma: código de la mascota, el baker, `MascotAtlas` y `PlayerAvatar` (el `.gdc` en el APK), shaders, colores, `Props3D.VERSION`, versión del motor. Archivo roto, cortado o de otra firma → se borra sin errores. Tope 64 MB.
+
+Arranque, 3 celulares, `--lobby=25`, juegos Arena → Esquivar → Karts, xvfb + llvmpipe:
+
+| | `user://` vacío | Segunda vez (caché llena) |
+|---|---:|---:|
+| Antes: lobby con todas las mascotas 3D | 12,4 s | 10,5 s (las mascotas se horneaban otra vez) |
+| Antes: preparado de cada juego desde la intro | Arena y Esquivar no llegaban; Karts 6,1 s | Arena y Esquivar no llegaban; Karts 4,9 s |
+| **Después**: lobby con todas las mascotas 3D | 12,4 s | **0,8 s** |
+| **Después**: preparado de cada juego desde la intro | Arena y Esquivar no llegaban; Karts 6,0 s | **0,3–0,4 s** los tres |
+
+- Disco: ~5 MB de hojas para 3 jugadores y 3 juegos; una competencia completa con 4 jugadores, 8 MB (111 hojas; tope 64 MB). Leer una hoja: unos ms en un hilo + subirla a la placa (< 1 ms en la PC).
+- La primera vez en el aparato hay que hornear igual (y queda guardado): la guía de la prueba sigue pidiendo una competencia el día antes.

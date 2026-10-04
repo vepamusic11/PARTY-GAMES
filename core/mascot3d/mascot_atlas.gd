@@ -29,6 +29,12 @@ extends Node
 ## El trabajo se reparte en cuadros (Mascot3DBaker.Job): un horneado a la
 ## vez, pocas mascotas armadas por cuadro. Un nodo propio (creado solo, bajo
 ## la raíz) lo avanza en su _process.
+##
+## Caché en disco (MascotDiskCache, ADR 0023): cada hoja horneada se guarda
+## en `user://mascot_cache/` (en un hilo) y, antes de hornear una pose, se
+## busca en el disco: si está, se lee en un hilo (unos ms) en vez de
+## renderizarla. Así, desde el segundo arranque de la app, el lobby y los
+## juegos casi no hornean.
 
 ## Tamaños de horneado (u de PlayerAvatar). Ver tier_for().
 const TIERS_U: Array[float] = [0.62, 0.95, 1.45, 2.25, 3.4]
@@ -79,7 +85,8 @@ static var log_jobs := false
 ## "late": poses que se pidieron recién al dibujar (no estaban precalentadas):
 ## en la TV son un tirón chico y un cuadro con la pose parecida.
 static var stats := {"jobs": 0, "poses": 0, "worst_frame_ms": 0.0, "cpu_ms": 0.0, "failures": 0,
-	"last_job": {}, "released": 0, "late": 0}
+	"last_job": {}, "released": 0, "late": 0,
+	"disk_loads": 0, "disk_poses": 0, "disk_ms": 0.0, "disk_saves": 0, "disk_scan_ms": 0.0}
 ## Poses horneadas tarde: "<pose> u=<tamaño>" -> veces (para medir el
 ## precalentado: tools/mascot_prewarm_check.gd). Se puede vaciar a mano.
 static var late_poses: Dictionary = {}
@@ -90,10 +97,28 @@ static var _queue: Array[Entry] = []        # Apariencias con poses pendientes, 
 static var _job: Mascot3DBaker.Job
 static var _job_entry: Entry
 static var _keep: Dictionary = {}           # dueño -> {look_key: true}
+static var _protected: Dictionary = {}      # clave de Entry -> true (ver protect_game)
+static var _pins: Dictionary = {}           # clave de Entry -> {pose: true} (ver pin)
 static var _failures := 0
 static var _supported_moods: Dictionary = {}  # ánimo -> bool (la cara 3D lo tiene)
 static var _last_sweep := 0
 static var _notifier: Notifier
+## Solo tests (--headless con fake_render): usar igual la caché en disco
+## (leer hojas del disco no necesita render).
+static var disk_in_headless := false
+static var _disk_state := 0                 # 0: sin leer la carpeta · 1: leyéndola · 2: lista
+static var _disk_task := -1
+static var _disk_box: Array = []
+static var _disk_started := 0
+static var _disk_index: Dictionary = {}     # clave de Entry -> [{"path", "poses", "cell"}]
+static var _load_task := -1
+static var _load_box: Array = []
+static var _load_entry: Entry
+static var _load_path := ""
+static var _load_started := 0
+static var _save_queue: Array[Dictionary] = []
+static var _save_task := -1
+static var _save_box: Array = []
 
 
 ## Emisor de `changed`: cambió el caché (se horneó o se soltó algo). Los
@@ -362,11 +387,43 @@ static func prewarm_game(players: Array, u: float, extra: Array = []) -> void:
 	if u <= GAME_WALK_MAX_U:
 		poses.append_array(expand_poses(["walk@0"]))
 	prewarm(looks, u, poses)
+	var tiers := {tier_for(u): true}
 	for item: Variant in extra:
 		if item is Array and (item as Array).size() == 2 and (item[0] is float or item[0] is int) and item[1] is Array:
 			prewarm(looks, float(item[0]), expand_poses(item[1]))
+			tiers[tier_for(float(item[0]))] = true
 	prewarm(looks, TOAST_U, ["idle@0", "idle@1", "idle@2"])
 	prewarm_screens(players)
+	protect_game(looks, tiers.keys())
+
+
+## Las poses del juego que empieza no se sueltan por el presupuesto aunque
+## todavía no se dibujen (durante la intro solo se ven las de pantalla).
+## Sin esto, con un presupuesto chico (LowMemory) lo precalentado se soltaba
+## antes de empezar el juego y se volvía a hornear. Dura hasta unprotect()
+## (HostMain lo llama al terminar el juego) o hasta el próximo juego.
+static func protect_game(looks: Array, tiers: Array) -> void:
+	_protected.clear()
+	for look: Dictionary in looks:
+		var col: Color = look.get("color", Color.WHITE)
+		var style := posmod(int(look.get("style", 0)), PlayerAvatar.STYLE_NAMES.size())
+		for t: int in tiers:
+			_protected[_key(col, style, t)] = true
+
+
+static func unprotect() -> void:
+	_protected.clear()
+	_pins.clear()
+
+
+## Una pose que se dibuja UNA vez en algo que queda guardado (ej. la mascota
+## del marcador, en un SubViewport UPDATE_ONCE): no se suelta por el
+## presupuesto hasta unprotect(). Si se soltara, cada aviso de `changed`
+## volvería a dibujar el marcador, la pediría tarde y la leería otra vez.
+static func pin(col: Color, p_style: int, u: float, pose: String) -> void:
+	var style := posmod(p_style, PlayerAvatar.STYLE_NAMES.size())
+	var poses: Dictionary = _pins.get_or_add(_key(col, style, tier_for(u)), {})
+	poses[pose] = true
 
 
 ## Nombres de pose con atajos: "walk@M" son los 24 cuadros de caminata
@@ -421,6 +478,8 @@ static func clear() -> void:
 	_entries.clear()
 	_queue.clear()
 	_keep.clear()
+	_protected.clear()
+	_pins.clear()
 	_emit_changed()
 
 
@@ -585,9 +644,17 @@ static func _sweep(now: int) -> void:
 	var total := memory_bytes()
 	if total > budget_bytes:
 		var sheets: Array = []
+		var skip := {}  # Hojas con una pose fijada (pin): no se sueltan.
 		for e: Entry in _entries.values():
+			var pinned: Dictionary = _pins.get(e.key, {})
+			for p: String in pinned:
+				if e.poses.has(p):
+					skip[e.poses[p]] = true
+		for e: Entry in _entries.values():
+			if _protected.has(e.key):
+				continue
 			for s: Sheet in e.poses.values():
-				if not s in sheets:
+				if not s in sheets and not skip.has(s):
 					sheets.append(s)
 		sheets.sort_custom(func(a: Sheet, b: Sheet) -> bool: return a.last_used < b.last_used)
 		for s: Sheet in sheets:
@@ -615,6 +682,13 @@ func _process(_delta: float) -> void:
 	var now := Time.get_ticks_msec()
 	if now - _last_sweep > SWEEP_EVERY_MSEC:
 		_sweep(now)
+	if _disk_allowed():
+		_poll_save()
+		# Primero el disco: leer una hoja son unos ms; hornearla, varios cuadros.
+		if not _disk_ready() or not _finish_load():
+			return
+		if _start_disk_load():
+			return
 	if _headless():
 		return  # Sin render no se hornea (tests con fake_render).
 	if _job == null:
@@ -652,6 +726,10 @@ func _process(_delta: float) -> void:
 	for p: String in job.regions:
 		e.poses[p] = sheet
 	stats.poses = int(stats.poses) + job.regions.size()
+	if job.image != null and _disk_allowed():
+		_save_queue.append({"rgba": e.color.to_rgba32(), "style": e.style, "tier": e.tier, "cell": e.cell,
+			"regions": job.regions.duplicate(), "image": job.image})
+	job.image = null
 	if memory_bytes() > budget_bytes:
 		_sweep(now)
 	_emit_changed()
@@ -693,6 +771,7 @@ func _start_next() -> void:
 
 func _exit_tree() -> void:
 	if self == _runner:
+		_wait_disk_tasks()
 		Mascot3DBaker.release_pool()
 		if _job != null:
 			_job.cancel()
@@ -712,3 +791,187 @@ static func _safe_t(t: float, period: float, p_style: int) -> float:
 			return out
 		out += period
 	return out
+
+
+# --- Caché en disco (MascotDiskCache) ------------------------------------------------
+
+static func _disk_allowed() -> bool:
+	return MascotDiskCache.enabled and (not _headless() or disk_in_headless)
+
+
+## Índice de la carpeta: se lee una vez (en un hilo) antes del primer
+## horneado. true cuando está listo.
+static func _disk_ready() -> bool:
+	if _disk_state == 2:
+		return true
+	if _disk_state == 0:
+		_disk_state = 1
+		_disk_started = Time.get_ticks_usec()
+		var sig := MascotDiskCache.signature()
+		var box := [[]]
+		_disk_box = box
+		_disk_task = WorkerThreadPool.add_task(func() -> void: box[0] = MascotDiskCache.scan(sig))
+		return false
+	if not WorkerThreadPool.is_task_completed(_disk_task):
+		return false
+	WorkerThreadPool.wait_for_task_completion(_disk_task)
+	_disk_task = -1
+	_disk_index.clear()
+	for h: Dictionary in _disk_box[0]:
+		_index_add(h.path, int(h.color), int(h.style), int(h.tier), h.cell, h.regions)
+	_disk_box = []
+	_disk_state = 2
+	stats.disk_scan_ms = (Time.get_ticks_usec() - _disk_started) / 1000.0
+	return true
+
+
+static func _index_add(path: String, rgba: int, style: int, tier: int, cell: Vector2i, regions: Dictionary) -> void:
+	var key := (((rgba << 3) | clampi(style, 0, 7)) << 3) | clampi(tier, 0, 7)
+	var files: Array = _disk_index.get_or_add(key, [])
+	for info: Dictionary in files:
+		if info.path == path:
+			files.erase(info)
+			break
+	files.append({"path": path, "poses": regions, "cell": cell})
+
+
+## Si alguna apariencia de la cola tiene en el disco una hoja con poses que
+## le faltan, la empieza a leer (en un hilo). true si empezó una lectura.
+static func _start_disk_load() -> bool:
+	if _load_task != -1 or _disk_index.is_empty():
+		return false
+	for e: Entry in _queue:
+		if e == _job_entry or e.pending.is_empty() or not _entries.has(e.key):
+			continue
+		for info: Dictionary in _disk_index.get(e.key, []):
+			if Vector2i(info.cell) != e.cell:
+				continue
+			var useful := false
+			for p: String in info.poses:
+				if e.pending.has(p):
+					useful = true
+					break
+			if not useful:
+				continue
+			# Si la lectura falla, la hoja sale del índice (y se hornea).
+			var path: String = info.path
+			var sig := MascotDiskCache.signature()
+			var box := [{}]
+			_load_box = box
+			_load_entry = e
+			_load_path = path
+			_load_started = Time.get_ticks_usec()
+			_load_task = WorkerThreadPool.add_task(func() -> void: box[0] = MascotDiskCache.load_sheet(path, sig))
+			return true
+	return false
+
+
+## Termina la lectura en curso (si la hay): sube la imagen y deja las poses
+## listas. false mientras el hilo sigue leyendo.
+static func _finish_load() -> bool:
+	if _load_task == -1:
+		return true
+	if not WorkerThreadPool.is_task_completed(_load_task):
+		return false
+	WorkerThreadPool.wait_for_task_completion(_load_task)
+	_load_task = -1
+	var data: Dictionary = _load_box[0]
+	var e := _load_entry
+	var path := _load_path
+	_load_box = []
+	_load_entry = null
+	_load_path = ""
+	if data.is_empty():
+		# Rota, vieja o borrada por el tope: se olvida (y se hornea).
+		var files: Array = _disk_index.get(e.key, []) if e != null else []
+		for info: Dictionary in files:
+			if info.path == path:
+				files.erase(info)
+				break
+		return true
+	if e == null or _entries.get(e.key) != e:
+		return true  # Se soltó mientras se leía (ej. el jugador se fue).
+	var img: Image = data.image
+	var now := Time.get_ticks_msec()
+	var sheet := Sheet.new()
+	for p: String in data.regions:
+		if not e.poses.has(p):
+			sheet.regions[p] = data.regions[p]
+	if sheet.regions.is_empty():
+		return true
+	sheet.texture = ImageTexture.create_from_image(img)
+	sheet.bytes = img.get_width() * img.get_height() * 4
+	sheet.last_used = now
+	for p: String in sheet.regions:
+		e.poses[p] = sheet
+		e.pending.erase(p)
+		e.order.erase(p)
+	if e.pending.is_empty():
+		_queue.erase(e)
+	stats.disk_loads = int(stats.disk_loads) + 1
+	stats.disk_poses = int(stats.disk_poses) + sheet.regions.size()
+	stats.disk_ms = float(stats.disk_ms) + (Time.get_ticks_usec() - _load_started) / 1000.0
+	if log_jobs:
+		print("MascotAtlas: del disco ", path.get_file(), " (", sheet.regions.size(), " poses, ",
+			"%.1f ms)" % ((Time.get_ticks_usec() - _load_started) / 1000.0))
+	if memory_bytes() > budget_bytes:
+		_sweep(now)
+	_emit_changed()
+	return true
+
+
+## Guarda en el disco las hojas recién horneadas, de a una y en un hilo.
+static func _poll_save() -> void:
+	if _save_task != -1:
+		if not WorkerThreadPool.is_task_completed(_save_task):
+			return
+		WorkerThreadPool.wait_for_task_completion(_save_task)
+		_save_task = -1
+		var done: Dictionary = _save_box[0]
+		_save_box = []
+		if not str(done.get("path", "")).is_empty():
+			stats.disk_saves = int(stats.disk_saves) + 1
+			_index_add(done.path, int(done.rgba), int(done.style), int(done.tier), done.cell, done.regions)
+	if _save_queue.is_empty():
+		return
+	var item: Dictionary = _save_queue.pop_front()
+	var sig := MascotDiskCache.signature()
+	var box := [item]
+	_save_box = box
+	_save_task = WorkerThreadPool.add_task(func() -> void:
+		var it: Dictionary = box[0]
+		it["path"] = MascotDiskCache.save_sheet(sig, int(it.rgba), int(it.style), int(it.tier), it.cell, it.regions, it.image)
+		it.erase("image"))
+
+
+## Espera los hilos del disco (al cerrar: que ninguno quede suelto).
+static func _wait_disk_tasks() -> void:
+	for t in [_disk_task, _load_task, _save_task]:
+		if t != -1:
+			WorkerThreadPool.wait_for_task_completion(t)
+	_disk_task = -1
+	_load_task = -1
+	_save_task = -1
+	if _disk_state == 1:
+		_disk_state = 0
+	_load_entry = null
+	_save_queue.clear()
+
+
+## Tests: olvida el índice del disco y lo que se estaba leyendo o guardando.
+static func reset_disk() -> void:
+	_wait_disk_tasks()
+	_disk_state = 0
+	_disk_index.clear()
+	_disk_box = []
+	_load_box = []
+	_save_box = []
+
+
+## Tests y herramientas: espera a que se guarde lo horneado (y a leer la
+## carpeta), sin cuadros de por medio.
+static func flush_disk() -> void:
+	while _save_task != -1 or not _save_queue.is_empty():
+		while _save_task != -1 and not WorkerThreadPool.is_task_completed(_save_task):
+			OS.delay_msec(1)
+		_poll_save()

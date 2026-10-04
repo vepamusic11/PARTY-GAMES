@@ -843,6 +843,7 @@ static func make_portrait(parent: Node, col: Color, style: int) -> Texture2D:
 	vp.add_child(drawer)
 	parent.add_child(vp)
 	MascotAtlas.redraw_on_bake(drawer, vp)  # Mascota 3D horneada apenas esté (ADR 0012).
+	MascotAtlas.pin(col, style, PORTRAIT_SCALE * k, "idle@0")  # Se dibuja una vez: que no se suelte.
 	return vp.get_texture()
 
 

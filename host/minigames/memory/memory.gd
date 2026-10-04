@@ -202,7 +202,7 @@ func on_player_disconnected(player_id: int) -> void:
 
 func _physics_process(delta: float) -> void:
 	step(delta)
-	queue_redraw()
+	request_redraw()
 
 
 ## Avanza el juego `delta` segundos (lo usan _physics_process y los tests).

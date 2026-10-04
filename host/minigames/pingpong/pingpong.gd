@@ -107,7 +107,7 @@ func _physics_process(delta: float) -> void:
 		return
 	_since_hit += delta
 	if in_finale():  # Punto final: la pelota queda quieta y el ganador festeja.
-		queue_redraw()
+		request_redraw()
 		return
 	for pid: int in _paddle_x:
 		_paddle_x[pid] = lerpf(_paddle_x[pid], _target_x[pid], clampf(PADDLE_FOLLOW * delta, 0.0, 1.0))
@@ -115,7 +115,7 @@ func _physics_process(delta: float) -> void:
 		_serve_delay -= delta
 	else:
 		_step_ball(delta)
-	queue_redraw()
+	request_redraw()
 
 
 func _step_ball(delta: float) -> void:
