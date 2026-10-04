@@ -20,6 +20,12 @@ extends Control
 ## para no tapar el juego. Si vuelve, se reemplaza por "volvió"; si se
 ## vence la espera, por "se fue".
 ##
+## La cuenta de 30 s solo se muestra si corre de verdad (HostServer,
+## `reserve_left_ms`): un celular bloqueado con la conexión abierta no
+## pierde su lugar, así que dice "no responde — su lugar lo espera" (chico:
+## "sin señal"), sin cuenta y sin irse. Si después la conexión se cierra,
+## el mismo aviso pasa a la cuenta regresiva.
+##
 ## En el lobby van apagados (`enabled = false`): las tarjetas de los
 ## lugares ya muestran quién se sumó, quién se está reconectando y quién se
 ## fue, y un aviso arriba taparía las tarjetas 2P y 3P.
@@ -81,6 +87,7 @@ func show_toast(player: Dictionary, kind: int) -> void:
 		if t.player_id == pid:
 			_remove(t, false)
 	var toast := _Toast.new(player, kind)
+	toast.server = _server
 	add_child(toast)
 	_toasts.push_front(toast)
 	while _toasts.size() > UiTheme.TOAST_MAX:
@@ -131,11 +138,11 @@ func _process(delta: float) -> void:
 	var relayout := false
 	for t: _Toast in _toasts.duplicate():
 		var was_compact := t.compact
-		t.tick(delta)
+		var text_changed := t.tick(delta)
 		if t.expired():
 			_remove(t, true)
 			relayout = true
-		elif t.compact != was_compact:
+		elif t.compact != was_compact or text_changed:
 			relayout = true
 	if relayout:
 		_layout(false)
@@ -190,8 +197,11 @@ class _Toast:
 	var age := 0.0
 	var compact := false
 	var fresh := true
+	## Para saber si la reserva de lugar corre (null: cuenta local, ej. tests).
+	var server: HostServer
 	var _grace := float(HostServer.RECONNECT_GRACE_MS) / 1000.0
 	var _shown_seconds := -1
+	var _shown_waiting := false
 
 	func _init(p: Dictionary, p_kind: int) -> void:
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -203,22 +213,43 @@ class _Toast:
 		style = PlayerAvatar.style_of(p)
 		_shown_seconds = seconds_left()
 
-	func tick(delta: float) -> void:
+	## true si cambió el tipo de texto ("no responde" <-> cuenta regresiva):
+	## hay que reacomodar el ancho.
+	func tick(delta: float) -> bool:
 		age += delta
-		if kind == TvToasts.Kind.LOST:
-			if not compact and age >= UiTheme.TOAST_EXPAND_SEC:
-				compact = true
-			var s := seconds_left()
-			if s != _shown_seconds:
-				_shown_seconds = s
-				queue_redraw()
+		if kind != TvToasts.Kind.LOST:
+			return false
+		if not compact and age >= UiTheme.TOAST_EXPAND_SEC:
+			compact = true
+		var waiting := waiting_open()
+		var s := seconds_left()
+		var mode_changed := waiting != _shown_waiting
+		if s != _shown_seconds or mode_changed:
+			_shown_seconds = s
+			_shown_waiting = waiting
+			queue_redraw()
+		return mode_changed
 
 	func expired() -> bool:
 		if kind == TvToasts.Kind.LOST:
-			return age >= _grace + 1.0  # Por si "se fue" no llega (no debería pasar).
+			if server != null and not server.has_player(player_id):
+				return true  # Ya se fue (normalmente lo reemplaza "se fue").
+			if waiting_open() or _server_reserve_ms() >= 0:
+				return false  # Lo reemplaza "volvió" o "se fue".
+			return age >= _grace + 1.0  # Sin datos de la TV: cuenta local.
 		return age >= UiTheme.TOAST_SHOW_SEC
 
+	## ¿Mudo con la conexión abierta? Sin cuenta: su lugar lo espera.
+	func waiting_open() -> bool:
+		return server != null and server.is_silent_but_open(player_id)
+
+	func _server_reserve_ms() -> int:
+		return server.reserve_left_ms(player_id) if server != null else -1
+
 	func seconds_left() -> int:
+		var ms := _server_reserve_ms()
+		if ms >= 0:
+			return ceili(ms / 1000.0)
 		return maxi(0, ceili(_grace - age))
 
 	func message() -> String:
@@ -226,6 +257,8 @@ class _Toast:
 			TvToasts.Kind.JOINED:
 				return "Se sumó %s" % name_text
 			TvToasts.Kind.LOST:
+				if waiting_open():
+					return "sin señal" if compact else "%s no responde — su lugar lo espera" % name_text
 				if compact:
 					return "%d s" % seconds_left()
 				return "%s se desconectó — esperando que vuelva (%d s)" % [name_text, seconds_left()]

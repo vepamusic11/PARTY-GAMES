@@ -111,6 +111,13 @@
       </div>
     </div>
     <canvas id="pad" hidden></canvas>
+    <!-- Se cortó la conexión: tapa el control hasta que vuelva (o hasta rendirse). -->
+    <div id="net" class="net" hidden role="status" aria-live="polite">
+      <div class="panel net-card">
+        <span class="spinner" aria-hidden="true"></span>
+        <div class="net-text"><strong id="net-title" class="net-title">Se cortó la conexión</strong><span id="net-sub" class="net-sub">Reconectando con la TV…</span></div>
+      </div>
+    </div>
   </div>
 </section>
 

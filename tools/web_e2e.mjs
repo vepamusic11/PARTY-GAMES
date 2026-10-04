@@ -11,72 +11,34 @@
 //   PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers node tools/web_e2e.mjs --out=/tmp/e2e --keep
 //
 // Sale con código 1 si alguna comprobación falla. Necesita xvfb-run y godot en el PATH.
-import { spawn } from "node:child_process";
-import { mkdirSync, writeFileSync, appendFileSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
+import { loadPlaywright, CHROMIUM, TvProcess, touch } from "./web_e2e_lib.mjs";
 
-// Playwright puede estar instalado global (en el contenedor: /opt/node22/lib/node_modules).
-const pw = await import("playwright").catch(() => import(process.env.PLAYWRIGHT_MODULE || "/opt/node22/lib/node_modules/playwright/index.mjs"));
-const { chromium, devices } = pw;
+const { chromium, devices } = await loadPlaywright();
 
 const args = Object.fromEntries(process.argv.slice(2).map((a) => a.replace(/^--/, "").split("=")));
 const OUT = resolve(args.out || "/tmp/party-games-e2e");
 const WS_PORT = 47990, HTTP_PORT = 47980;
 mkdirSync(OUT, { recursive: true });
-const CMD = resolve(OUT, "cmd.txt");
-writeFileSync(CMD, "");
-try { rmSync(resolve(OUT, "events.log")); } catch (e) { /* no estaba */ }
 
 let failures = 0;
 const pages = [];  // Para volcar el estado de cada celular si algo falla.
 const ok = (cond, what) => { console.log((cond ? "  ok    " : "  FALLA ") + what); if (!cond) failures++; };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// --- TV ---------------------------------------------------------------------------
-const lines = [];
-const waiters = [];
-const host = spawn("xvfb-run", ["-a", "-s", "-screen 0 1920x1080x24", "godot", "--path", ".", "--rendering-driver", "opengl3", "--audio-driver", "Dummy",
-  "-s", "res://tools/web_e2e_host.gd", "--", `--cmd=${CMD}`, `--out=${OUT}`, `--ws=${WS_PORT}`, `--http=${HTTP_PORT}`], { stdio: ["ignore", "pipe", "pipe"], detached: true });
-// La TV informa en events.log (la salida estándar de un hijo puede quedar en el buffer).
-const EVENTS = resolve(OUT, "events.log");
-let seen = 0;
-function pump() {
-  let text = "";
-  try { text = readFileSync(EVENTS, "utf8"); } catch (e) { return; }
-  const all = text.split("\n");
-  for (; seen < all.length - 1; seen++) {
-    const line = all[seen].trim();
-    if (!line.startsWith("E2E ")) continue;
-    lines.push(line);
-    for (const w of [...waiters]) if (w.re.test(line)) { waiters.splice(waiters.indexOf(w), 1); w.resolve(line); }
-  }
-}
-const pumpTimer = setInterval(pump, 100);
-host.stdout.on("data", () => {});
-host.stderr.on("data", (d) => { const t = d.toString(); appendFileSync(resolve(OUT, "host_stderr.log"), t); if (/ERROR|SCRIPT ERROR/.test(t)) process.stderr.write(t); });
-// Espera una línea que cumpla `re`, mirando solo desde la posición `from`
-// (así "E2E done players" de una orden anterior no da por cumplida la nueva).
-function waitLine(re, timeout = 15000, from = 0) {
-  const found = lines.slice(from).find((l) => re.test(l));
-  if (found) return Promise.resolve(found);
-  return new Promise((resolve, reject) => {
-    const w = { re, resolve };
-    waiters.push(w);
-    setTimeout(() => { if (waiters.includes(w)) { waiters.splice(waiters.indexOf(w), 1); reject(new Error("timeout esperando " + re)); } }, timeout);
-  });
-}
-async function tv(cmd) { const from = lines.length; appendFileSync(CMD, cmd + "\n"); await waitLine(new RegExp("^E2E done " + cmd.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "$"), 40000, from); }
-async function players() { const n = lines.length; await tv("players"); const l = lines.slice(n).find((x) => x.startsWith("E2E players asked ")); return JSON.parse(l.slice("E2E players asked ".length)); }
+// --- TV (tools/web_e2e_lib.mjs) ------------------------------------------------------
+const host = new TvProcess({ out: OUT, ws: WS_PORT, http: HTTP_PORT });
+host.start();
+const lines = host.lines;
+const waitLine = (re, timeout = 15000, from = 0) => host.waitLine(re, timeout, from);
+const tv = (cmd) => host.cmd(cmd);
+const players = () => host.players();
 let mark = 0;  // Desde dónde buscar las entradas de un gesto (se marca antes de tocar).
 const setMark = () => { mark = lines.length; };
 let shotIndex = 0;
 async function shot(page, name) { await page.screenshot({ path: resolve(OUT, `${String(++shotIndex).padStart(2, "0")}_${name}.png`), scale: "css" }); }
 async function tvShot(name) { await tv(`shot ${String(++shotIndex).padStart(2, "0")}_tv_${name}`); }
-
-// Toques reales por CDP (multitáctil): points = [{x, y, id}].
-async function touch(cdp, type, points) {
-  await cdp.send("Input.dispatchTouchEvent", { type, touchPoints: points.map((p) => ({ x: p.x, y: p.y, id: p.id ?? 0, radiusX: 8, radiusY: 8, force: 1 })) });
-}
 async function padBox(page) { return page.locator("#pad").boundingBox(); }
 async function waitInput(re, timeout = 4000) { return waitLine(re, timeout, mark); }
 
@@ -88,8 +50,7 @@ try {
   const base = `http://127.0.0.1:${httpPort}`;
 
   // --- Navegadores -------------------------------------------------------------------
-  const exe = process.env.PW_CHROMIUM || "/opt/pw-browsers/chromium-1194/chrome-linux/chrome";
-  const browser = await chromium.launch({ executablePath: exe, args: ["--no-sandbox", "--autoplay-policy=no-user-gesture-required"] });
+  const browser = await chromium.launch({ executablePath: CHROMIUM, args: ["--no-sandbox", "--autoplay-policy=no-user-gesture-required"] });
   const mk = (dev, extra = {}) => browser.newContext({ ...dev, deviceScaleFactor: 2, locale: "es-AR", permissions: [], ...extra });
   const iphoneL = devices["iPhone 13 landscape"], iphoneP = devices["iPhone 13"], pixel = devices["Pixel 5 landscape"];
   const ctxA = await mk(iphoneL), ctxB = await mk(iphoneP), ctxC = await mk(pixel);
@@ -316,10 +277,7 @@ try {
     } catch (e2) { /* nada */ }
   }
 } finally {
-  appendFileSync(CMD, "quit\n");
-  await sleep(1500);
-  clearInterval(pumpTimer);
-  try { process.kill(-host.pid, "SIGTERM"); } catch (e) { host.kill("SIGTERM"); }  // xvfb-run y godot (grupo de procesos).
+  await host.stop();  // xvfb-run y godot (grupo de procesos).
   console.log(`\n${failures === 0 ? "Todo OK" : failures + " fallas"} · capturas en ${OUT}`);
   process.exit(failures ? 1 : 0);
 }

@@ -26,7 +26,13 @@ signal player_updated(player: Dictionary)
 const JOIN_TIMEOUT_MS := 5000
 const CLOSING_TIMEOUT_MS := 2000
 const MAX_PENDING_CONNECTIONS := 8
+## Tope de `input` por celular: en promedio INPUT_RATE_LIMIT_PER_SEC (el
+## control manda 30), con ráfagas de hasta INPUT_BURST. Con la Wi-Fi floja,
+## TCP retiene los mensajes durante un tirón y los entrega todos juntos: un
+## tope por ventana de 1 s tiraba justo los más nuevos (el dedo que se soltó)
+## y el joystick quedaba trabado. Ver docs/adr/0022-control-web.md.
 const INPUT_RATE_LIMIT_PER_SEC := 90
+const INPUT_BURST := 240
 ## "look" dispara un aviso a todos los celulares: tope propio, más bajo.
 const LOOK_RATE_LIMIT_PER_SEC := 8
 const RECONNECT_GRACE_MS := 30000
@@ -66,8 +72,8 @@ class _Peer:
 	var player_id := 0          # 0 = todavía no se unió
 	var opened_at := 0
 	var closing_since := -1
-	var window_start := 0
-	var window_count := 0
+	var input_tokens := float(INPUT_BURST)  # balde de fichas del tope de `input`
+	var input_tokens_at := -1
 	var look_window_start := 0
 	var look_window_count := 0
 	var last_seen := 0          # ticks del último mensaje recibido
@@ -126,6 +132,29 @@ func get_human_count() -> int:
 		if not p.get("bot", false):
 			n += 1
 	return n
+
+
+func has_player(player_id: int) -> bool:
+	return _players.has(player_id)
+
+
+## Milisegundos que le quedan de reserva de lugar a un jugador desconectado
+## (socket cerrado). -1 si la cuenta no corre: conectado, mudo con la
+## conexión todavía abierta (ver `is_silent_but_open`) o desconocido.
+func reserve_left_ms(player_id: int) -> int:
+	var p: Dictionary = _players.get(player_id, {})
+	if p.is_empty() or p.connected or int(p.disconnected_at) < 0:
+		return -1
+	return maxi(0, RECONNECT_GRACE_MS - (Time.get_ticks_msec() - int(p.disconnected_at)))
+
+
+## ¿Desconectado para el juego pero con la conexión abierta? (celular
+## bloqueado o app en segundo plano, SILENT_MS sin hablar). Su lugar lo
+## espera sin límite: la reserva de 30 s recién corre si el socket se cierra.
+func is_silent_but_open(player_id: int) -> bool:
+	var p: Dictionary = _players.get(player_id, {})
+	return not p.is_empty() and not p.connected and int(p.disconnected_at) < 0 \
+		and _peer_key_for_player(player_id) != 0
 
 
 func get_connected_count() -> int:
@@ -543,11 +572,14 @@ func _expire_disconnected_players(now: int) -> void:
 # --- Utilidades ---------------------------------------------------------------
 
 func _rate_limited(peer: _Peer, now: int) -> bool:
-	if now - peer.window_start >= 1000:
-		peer.window_start = now
-		peer.window_count = 0
-	peer.window_count += 1
-	return peer.window_count > INPUT_RATE_LIMIT_PER_SEC
+	if peer.input_tokens_at >= 0:
+		var refill := float(now - peer.input_tokens_at) * INPUT_RATE_LIMIT_PER_SEC / 1000.0
+		peer.input_tokens = minf(float(INPUT_BURST), peer.input_tokens + refill)
+	peer.input_tokens_at = now
+	if peer.input_tokens < 1.0:
+		return true
+	peer.input_tokens -= 1.0
+	return false
 
 
 func _look_rate_limited(peer: _Peer, now: int) -> bool:

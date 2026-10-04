@@ -5157,6 +5157,72 @@ func test_player_toasts() -> void:
 	await _free_clients()
 
 
+## Wi-Fi floja: TCP retiene la entrada durante un tirón y la entrega toda
+## junta. El tope de `input` acepta esa ráfaga (antes, con una ventana de 1 s
+## y 90 mensajes, tiraba justo los más nuevos: el dedo que se soltó) y sigue
+## frenando a quien manda de más todo el tiempo.
+func test_input_rate_limit_tolerates_wifi_bursts() -> void:
+	var server := HostServer.new()
+	var peer := HostServer._Peer.new()
+	var t := 1000
+	var dropped := 0
+	# 30 Hz normal 2 s, un tirón de 3 s (90 mensajes que llegan juntos) y sigue.
+	for i in 60:
+		t += 33
+		dropped += int(server._rate_limited(peer, t))
+	t += 3000
+	for i in 90:
+		dropped += int(server._rate_limited(peer, t))
+	for i in 60:
+		t += 33
+		dropped += int(server._rate_limited(peer, t))
+	check(dropped == 0, "la ráfaga después de un tirón de 3 s entra entera (%d descartados)" % dropped)
+	# Quien manda 300 por segundo durante 10 s: en promedio queda en el tope.
+	var flood := HostServer._Peer.new()
+	var accepted := 0
+	t = 100000
+	for i in 3000:
+		t += 3 if i % 3 != 0 else 4
+		accepted += int(not server._rate_limited(flood, t))
+	var cap := HostServer.INPUT_BURST + HostServer.INPUT_RATE_LIMIT_PER_SEC * 10 + 2
+	check(accepted <= cap and accepted >= cap - 30, "inundación: %d aceptados en 10 s (tope ~%d)" % [accepted, cap])
+	server.free()
+
+
+## Celular bloqueado con la conexión abierta (docs/PRUEBA_REAL.md §6): su
+## lugar no vence, así que el aviso de la TV no cuenta 30 s ni se va solo;
+## dice "no responde — su lugar lo espera". Si después la conexión se
+## cierra, el mismo aviso pasa a la cuenta regresiva real de la reserva.
+func test_silent_phone_toast_has_no_countdown() -> void:
+	var port := TEST_PORT + 110
+	var host := HostMain.new()
+	host.server_port = port
+	host.announce = false
+	host.transition_seconds = 0.0
+	root.add_child(host)
+	await process_frame
+	var toasts := host._toasts
+	toasts.enabled = true  # Como en una partida.
+	var c := _client()
+	c.join("127.0.0.1", port, host.server.room_code, "Sofi")
+	await _until(func() -> bool: return c.state == ControllerClient.State.JOINED)
+	toasts.advance(UiTheme.TOAST_SHOW_SEC + 0.1)  # Se va "Se sumó Sofi".
+	c.process_mode = Node.PROCESS_MODE_DISABLED  # Bloqueado: no manda nada, el socket sigue.
+	await _until(func() -> bool: return toasts.texts().size() == 1 and toasts.texts()[0].contains("Sofi"), HostServer.SILENT_MS + 2000)
+	check(host.server.is_silent_but_open(1) and host.server.reserve_left_ms(1) == -1, "mudo con el socket abierto: sin reserva corriendo")
+	check(toasts.texts() == ["Sofi no responde — su lugar lo espera"], "aviso sin cuenta regresiva (%s)" % [toasts.texts()])
+	toasts.advance(float(HostServer.RECONNECT_GRACE_MS) / 1000.0 + 5.0)
+	check(toasts.texts() == ["sin señal"], "pasados 35 s sigue (chico) y sin números (%s)" % [toasts.texts()])
+	# Se corta de verdad: empieza la reserva y el aviso cuenta lo que queda.
+	c._ws.close()
+	c._ws.poll()
+	await _until(func() -> bool: return host.server.reserve_left_ms(1) >= 0, 3000)
+	toasts.advance(0.1)
+	check(toasts.active_count() == 1 and toasts.texts()[0] in ["30 s", "29 s"], "con el socket cerrado, cuenta la reserva real (%s)" % [toasts.texts()])
+	host.queue_free()
+	await _free_clients()
+
+
 ## Selector TV/celular: dos tarjetas, foco inicial en la TV (en el celular,
 ## con pantalla táctil, en "Control") y ◀ ▶ entre
 ## ellas. La presentación IO-GAMES dura como mucho 2,5 s.
