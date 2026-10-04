@@ -464,6 +464,43 @@ func draw_player_tags(entries: Array) -> void:
 	GameArt.draw_player_tags(self, tags)
 
 
+## Marcador de salida "¿cuál soy yo?": durante los primeros
+## UiTheme.START_MARK_SEC segundos del juego (los de la cuenta regresiva),
+## sobre el globito de cada mascota rebota una flecha grande del color del
+## jugador con su nombre en grande, y después se desvanece. Así un primerizo
+## encuentra su mascota antes de que arranque la acción. Mismas entradas que
+## draw_player_tags (llamarlo justo después). Barato: solo unos segundos y
+## dos textos por jugador.
+func draw_start_markers(entries: Array) -> void:
+	var left := UiTheme.START_MARK_SEC - anim_time
+	if left <= 0.0 or entries.is_empty():
+		return
+	var alpha := clampf(left / UiTheme.START_MARK_FADE, 0.0, 1.0)
+	var bounce := 0.0 if UiTheme.reduce_motion else absf(sin(anim_time * 5.0)) * UiTheme.START_MARK_BOUNCE
+	var s := UiTheme.START_MARK_ARROW
+	var font := UiTheme.START_MARK_FONT
+	var top := UiTheme.HUD_TOP + UiTheme.HUD_CLOCK_H + s * 1.2 + font
+	for e: Array in entries:
+		var p: Dictionary = e[0]
+		var feet: Vector2 = e[1]
+		var u: float = e[2] if e.size() > 2 else 0.8
+		var name_offset: float = e[3] if e.size() > 3 else 26.0
+		var col: Color = p.get("color", UiTheme.PAPER)
+		# La punta de la flecha, arriba del globito 1P–4P. Si la mascota está
+		# pegada al marcador (el globito ya se corrió a un costado), la flecha
+		# va debajo de los pies apuntando hacia arriba, con el nombre más abajo.
+		var tip := feet + Vector2(0, -118.0 * u - 14.0 - UiTheme.TAG_BUBBLE.y - bounce)
+		var dir := Vector2.DOWN
+		if tip.y - s * 1.2 - font < top:
+			dir = Vector2.UP
+			tip = feet + Vector2(0, maxf(name_offset, 0.0) + 24.0 + bounce)
+		var c := tip - dir * s * 0.6
+		UiTheme.draw_arrow(self, c, s + 10.0, dir, Color(UiTheme.INK, alpha))
+		UiTheme.draw_arrow(self, c, s, dir, Color(col, alpha))
+		UiTheme.draw_text(self, str(p.get("name", "")), c - dir * (s * 0.7 + font * 0.6),
+			font, Color(UiTheme.PAPER, alpha), UiTheme.START_MARK_OUTLINE, Color(UiTheme.INK, alpha))
+
+
 ## Marcador superior común a todos los juegos, como en la maqueta:
 ##   [1P mascota 12] [2P mascota 9] [reloj 0:28] [3P mascota 7] [4P mascota 3]
 ## Una píldora del color de cada jugador con su etiqueta, su mascota y el

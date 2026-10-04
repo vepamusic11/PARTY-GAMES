@@ -754,6 +754,71 @@ func test_scroller_rules() -> void:
 	await process_frame
 
 
+## Arranque amable de ¡Que no te deje la cámara! (prueba real con primerizos,
+## docs/PRUEBA_REAL.md "Claridad por juego"): la cámara arranca despacito y
+## quien todavía no entendió que hay que correr dura varios segundos (antes
+## ~2 s), más con menos jugadores; después acelera como siempre.
+func test_scroller_start_grace() -> void:
+	var script: Script = load("res://host/minigames/scroller/scroller.gd")
+	var g4: float = script.grace_sec(4)
+	check(script.camera_speed(0.0, 4) < script.CAM_SPEED_START * 0.5 and is_equal_approx(script.camera_speed(g4, 4), script.CAM_SPEED_START),
+		"scroller: la cámara arranca despacio y al terminar la gracia va a la velocidad de siempre")
+	check(script.grace_sec(2) > script.grace_sec(3) and script.grace_sec(3) > g4, "scroller: más gracia con menos jugadores")
+	check(script.start_speed(2) < script.start_speed(3) and script.start_speed(3) < script.start_speed(4),
+		"scroller: crucero más lento con menos jugadores")
+	check(script.camera_speed(500.0, 2) == script.CAM_SPEED_END and script.camera_speed(500.0, 4) == script.CAM_SPEED_END,
+		"scroller: el tope de velocidad no cambia")
+	for n in [2, 4]:
+		var game: Variant = MiniGameRegistry.create("scroller")
+		root.add_child(game)
+		game.set_physics_process(false)
+		game.setup(_fake_players(n))
+		game.set_course_seed(7)
+		for i in 60:
+			game._segments[i] = []
+		game._countdown = 0.0
+		check(game.in_grace(), "%d jug.: al ¡YA! arranca la gracia (cartel ¡Corré a la derecha!)" % n)
+		# Pablo (1) no toca nada; los demás corren a la derecha.
+		for pid in range(2, n + 1):
+			game.on_input(pid, {"seq": 1, "axis": Vector2(1, 0), "btn": 0})
+		var t := 0.0
+		while not game._out.has(1) and t < 15.0:
+			game.step(1.0 / 60.0)
+			t += 1.0 / 60.0
+		var at_least := 5.0 if n == 2 else 4.0
+		check(game._out.has(1) and t >= at_least and t <= 9.0,
+			"%d jug.: quien no se mueve queda afuera a los %.1f s (antes ~2 s; se espera %.0f–9 s)" % [n, t, at_least])
+		check(not game.in_grace() or t < script.grace_sec(n), "%d jug.: la gracia termina" % n)
+		game.queue_free()
+	await process_frame
+
+
+## Claridad para primerizos (docs/PRUEBA_REAL.md, "Claridad por juego"): la
+## intro muestra como mucho 3 pasos, así que la descripción tiene de 1 a 3
+## oraciones cortas; cada juego manda al celular su propia instrucción
+## (`hint` del layout, ≤ 48 caracteres según PROTOCOL.md, nunca la genérica
+## del control) y los juegos de un botón le ponen texto al botón.
+func test_game_texts_for_first_timers() -> void:
+	for info in MiniGameRegistry.all_info():
+		var sentences := GameIntroScreen.split_sentences(str(info.description))
+		check(sentences.size() >= 1 and sentences.size() <= 3, "%s: la descripción tiene de 1 a 3 oraciones (%d)" % [info.id, sentences.size()])
+		for s in sentences:
+			check(s.length() <= 120, "%s: oración corta (%d): %s" % [info.id, s.length(), s])
+		var data: Dictionary = info.layout_data
+		var hint := str(data.get("hint", ""))
+		check(not hint.is_empty() and hint.length() <= 48 and hint == hint.strip_edges() and not hint.contains("\n"),
+			"%s: instrucción propia para el celular, ≤ 48 caracteres (%d)" % [info.id, hint.length()])
+		check(hint != str(ControllerMain.LAYOUT_HINTS.get(info.layout, "")), "%s: la instrucción no es la genérica del control" % info.id)
+		check(ControllerMain.instruction_for(str(info.layout), data) == hint, "%s: la app muestra la instrucción del juego" % info.id)
+		if info.layout == Protocol.LAYOUT_ONE_BUTTON:
+			var label := str(data.get("label", ""))
+			check(not label.is_empty() and label.length() <= 12, "%s: el botón dice qué hacer (%s)" % [info.id, label])
+	# El primer paso de ¡Que no te deje la cámara! es lo que hay que hacer: correr a la derecha.
+	check(GameIntroScreen.split_sentences(MiniGameRegistry.info("scroller").description)[0].to_lower().contains("derecha"),
+		"scroller: la intro arranca con 'corré hacia la derecha'")
+	await process_frame
+
+
 
 func test_stop_clock_scoring() -> void:
 	var sc = preload("res://host/minigames/stop_clock/stop_clock.gd")  # Sin tipo: métodos propios del juego.
@@ -871,6 +936,7 @@ func test_game_finale() -> void:
 	var results: Array = []
 	game.finished.connect(func(r: Dictionary) -> void: results.append(r))
 	game._score[2] = 3
+	game._countdown = 0.0
 	game._time_left = 0.01
 	await physics_frame
 	await physics_frame
@@ -3345,6 +3411,12 @@ func test_bot_skill() -> void:
 			if r.result.get("winners", []) == [2]:
 				wins += 1
 		check(wins >= 2, "%s: el bot difícil le gana a un jugador quieto (%d de 3)" % [id, wins])
+	# ¡Que no te deje la cámara!: dos difíciles corren, hacen metros y el
+	# juego dura bastante más que la gracia (sin bot propio duraba 5 s).
+	r = BotMatch.run(root, "scroller", BotMatch.bot_players(2, hard), 180.0, 3)
+	var meters: Dictionary = r.result.get("scores", {})
+	check(r.finished and r.seconds >= 10.0 and int(meters.get(1, 0)) >= 5 and int(meters.get(2, 0)) >= 5,
+		"Cámara: los bots difíciles corren (%.1f s, %s)" % [r.seconds, meters])
 	await process_frame
 
 
@@ -3551,6 +3623,7 @@ func test_bots_freeze_on_pause() -> void:
 	host.start_tournament(["arena"] as Array[String])
 	host.skip_intro()
 	var game: Variant = host._game
+	game._countdown = 0.0  # Sin la cuenta regresiva: acá importa que el bot juegue y se congele.
 	# El máximo en 1 s, no un instante: al juntar una estrella el bot puede frenar justo.
 	var bot_max := 0.0
 	for i in 60:
@@ -4958,7 +5031,7 @@ func test_intro_steps_and_ready() -> void:
 		{"id": 2, "slot": 1, "name": "Sofi", "color": Protocol.player_color(1), "connected": true},
 	]
 	intro.show_intro(MiniGameRegistry.info("arena"), 1, 3, players)
-	check(intro.steps_text().size() >= 2 and intro.steps_text()[0] == MiniGameRegistry.info("arena").description,
+	check(intro.steps_text().size() >= 2 and intro.steps_text()[0] == GameIntroScreen.split_sentences(MiniGameRegistry.info("arena").description)[0],
 		"pasos de la arena (%s)" % [intro.steps_text()])
 	check(intro._continue.has_focus(), "foco inicial en ¡A jugar!")
 	var done := [false]

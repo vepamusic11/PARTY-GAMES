@@ -111,11 +111,11 @@ static func get_info() -> Dictionary:
 	return {
 		"id": "memory",
 		"title": "Memoria de colores",
-		"description": "Mirá la secuencia del tablero y repetila con el joystick: arriba estrella, derecha corazón, abajo rombo, izquierda círculo. Volvé al centro entre uno y otro. ¡Si te equivocás, quedás afuera!",
+		"description": "Mirá la secuencia del tablero y repetila con el joystick: cada dirección es una figura. Volvé al centro entre una y otra. Si te equivocás quedás afuera: gana quien llega más lejos.",
 		"min_players": 1,
 		"max_players": 4,
 		"layout": Protocol.LAYOUT_JOYSTICK,
-		"layout_data": {},
+		"layout_data": {"hint": "Mirá la TV y repetí: una dirección por figura"},
 		"accent": UiTheme.ACCENT_MEMORY,
 		"score_label": "rondas",
 	}
@@ -768,6 +768,7 @@ func _draw_players() -> void:
 		tags.append([p, feet, MASCOT_SCALE, 22.0])
 	dizzy.flush(self)
 	draw_player_tags(tags)
+	draw_start_markers(tags)
 	# "¡Afuera!" sobre la bandeja de los eliminados (sigue viendo el juego).
 	for i in players.size():
 		if _out.has(players[i].id):

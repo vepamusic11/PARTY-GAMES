@@ -43,13 +43,24 @@ const VIEW := Rect2(104, 140, 1712, 700)
 const WORLD_H := 700.0            ## Alto del mundo (= VIEW.size.y).
 const SEG_W := 1000.0             ## Ancho de cada tramo del recorrido.
 const CELL := 100.0               ## Baldosas del piso.
-const START_X := 300.0            ## x (mundo) donde arrancan las mascotas (alternan ±START_STAGGER).
+## Arranque amable (prueba real con primerizos, docs/PRUEBA_REAL.md): las
+## mascotas salen más adentro de la cámara (antes a 300 px del borde: a quien
+## no entendía que había que correr lo dejaba en ~2 s) y la cámara arranca
+## despacito durante un período de gracia, más largo y con una velocidad de
+## crucero más baja cuantos menos jugadores hay. Quien no se mueve queda
+## afuera a los ~5–6 s (antes ~2 s), mientras la TV dice "¡Corré a la derecha!".
+const START_X := 560.0            ## x (mundo) donde arrancan las mascotas (alternan ±START_STAGGER).
 const START_STAGGER := 60.0
-const START_LINE := 480.0         ## Línea de salida: desde acá se cuentan los metros.
+const START_LINE := 740.0         ## Línea de salida: desde acá se cuentan los metros.
 const PX_PER_M := 50.0            ## Un tramo = 20 m.
-const CAM_SPEED_START := 140.0    ## px/s al "¡YA!".
-const CAM_SPEED_END := 320.0      ## px/s a partir de CAM_RAMP_SEC.
+const CAM_SPEED_GRACE := 45.0     ## px/s al "¡YA!": la cámara arranca despacito…
+const GRACE_SEC := 3.0            ## …y en este tiempo llega a su velocidad de arranque (con 4 jugadores).
+const GRACE_EXTRA_PER_MISSING := 1.0  ## Segundos más de gracia por cada jugador menos de 4 (2 jugadores: 5 s).
+const CAM_SPEED_START := 140.0    ## px/s al terminar la gracia con 4 jugadores (ver start_speed).
+const CAM_SPEED_START_FACTOR: Array[float] = [1.0, 1.0, 0.8, 0.9, 1.0]  ## Por cantidad de jugadores (índice = jugadores).
+const CAM_SPEED_END := 320.0      ## px/s CAM_RAMP_SEC después de la gracia.
 const CAM_RAMP_SEC := 55.0
+const GO_RIGHT_TEXT := "¡Corré a la derecha!"  ## Cartel durante la gracia.
 const SPEEDUP_AT: Array[float] = [20.0, 38.0, 55.0]  ## Cartel "¡Más rápido!".
 
 # --- Jugadores -------------------------------------------------------------------
@@ -167,11 +178,11 @@ static func get_info() -> Dictionary:
 	return {
 		"id": "scroller",
 		"title": "¡Que no te deje la cámara!",
-		"description": "La cámara avanza sola y cada vez más rápido. Esquivá sierras y pozos, empujá a los demás y no te quedes atrás: el último en pie gana.",
+		"description": "Corré hacia la derecha: la cámara avanza sola y no te espera. Esquivá sierras y pozos, y empujá a los demás. El último en pie gana.",
 		"min_players": 2,
 		"max_players": 4,
 		"layout": Protocol.LAYOUT_JOYSTICK,
-		"layout_data": {},
+		"layout_data": {"hint": "¡Corré a la derecha! La cámara no espera"},
 		"accent": UiTheme.ACCENT_SCROLLER,
 		"score_label": "metros",
 	}
@@ -213,6 +224,18 @@ func on_input(player_id: int, input: Dictionary) -> void:
 	_axis[player_id] = (axis as Vector2).limit_length(1.0) if axis is Vector2 else Vector2.ZERO
 
 
+## Para los bots (ver MiniGame.bot_view): lo que se ve en la TV. Los
+## obstáculos van por tramo (`segments`: índice -> Array, en coordenadas del
+## mundo; los cercanos a cada jugador ya están armados). Solo lectura.
+func bot_view() -> Dictionary:
+	return {
+		"pos": _pos, "vel": _vel, "out": _out, "cam": _cam, "cam_speed": _cam_speed, "countdown": _countdown,
+		"elapsed": _elapsed, "segments": _segments, "seg_w": SEG_W, "view_w": VIEW.size.x,
+		"top": TOP_LIMIT, "bottom": WORLD_H - BOTTOM_LIMIT, "right_limit": RIGHT_LIMIT,
+		"body_radius": BODY_RADIUS, "max_speed": MAX_SPEED, "friction": FRICTION, "accel": ACCEL,
+	}
+
+
 ## Fija la semilla del recorrido (tests y miniaturas). Sin llamarla, la
 ## partida sortea una al empezar.
 func set_course_seed(value: int) -> void:
@@ -251,7 +274,7 @@ func step(delta: float) -> void:
 	if _countdown > 0.0:
 		return  # Nadie se mueve (ni la cámara) hasta el "¡YA!".
 	_elapsed = minf(_elapsed + delta, DURATION_SEC)
-	_cam_speed = camera_speed(_elapsed)
+	_cam_speed = camera_speed(_elapsed, players.size())
 	_cam += _cam_speed * delta
 	_move_players(delta)
 	_collide_players()
@@ -263,9 +286,30 @@ func step(delta: float) -> void:
 
 # --- Física y recorrido (puro, testeable) -----------------------------------------
 
-## Velocidad de la cámara: arranca lenta y acelera de a poco hasta CAM_RAMP_SEC.
-static func camera_speed(elapsed: float) -> float:
-	return lerpf(CAM_SPEED_START, CAM_SPEED_END, clampf(elapsed / CAM_RAMP_SEC, 0.0, 1.0))
+## Velocidad de la cámara: durante la gracia sube de CAM_SPEED_GRACE a la de
+## arranque (más baja con menos jugadores) y después acelera de a poco hasta
+## CAM_SPEED_END a lo largo de CAM_RAMP_SEC.
+static func camera_speed(elapsed: float, player_count: int = 4) -> float:
+	var grace := grace_sec(player_count)
+	var start := start_speed(player_count)
+	if elapsed < grace:
+		return lerpf(CAM_SPEED_GRACE, start, elapsed / grace)
+	return lerpf(start, CAM_SPEED_END, clampf((elapsed - grace) / CAM_RAMP_SEC, 0.0, 1.0))
+
+
+## Velocidad de crucero al terminar la gracia: 140 px/s con 4, 126 con 3 y 112 con 2.
+static func start_speed(player_count: int) -> float:
+	return CAM_SPEED_START * CAM_SPEED_START_FACTOR[clampi(player_count, 0, 4)]
+
+
+## Período de gracia después del "¡YA!": 3 s con 4 jugadores, 4 s con 3, 5 s con 2.
+static func grace_sec(player_count: int) -> float:
+	return GRACE_SEC + maxi(4 - player_count, 0) * GRACE_EXTRA_PER_MISSING
+
+
+## ¿Se está en la gracia del arranque? (cartel "¡Corré a la derecha!").
+func in_grace() -> bool:
+	return _countdown <= 0.0 and not _ending and _elapsed < grace_sec(players.size())
 
 
 ## Nueva velocidad: fricción, aceleración del joystick y tope. Si un empujón
@@ -704,7 +748,9 @@ func _draw() -> void:
 	order.sort_custom(func(a: Dictionary, c: Dictionary) -> bool: return (_pos[a.id] as Vector2).y < (_pos[c.id] as Vector2).y)
 	for p in order:
 		_draw_player(p)
-	draw_player_tags(order.map(func(p: Dictionary) -> Array: return [p, _screen(_pos[p.id]), MASCOT_SCALE, NAME_OFFSET]))
+	var tags: Array = order.map(func(p: Dictionary) -> Array: return [p, _screen(_pos[p.id]), MASCOT_SCALE, NAME_OFFSET])
+	draw_player_tags(tags)
+	draw_start_markers(tags)
 	for p in players:
 		if _out.has(p.id) and not _is_seated(p.id):
 			_draw_out(p)
@@ -724,6 +770,22 @@ func _draw() -> void:
 		var pop_k := clampf((ANNOUNCE_SEC - _announce_t) * 6.0, 0.0, 1.0) if not _ending else 1.0
 		LowMemory.draw_text_sized(self, _announce, Vector2(center.x, VIEW.position.y + 110.0), int(lerpf(40.0, 64.0, pop_k)),
 			64, UiTheme.ACCENT, 14)
+	elif in_grace():
+		_draw_go_right_hint(Vector2(center.x, VIEW.end.y - 64.0))  # Abajo: las mascotas salen arriba y en el medio.
+
+
+## Durante la gracia del arranque: "¡Corré a la derecha!" con dos flechas que
+## avanzan (quietas con "Reducir movimiento"). Es lo primero que hay que
+## entender en este juego; la cámara mientras tanto va despacito.
+func _draw_go_right_hint(at: Vector2) -> void:
+	var size := 56
+	var w := UiTheme.FONT_BOLD.get_string_size(GO_RIGHT_TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
+	var slide := 0.0 if UiTheme.reduce_motion else fmod(_anim * 1.6, 1.0) * 26.0
+	for side in [-1.0, 1.0]:
+		var c := at + Vector2(side * (w / 2.0 + 70.0) + slide, 0)
+		UiTheme.draw_arrow(self, c, 58.0, Vector2.RIGHT, UiTheme.INK)
+		UiTheme.draw_arrow(self, c, 46.0, Vector2.RIGHT, UiTheme.ACCENT)
+	draw_text_centered(GO_RIGHT_TEXT, at, size, UiTheme.ACCENT, 14)
 
 
 func _draw_player(p: Dictionary) -> void:

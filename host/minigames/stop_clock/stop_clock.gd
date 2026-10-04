@@ -39,11 +39,11 @@ static func get_info() -> Dictionary:
 	return {
 		"id": "stop_clock",
 		"title": "Reloj exacto",
-		"description": "Frená tu reloj justo en 10.00 segundos. ¡A los 3 s el cronómetro se apaga y tenés que contar en tu cabeza!",
+		"description": "Tocá para frenar tu reloj justo en 10.00 segundos. A los 3 s el cronómetro se apaga: contá en tu cabeza.",
 		"min_players": 1,
 		"max_players": 4,
 		"layout": Protocol.LAYOUT_ONE_BUTTON,
-		"layout_data": {"label": "¡STOP!"},
+		"layout_data": {"label": "¡STOP!", "hint": "Tocá cuando tu reloj llegue a 10.00"},
 		"accent": UiTheme.BRICKS[7],   # Rosa: no lo usa ningún otro juego.
 		"score_label": "de precisión",
 	}

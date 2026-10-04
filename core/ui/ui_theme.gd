@@ -1189,6 +1189,15 @@ const HUD_PORTRAIT := Vector2(84, 104)   ## Mascota dentro de la píldora (px l�
 const TAG_BUBBLE := Vector2(62, 38)
 const PLAYER_NAME_SIZE := 26     ## Etiqueta del globito y nombre (mismo tamaño: se dibujan juntos).
 const TAG_OUTLINE := 6
+## Marcador de salida "¿cuál soy yo?" (MiniGame.draw_start_markers): en los
+## primeros segundos de cada juego, una flecha grande del color del jugador
+## rebota sobre su globito con su nombre en grande.
+const START_MARK_SEC := 3.6      ## Cuánto se ve desde que arranca el juego (cubre la cuenta de 3 s).
+const START_MARK_FADE := 0.6     ## Se desvanece en los últimos segundos.
+const START_MARK_FONT := 40
+const START_MARK_ARROW := 44.0   ## Tamaño de la flecha (UiTheme.draw_arrow).
+const START_MARK_BOUNCE := 16.0  ## Cuánto rebota (px).
+const START_MARK_OUTLINE := 8
 ## Brillo y halo de power-ups y premios.
 const GLOW := Color("#FFD84A")
 ## Mesa de Ping Pong.

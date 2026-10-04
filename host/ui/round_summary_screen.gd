@@ -20,7 +20,7 @@ extends Control
 
 signal continue_requested
 
-const AUTO_CONTINUE_SEC := 15.0
+const AUTO_CONTINUE_SEC := 12.0  ## Antes 15: con 2–3 personas el revelado dura ~2 s y OK siempre adelanta.
 const REVEAL_GAP := 0.45
 
 var paused := false  ## Con el menú de pausa abierto no corre la cuenta regresiva.

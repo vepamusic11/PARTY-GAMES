@@ -131,7 +131,7 @@ static func get_info() -> Dictionary:
 		"min_players": 1,
 		"max_players": 4,
 		"layout": Protocol.LAYOUT_ONE_BUTTON,
-		"layout_data": {"label": "¡PUM!"},
+		"layout_data": {"label": "¡PUM!", "hint": "Tocá solo cuando la TV diga ¡YA!"},
 		"accent": UiTheme.ACCENT_QUICKDRAW,
 		"score_label": "puntos",
 	}
@@ -387,6 +387,7 @@ func _draw() -> void:
 	for i in players.size():
 		tags.append([players[i], _feet_of(i) + Vector2(0, _sit_drop(players[i].id)), MASCOT_SCALE])
 	draw_player_tags(tags)
+	draw_start_markers(tags)
 	_draw_plaque_texts()
 	draw_hud(_points, "Ronda %d/%d" % [maxi(_round, 1), ROUNDS], "flag")
 

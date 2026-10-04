@@ -90,11 +90,11 @@ static func get_info() -> Dictionary:
 	return {
 		"id": "dodge",
 		"title": "Esquivar",
-		"description": "Esquivá los bloques que caen del cielo. Mirá las sombras: el último en pie gana.",
+		"description": "Mové tu mascota y esquivá los bloques que caen del cielo. Mirá las sombras: el último en pie gana.",
 		"min_players": 1,
 		"max_players": 4,
 		"layout": Protocol.LAYOUT_JOYSTICK,
-		"layout_data": {},
+		"layout_data": {"hint": "Movete: salí de las sombras"},
 		"accent": UiTheme.BRICKS[0],
 		"score_label": "segundos",
 		"help": HELP,
@@ -400,9 +400,11 @@ func _draw_25d() -> void:
 			blocks.flush(self)
 			_draw_standing(d)
 	blocks.flush(self)
-	draw_player_tags(players.map(func(p: Dictionary) -> Array:
+	var tags: Array = players.map(func(p: Dictionary) -> Array:
 		var dp := _depth(_pos[p.id])
-		return [p, _screen(_pos[p.id]), MASCOT_SCALE * dp, NAME_OFFSET * dp]))
+		return [p, _screen(_pos[p.id]), MASCOT_SCALE * dp, NAME_OFFSET * dp])
+	draw_player_tags(tags)
+	draw_start_markers(tags)
 	_draw_help_fx()
 	draw_hud(_live_scores(), clock_text(DURATION_SEC - _elapsed), "clock")
 	draw_countdown(_countdown, GO_SEC)
