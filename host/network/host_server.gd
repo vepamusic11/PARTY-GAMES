@@ -128,6 +128,29 @@ func get_human_count() -> int:
 	return n
 
 
+func has_player(player_id: int) -> bool:
+	return _players.has(player_id)
+
+
+## Milisegundos que le quedan de reserva de lugar a un jugador desconectado
+## (socket cerrado). -1 si la cuenta no corre: conectado, mudo con la
+## conexión todavía abierta (ver `is_silent_but_open`) o desconocido.
+func reserve_left_ms(player_id: int) -> int:
+	var p: Dictionary = _players.get(player_id, {})
+	if p.is_empty() or p.connected or int(p.disconnected_at) < 0:
+		return -1
+	return maxi(0, RECONNECT_GRACE_MS - (Time.get_ticks_msec() - int(p.disconnected_at)))
+
+
+## ¿Desconectado para el juego pero con la conexión abierta? (celular
+## bloqueado o app en segundo plano, SILENT_MS sin hablar). Su lugar lo
+## espera sin límite: la reserva de 30 s recién corre si el socket se cierra.
+func is_silent_but_open(player_id: int) -> bool:
+	var p: Dictionary = _players.get(player_id, {})
+	return not p.is_empty() and not p.connected and int(p.disconnected_at) < 0 \
+		and _peer_key_for_player(player_id) != 0
+
+
 func get_connected_count() -> int:
 	var n := 0
 	for p: Dictionary in _players.values():
