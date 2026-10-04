@@ -575,7 +575,12 @@ func _sample_memory(label: String) -> void:
 	}
 	if _census:
 		m["census"] = TextureCensus.take(self)
+		var st := MascotAtlas.stats
+		m["atlas"] = {"jobs": st.jobs, "poses": st.poses, "late": st.late, "released": st.released,
+			"disk_loads": st.disk_loads, "disk_saves": st.disk_saves}
 		_log("  " + TextureCensus.line(m.census))
+		_log("  atlas: %d trabajos, %d poses horneadas, %d tarde, %d soltadas, %d hojas del disco, %d guardadas" % [
+			st.jobs, st.poses, st.late, st.released, st.disk_loads, st.disk_saves])
 	_mem.append(m)
 	_log("Memoria (%s): %.1f MB estática, %d objetos, %d nodos, %d huérfanos, %d recursos, %.1f MB texturas (mascotas %.1f, tableros %.1f)" % [
 		label, m.static_mb, m.objects, m.nodes, m.orphans, m.resources, m.texture_mb, m.mascots_mb, m.boards_mb])
@@ -678,6 +683,10 @@ func _report() -> void:
 		print("  %-18s %6.1f %6.1f %6.1f %7.1f  ·  %5.1f  (%d cuadros)" % [k, _pct(f, 0.5), _pct(f, 0.95), _pct(f, 0.99), f[f.size() - 1], _pct(p, 0.95), f.size()])
 	if _census:
 		print("\nFuentes (tamaño/contorno: KB de glifos): " + TextureCensus.font_detail())
+		var late: Array = MascotAtlas.late_poses.keys()
+		late.sort_custom(func(a: String, b: String) -> bool: return int(MascotAtlas.late_poses[a]) > int(MascotAtlas.late_poses[b]))
+		print("Poses pedidas tarde (las 12 más repetidas): " + ", ".join(late.slice(0, 12).map(func(k: String) -> String:
+			return "%s ×%d" % [k, MascotAtlas.late_poses[k]])))
 	if not _mem.is_empty():
 		print("\nMemoria:")
 		for m in _mem:

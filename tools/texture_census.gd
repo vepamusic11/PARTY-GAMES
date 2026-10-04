@@ -57,7 +57,7 @@ static func take(tree: SceneTree) -> Dictionary:
 		if t is Texture2D and not seen.has(t):
 			dio += _tex_bytes(t) * MIP
 	out["dioramas"] = dio / 1048576.0
-	out["fuentes"] = (_font_bytes(UiTheme.FONT_BOLD) + _font_bytes(UiTheme.FONT_SEMI)) / 1048576.0
+	out["fuentes"] = (_font_bytes(UiTheme.FONT_BOLD) + _font_bytes(UiTheme.FONT_SEMI) + _font_bytes(ThemeDB.fallback_font)) / 1048576.0
 	out["fuentes_n"] = _font_sizes(UiTheme.FONT_BOLD).size() + _font_sizes(UiTheme.FONT_SEMI).size()
 	var known := 0.0
 	for k in ["mascotas", "tableros", "piezas3d", "viewports", "nodos", "dioramas", "fuentes"]:

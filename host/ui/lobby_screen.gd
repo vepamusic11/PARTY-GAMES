@@ -59,6 +59,7 @@ var shuffle := false
 
 var _players: Array[Dictionary] = []
 var _cards: Dictionary = {}  # game_id -> GameCard
+var _logo: TextureRect
 var _seats: Array[SeatCard] = []
 var _stepper: Stepper
 var _start: Button
@@ -288,6 +289,7 @@ func _build_join_column() -> Control:
 	var logo := UiTheme.logo_rect()
 	logo.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	brand.add_child(logo)
+	_logo = logo
 
 	var panel := PanelContainer.new()
 	panel.add_theme_stylebox_override("panel", UiTheme.panel_style(UiTheme.PAPER, UiTheme.RADIUS + 8, 16))
@@ -639,3 +641,21 @@ class _Sparkles:
 		_since = 0.0
 		for i in _fans.size():
 			_fans[i].scale = Vector2.ONE * (0.92 + 0.14 * sin(_t * PULSE_SPEED + i * PI))
+
+
+## Perfil de poca memoria (LowMemory, ADR 0023): con el lobby oculto (en la
+## competencia) se sueltan los dioramas de las tarjetas y el logo (≈ 11 MB
+## de texturas); restore_art los vuelve a cargar antes de mostrarlo.
+func release_art() -> void:
+	for card: GameCard in _cards.values():
+		card.release_art()
+	GameCard.release_caches()
+	if _logo != null and _logo.texture != null:
+		_logo.texture = null
+
+
+func restore_art() -> void:
+	for card: GameCard in _cards.values():
+		card.restore_art()
+	if _logo != null and _logo.texture == null:
+		_logo.texture = load(UiTheme.LOGO_PATH)

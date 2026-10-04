@@ -163,6 +163,15 @@ static func release_all() -> void:
 	_textures.clear()
 
 
+## Suelta las texturas que ningún juego está dibujando (ej. la sala `stage`
+## que se pidió para una intro). Lo usa el perfil de poca memoria fuera de
+## los juegos (LowMemory, ADR 0023); se vuelven a leer del disco al pedirlas.
+static func release_unused() -> void:
+	for key: String in _textures.keys():
+		if (_users.get(key, {}) as Dictionary).is_empty():
+			_textures.erase(key)
+
+
 ## Memoria de las texturas en uso (bytes, estimada como RGBA8).
 static func memory_bytes() -> int:
 	var total := 0

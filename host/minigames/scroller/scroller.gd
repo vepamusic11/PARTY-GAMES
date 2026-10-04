@@ -722,8 +722,8 @@ func _draw() -> void:
 		draw_text_centered("¡YA!", center, 240, UiTheme.ACCENT, 22)
 	elif _announce_t > 0.0:
 		var pop_k := clampf((ANNOUNCE_SEC - _announce_t) * 6.0, 0.0, 1.0) if not _ending else 1.0
-		draw_text_centered(_announce, Vector2(center.x, VIEW.position.y + 110.0), int(lerpf(40.0, 64.0, pop_k)),
-			UiTheme.ACCENT, 14)
+		LowMemory.draw_text_sized(self, _announce, Vector2(center.x, VIEW.position.y + 110.0), int(lerpf(40.0, 64.0, pop_k)),
+			64, UiTheme.ACCENT, 14)
 
 
 func _draw_player(p: Dictionary) -> void:

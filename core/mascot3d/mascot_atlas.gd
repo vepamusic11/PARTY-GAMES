@@ -97,6 +97,8 @@ static var _queue: Array[Entry] = []        # Apariencias con poses pendientes, 
 static var _job: Mascot3DBaker.Job
 static var _job_entry: Entry
 static var _keep: Dictionary = {}           # dueño -> {look_key: true}
+static var _protected: Dictionary = {}      # clave de Entry -> true (ver protect_game)
+static var _pins: Dictionary = {}           # clave de Entry -> {pose: true} (ver pin)
 static var _failures := 0
 static var _supported_moods: Dictionary = {}  # ánimo -> bool (la cara 3D lo tiene)
 static var _last_sweep := 0
@@ -108,7 +110,7 @@ static var _disk_state := 0                 # 0: sin leer la carpeta · 1: leyé
 static var _disk_task := -1
 static var _disk_box: Array = []
 static var _disk_started := 0
-static var _disk_index: Dictionary = {}     # clave de Entry -> [{"path", "poses", "cell", "tried"}]
+static var _disk_index: Dictionary = {}     # clave de Entry -> [{"path", "poses", "cell"}]
 static var _load_task := -1
 static var _load_box: Array = []
 static var _load_entry: Entry
@@ -385,11 +387,43 @@ static func prewarm_game(players: Array, u: float, extra: Array = []) -> void:
 	if u <= GAME_WALK_MAX_U:
 		poses.append_array(expand_poses(["walk@0"]))
 	prewarm(looks, u, poses)
+	var tiers := {tier_for(u): true}
 	for item: Variant in extra:
 		if item is Array and (item as Array).size() == 2 and (item[0] is float or item[0] is int) and item[1] is Array:
 			prewarm(looks, float(item[0]), expand_poses(item[1]))
+			tiers[tier_for(float(item[0]))] = true
 	prewarm(looks, TOAST_U, ["idle@0", "idle@1", "idle@2"])
 	prewarm_screens(players)
+	protect_game(looks, tiers.keys())
+
+
+## Las poses del juego que empieza no se sueltan por el presupuesto aunque
+## todavía no se dibujen (durante la intro solo se ven las de pantalla).
+## Sin esto, con un presupuesto chico (LowMemory) lo precalentado se soltaba
+## antes de empezar el juego y se volvía a hornear. Dura hasta unprotect()
+## (HostMain lo llama al terminar el juego) o hasta el próximo juego.
+static func protect_game(looks: Array, tiers: Array) -> void:
+	_protected.clear()
+	for look: Dictionary in looks:
+		var col: Color = look.get("color", Color.WHITE)
+		var style := posmod(int(look.get("style", 0)), PlayerAvatar.STYLE_NAMES.size())
+		for t: int in tiers:
+			_protected[_key(col, style, t)] = true
+
+
+static func unprotect() -> void:
+	_protected.clear()
+	_pins.clear()
+
+
+## Una pose que se dibuja UNA vez en algo que queda guardado (ej. la mascota
+## del marcador, en un SubViewport UPDATE_ONCE): no se suelta por el
+## presupuesto hasta unprotect(). Si se soltara, cada aviso de `changed`
+## volvería a dibujar el marcador, la pediría tarde y la leería otra vez.
+static func pin(col: Color, p_style: int, u: float, pose: String) -> void:
+	var style := posmod(p_style, PlayerAvatar.STYLE_NAMES.size())
+	var poses: Dictionary = _pins.get_or_add(_key(col, style, tier_for(u)), {})
+	poses[pose] = true
 
 
 ## Nombres de pose con atajos: "walk@M" son los 24 cuadros de caminata
@@ -444,6 +478,8 @@ static func clear() -> void:
 	_entries.clear()
 	_queue.clear()
 	_keep.clear()
+	_protected.clear()
+	_pins.clear()
 	_emit_changed()
 
 
@@ -608,9 +644,17 @@ static func _sweep(now: int) -> void:
 	var total := memory_bytes()
 	if total > budget_bytes:
 		var sheets: Array = []
+		var skip := {}  # Hojas con una pose fijada (pin): no se sueltan.
 		for e: Entry in _entries.values():
+			var pinned: Dictionary = _pins.get(e.key, {})
+			for p: String in pinned:
+				if e.poses.has(p):
+					skip[e.poses[p]] = true
+		for e: Entry in _entries.values():
+			if _protected.has(e.key):
+				continue
 			for s: Sheet in e.poses.values():
-				if not s in sheets:
+				if not s in sheets and not skip.has(s):
 					sheets.append(s)
 		sheets.sort_custom(func(a: Sheet, b: Sheet) -> bool: return a.last_used < b.last_used)
 		for s: Sheet in sheets:
@@ -774,22 +818,21 @@ static func _disk_ready() -> bool:
 	_disk_task = -1
 	_disk_index.clear()
 	for h: Dictionary in _disk_box[0]:
-		_index_add(h.path, int(h.color), int(h.style), int(h.tier), h.cell, h.regions, false)
+		_index_add(h.path, int(h.color), int(h.style), int(h.tier), h.cell, h.regions)
 	_disk_box = []
 	_disk_state = 2
 	stats.disk_scan_ms = (Time.get_ticks_usec() - _disk_started) / 1000.0
 	return true
 
 
-static func _index_add(path: String, rgba: int, style: int, tier: int, cell: Vector2i, regions: Dictionary,
-		tried: bool) -> void:
+static func _index_add(path: String, rgba: int, style: int, tier: int, cell: Vector2i, regions: Dictionary) -> void:
 	var key := (((rgba << 3) | clampi(style, 0, 7)) << 3) | clampi(tier, 0, 7)
 	var files: Array = _disk_index.get_or_add(key, [])
 	for info: Dictionary in files:
 		if info.path == path:
 			files.erase(info)
 			break
-	files.append({"path": path, "poses": regions, "cell": cell, "tried": tried})
+	files.append({"path": path, "poses": regions, "cell": cell})
 
 
 ## Si alguna apariencia de la cola tiene en el disco una hoja con poses que
@@ -801,7 +844,7 @@ static func _start_disk_load() -> bool:
 		if e == _job_entry or e.pending.is_empty() or not _entries.has(e.key):
 			continue
 		for info: Dictionary in _disk_index.get(e.key, []):
-			if info.tried or Vector2i(info.cell) != e.cell:
+			if Vector2i(info.cell) != e.cell:
 				continue
 			var useful := false
 			for p: String in info.poses:
@@ -810,7 +853,7 @@ static func _start_disk_load() -> bool:
 					break
 			if not useful:
 				continue
-			info.tried = true  # Una vez por sesión (si falla, se hornea).
+			# Si la lectura falla, la hoja sale del índice (y se hornea).
 			var path: String = info.path
 			var sig := MascotDiskCache.signature()
 			var box := [{}]
@@ -888,7 +931,7 @@ static func _poll_save() -> void:
 		_save_box = []
 		if not str(done.get("path", "")).is_empty():
 			stats.disk_saves = int(stats.disk_saves) + 1
-			_index_add(done.path, int(done.rgba), int(done.style), int(done.tier), done.cell, done.regions, true)
+			_index_add(done.path, int(done.rgba), int(done.style), int(done.tier), done.cell, done.regions)
 	if _save_queue.is_empty():
 		return
 	var item: Dictionary = _save_queue.pop_front()

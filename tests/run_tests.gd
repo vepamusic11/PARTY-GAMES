@@ -5461,6 +5461,112 @@ func test_mascot_atlas_disk() -> void:
 	MascotDiskCache.clear()
 
 
+## Las poses precalentadas del juego que empieza no se sueltan por el
+## presupuesto aunque no se dibujen todavía (en la intro): con un presupuesto
+## chico se horneaban dos veces. Al terminar el juego, sí.
+func test_mascot_atlas_protect_game() -> void:
+	MascotAtlas.clear()
+	MascotAtlas.fake_render = true
+	MascotAtlas.release_after_msec = 0
+	var img := Image.create(8, 8, false, Image.FORMAT_RGBA8)
+	var tex := ImageTexture.create_from_image(img)
+	var red := Protocol.mascot_color(0)
+	var old := Time.get_ticks_msec() - 60000
+	MascotAtlas.inject(red, 0, 0.8, "idle@0", tex, old)
+	MascotAtlas.inject(red, 0, 2.0, "idle@0", tex, old)
+	MascotAtlas.protect_game([{"color": red, "style": 0}], [MascotAtlas.tier_for(0.8)])
+	MascotAtlas.budget_bytes = 1
+	MascotAtlas.keep_only("tv", [{"color": red, "style": 0}])
+	check(MascotAtlas.lookup(red, 0, 0.8, "idle@0").size() == 4 and MascotAtlas.pose_count() == 1,
+		"sobre el presupuesto queda la del juego (protegida) y se suelta la de pantalla")
+	MascotAtlas.unprotect()
+	MascotAtlas.inject(red, 0, 2.0, "idle@0", tex, old)
+	MascotAtlas.pin(red, 0, 2.0, "idle@0")
+	MascotAtlas.keep_only("tv", [{"color": red, "style": 0}])
+	check(MascotAtlas.lookup(red, 0, 2.0, "idle@0").size() == 4, "una pose fijada (pin) tampoco se suelta")
+	MascotAtlas.unprotect()
+	MascotAtlas.keep_only("tv", [{"color": red, "style": 0}])
+	check(MascotAtlas.pose_count() == 0, "sin protección ni pin se suelta todo lo viejo")
+	MascotAtlas.budget_bytes = MascotAtlas.BUDGET_BYTES
+	MascotAtlas.release_after_msec = MascotAtlas.RELEASE_AFTER_MSEC
+	MascotAtlas.clear()
+	MascotAtlas.fake_render = false
+
+
+## Perfil "TV de poca memoria" (LowMemory, ADR 0023): cuándo se prende y qué
+## suelta (letras grandes, dioramas del lobby, tableros sin uso) sin cambiar
+## nada si está apagado.
+func test_low_memory_profile() -> void:
+	var gb := 1024 * 1024 * 1024
+	check(LowMemory.should_enable(PackedStringArray(), "Android", 2 * gb), "Android con 2 GB: sí")
+	check(LowMemory.should_enable(PackedStringArray(), "Android", 3 * gb - 100), "Android con \"3 GB\": sí")
+	check(not LowMemory.should_enable(PackedStringArray(), "Android", 4 * gb), "Android con 4 GB: no")
+	check(not LowMemory.should_enable(PackedStringArray(), "Android", -1), "RAM desconocida: no")
+	check(not LowMemory.should_enable(PackedStringArray(), "Linux", 2 * gb), "PC: no")
+	check(LowMemory.should_enable(PackedStringArray(["--low-memory"]), "Linux", 16 * gb), "--low-memory lo fuerza en la PC")
+	check(not LowMemory.should_enable(PackedStringArray(["--no-low-memory"]), "Android", 2 * gb), "--no-low-memory lo apaga")
+	check(not LowMemory.detect(), "en los tests (PC, sin bandera) está apagado")
+	check(not LowMemory.active and MascotAtlas.budget_bytes == MascotAtlas.BUDGET_BYTES, "apagado: presupuesto de siempre")
+	LowMemory.apply(true)
+	check(LowMemory.active and MascotAtlas.budget_bytes == LowMemory.MASCOT_BUDGET, "prendido: atlas más chico")
+	# Letras: los tamaños grandes se sueltan; los chicos quedan.
+	var font: FontFile = UiTheme.FONT_BOLD
+	font.get_string_size("¡Meta!", HORIZONTAL_ALIGNMENT_LEFT, -1, 97)
+	font.get_string_size("Hola", HORIZONTAL_ALIGNMENT_LEFT, -1, 24)
+	var sizes := font.get_size_cache_list(0)
+	check(Vector2i(97, 0) in sizes and Vector2i(24, 0) in sizes, "medir arma el caché de cada tamaño (%s)" % [sizes])
+	check(LowMemory.purge_fonts() >= 1, "suelta al menos uno")
+	sizes = font.get_size_cache_list(0)
+	check(not Vector2i(97, 0) in sizes and Vector2i(24, 0) in sizes, "suelta los grandes y deja los chicos (%s)" % [sizes])
+	check(font.get_string_size("¡Meta!", HORIZONTAL_ALIGNMENT_LEFT, -1, 97).x > 0.0, "y se vuelven a armar al usarlos")
+	# Texto animado: con el perfil, un solo tamaño (el base) aunque el pedido cambie.
+	LowMemory.purge_fonts(0)
+	var probe := Control.new()
+	probe.draw.connect(func() -> void:
+		for px in [81, 83, 86]:
+			LowMemory.draw_text_sized(probe, "¡Vuelta 2!", Vector2(200, 100), px, 76, UiTheme.ACCENT, 14))
+	root.add_child(probe)
+	await _frames(2)
+	sizes = font.get_size_cache_list(0)
+	check(Vector2i(76, 0) in sizes and Vector2i(76, 14) in sizes and not Vector2i(83, 0) in sizes,
+		"el cartel que late usa el caché de 76 px (%s)" % [sizes])
+	probe.queue_free()
+	# Lobby: suelta dioramas y logo, y los vuelve a cargar.
+	var lobby := LobbyScreen.new()
+	root.add_child(lobby)
+	var card: GameCard = lobby._cards.values()[0]
+	check(card._thumb != null and lobby._logo.texture != null, "el lobby arranca con dioramas y logo")
+	lobby.release_art()
+	check(card._thumb == null and GameCard._diorama_cache.is_empty() and lobby._logo.texture == null,
+		"oculto: suelta dioramas, cachés y logo")
+	lobby.restore_art()
+	check(card._thumb != null and lobby._logo.texture != null, "al volver los carga otra vez")
+	lobby.queue_free()
+	# Tableros: fuera de los juegos se sueltan los que nadie dibuja.
+	Board25DBaker.reset()
+	Board25DBaker.fake_render = true
+	var v: BoardView25D = MiniGame.stage_view()
+	var img := Image.create_empty(16, 9, false, Image.FORMAT_RGB8)
+	Board25DBaker.inject(v, ImageTexture.create_from_image(img))
+	LowMemory.on_screen_changed(true)
+	check(Board25DBaker.texture_for(v) != null, "en un juego (o su intro) el tablero queda")
+	LowMemory.on_screen_changed(false)
+	check(Board25DBaker.texture_for(v) == null, "fuera de los juegos, sin nadie que lo dibuje, se suelta")
+	Board25DBaker.reset()
+	Board25DBaker.fake_render = false
+	LowMemory.apply(false)
+	check(not LowMemory.active and MascotAtlas.budget_bytes == MascotAtlas.BUDGET_BYTES, "apply(false) vuelve a lo de siempre")
+	# Apagado: draw_text_sized dibuja al tamaño pedido, como antes.
+	LowMemory.purge_fonts(0)
+	var probe2 := Control.new()
+	probe2.draw.connect(func() -> void:
+		LowMemory.draw_text_sized(probe2, "¡Vuelta 2!", Vector2(200, 100), 83, 76, UiTheme.ACCENT, 14))
+	root.add_child(probe2)
+	await _frames(2)
+	check(Vector2i(83, 0) in font.get_size_cache_list(0), "apagado: al tamaño pedido (como siempre)")
+	probe2.queue_free()
+
+
 ## Sin escalón de luz entre celdas: el shader de plástico usa la dirección
 ## de la vista desde cada punto (VIEW) aunque la cámara sea ortográfica, así
 ## que la mascota de la celda del borde tiene que verse casi desde el mismo

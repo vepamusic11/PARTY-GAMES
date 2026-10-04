@@ -97,6 +97,10 @@ func _ready() -> void:
 	server.input_received.connect(_on_input)
 	server.player_updated.connect(_on_player_updated)
 
+	# TV de poca memoria (Android con ≤ 3 GB, o `-- --low-memory`): cachés
+	# más chicos sin cambiar cómo se ve (ADR 0023).
+	if LowMemory.detect():
+		LowMemory.apply(true)
 	# Piezas 3D (estrellas, bloques, medallas…) horneadas a un atlas: de la
 	# caché en disco al instante, o en unos cuadros la primera vez (ADR 0016).
 	Props3DBaker.ensure(self)
@@ -169,7 +173,21 @@ func skip_intro() -> void:
 
 ## Pide un cambio de pantalla: corre `fn` cuando el barrido tapa la pantalla.
 func _go(fn: Callable) -> void:
-	_transition.play(fn)
+	_transition.play(func() -> void:
+		fn.call()
+		_after_screen_change())
+
+
+## Con la pantalla tapada por el barrido: el perfil de poca memoria suelta lo
+## que la pantalla nueva no usa (ADR 0023). Sin el perfil no hace nada.
+func _after_screen_change() -> void:
+	if not LowMemory.active:
+		return
+	if _lobby.visible:
+		_lobby.restore_art()
+	else:
+		_lobby.release_art()
+	LowMemory.on_screen_changed(phase == Protocol.PHASE_PLAYING)
 
 
 func _begin_tournament() -> void:
@@ -287,6 +305,7 @@ func _enter_results() -> void:
 
 
 func _end_game() -> void:
+	MascotAtlas.unprotect()  # Las poses del juego ya pueden soltarse por el presupuesto.
 	bots.stop()
 	help.stop()
 	_help_overlay.clear()
