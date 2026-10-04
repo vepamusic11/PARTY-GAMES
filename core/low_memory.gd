@@ -2,7 +2,8 @@ class_name LowMemory
 extends RefCounted
 ## Perfil "TV de poca memoria" (ADR 0023): en una Google TV con ~2 GB de RAM
 ## (ej. Xiaomi TV Stick 4K) la app gasta menos memoria sin cambiar cómo se
-## ve. Se prende solo en Android con ≤ RAM_LIMIT_BYTES de RAM, o a mano con
+## ve. Se prende solo en Android con ≤ RAM_LIMIT_BYTES de RAM (o si no se
+## sabe cuánta tiene), o a mano con
 ## `-- --low-memory` (para medirlo en la PC); `-- --no-low-memory` lo apaga.
 ## En la PC (sin la bandera) no cambia nada.
 ##
@@ -47,7 +48,9 @@ static func should_enable(args: PackedStringArray, os_name: String, physical_ram
 		return false
 	if ARG_ON in args:
 		return true
-	return os_name == "Android" and physical_ram > 0 and physical_ram <= RAM_LIMIT_BYTES
+	# RAM desconocida en Android (-1): se prende igual. La TV es Android y el
+	# perfil no cambia cómo se ve; mejor de más que quedarse sin memoria.
+	return os_name == "Android" and physical_ram <= RAM_LIMIT_BYTES
 
 
 ## Lo mismo con los datos de este aparato.
