@@ -60,7 +60,7 @@ const DEFAULT_SHOT := {
 }
 const SHOTS := {
 	"arena": {
-		"sec": 3.0, "crop": Rect2(0, 0, 520, 293), "items": "_stars", "chase": true, "follow": true, "seed": 1,
+		"sec": 6.0,  # 3 s de cuenta regresiva + 3 s de juego. "crop": Rect2(0, 0, 520, 293), "items": "_stars", "chase": true, "follow": true, "seed": 1,
 		"wait": {"players": 2, "items": 1},
 	},
 	"pingpong": {"sec": 2.0, "crop": Rect2(1150, 720, 640, 360), "ball_in": Rect2(1170, 790, 140, 110)},

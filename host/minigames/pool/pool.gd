@@ -138,7 +138,7 @@ static func get_info() -> Dictionary:
 		"min_players": 2,
 		"max_players": 4,
 		"layout": Protocol.LAYOUT_JOYSTICK,
-		"layout_data": {},
+		"layout_data": {"hint": "Estirá para apuntar, soltá para tirar"},
 		"accent": UiTheme.BRICKS[2],
 		"score_label": "puntos",
 	}
@@ -543,6 +543,7 @@ func _draw() -> void:
 		if _respawn.has(p.id):
 			tags.append([p, _feet_at(_spawn[p.id]), MASCOT_SCALE * _depth(_spawn[p.id]), -1.0, 0.55])
 	draw_player_tags(tags)
+	draw_start_markers(tags)
 	_draw_falling_players()
 	_draw_respawns()
 	_draw_effects()

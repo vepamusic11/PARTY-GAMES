@@ -11,6 +11,8 @@ extends MiniGame
 ## (--headless) o mientras se hornea, se dibuja plano como siempre.
 
 const DURATION_SEC := 30.0
+const COUNTDOWN_SEC := 3.0        ## "3, 2, 1, ¡YA!": tiempo para encontrar tu mascota antes de moverse.
+const GO_SEC := 0.8               ## Cuánto se ve "¡YA!" después del 1.
 const SPEED := 620.0
 const RADIUS := 36.0
 const STAR_RADIUS := 22.0
@@ -26,6 +28,7 @@ var _score: Dictionary = {}   # player_id -> int
 var _stars: Array[Vector2] = []
 var _star_born: Array[float] = []   # anim_time en que apareció cada estrella (entra con rebote)
 var _time_left := DURATION_SEC
+var _countdown := COUNTDOWN_SEC
 var _rng := RandomNumberGenerator.new()
 
 ## Vista 2.5D del campo (una por proceso) y si este cuadro se dibuja con ella.
@@ -37,11 +40,11 @@ static func get_info() -> Dictionary:
 	return {
 		"id": "arena",
 		"title": "Arena de estrellas",
-		"description": "Mové tu mascota con el joystick y juntá la mayor cantidad de estrellas en 30 segundos.",
+		"description": "Mové tu mascota con el joystick y juntá estrellas. A los 30 segundos gana quien tenga más.",
 		"min_players": 1,
 		"max_players": 4,
 		"layout": Protocol.LAYOUT_JOYSTICK,
-		"layout_data": {},
+		"layout_data": {"hint": "Movete y juntá las estrellas"},
 		"accent": Color("#3E7BFA"),
 		"score_label": "estrellas",
 	}
@@ -81,7 +84,7 @@ func on_input(player_id: int, input: Dictionary) -> void:
 
 ## Para los bots (ver MiniGame.bot_view): mascotas y estrellas. Solo lectura.
 func bot_view() -> Dictionary:
-	return {"pos": _pos, "stars": _stars, "field": ARENA, "speed": SPEED, "time_left": _time_left}
+	return {"pos": _pos, "stars": _stars, "field": ARENA, "speed": SPEED, "time_left": _time_left, "countdown": _countdown}
 
 
 func _physics_process(delta: float) -> void:
@@ -92,6 +95,13 @@ func _physics_process(delta: float) -> void:
 			advance_walk(pid, 0.0, delta)
 		queue_redraw()
 		return
+	if _countdown > -GO_SEC:
+		var before := _countdown
+		_countdown -= delta
+		tick_countdown(before, _countdown)
+	if _countdown > 0.0:
+		queue_redraw()
+		return  # Nadie se mueve hasta el "¡YA!": tiempo para encontrar tu mascota.
 	_time_left -= delta
 	# Orden al azar en cada paso: si dos tocan la misma estrella a la vez, no
 	# gana siempre 1P (lo encontró tools/simulate.gd con bots: 1P ganaba la
@@ -194,11 +204,15 @@ func _draw() -> void:
 		anim["wave"] = party
 		PlayerAvatar.draw_mascot(self, _feet(pos), MASCOT_SCALE * _depth(pos), p.color, PlayerAvatar.style_of(p),
 			PlayerAvatar.Mood.HAPPY if party else PlayerAvatar.Mood.NORMAL, 0.0, celebrate_hop(p.id), false, anim)
-	# Globitos 1P–4P y nombres encima de todas las mascotas.
-	draw_player_tags(order.map(func(p: Dictionary) -> Array:
+	# Globitos 1P–4P y nombres encima de todas las mascotas; al arrancar, la
+	# flecha "¿cuál soy yo?" de cada uno.
+	var tags: Array = order.map(func(p: Dictionary) -> Array:
 		var d := _depth(_pos[p.id])
-		return [p, _feet(_pos[p.id]), MASCOT_SCALE * d, NAME_OFFSET * d]))
+		return [p, _feet(_pos[p.id]), MASCOT_SCALE * d, NAME_OFFSET * d])
+	draw_player_tags(tags)
+	draw_start_markers(tags)
 	draw_hud(_score, clock_text(_time_left), "clock")
+	draw_countdown(_countdown, GO_SEC)
 
 
 ## Pies de la mascota en la pantalla. Plano: abajo del círculo de choque

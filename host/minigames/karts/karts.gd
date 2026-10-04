@@ -380,11 +380,11 @@ static func get_info() -> Dictionary:
 	return {
 		"id": "karts",
 		"title": "Karts de mascotas",
-		"description": "Carrera de 3 vueltas: el kart acelera solo, vos doblás. Pisá los turbos y esquivá los charcos.",
+		"description": "Tu kart acelera solo: con el joystick doblás a izquierda y derecha. Pisá los turbos y esquivá los charcos. 3 vueltas: el primero gana.",
 		"min_players": 1,
 		"max_players": 4,
 		"layout": Protocol.LAYOUT_JOYSTICK,
-		"layout_data": {},
+		"layout_data": {"hint": "Solo doblá: izquierda y derecha"},
 		"accent": UiTheme.ACCENT_KARTS,
 		"score_label": "vueltas",
 	}
@@ -845,6 +845,7 @@ func _draw() -> void:
 		rim.flush(self)
 		tags.append([p, feet, MASCOT_SCALE * d, NAME_OFFSET])
 	draw_player_tags(tags)
+	draw_start_markers(tags)
 	_draw_effects()
 	for p: Dictionary in sorted:
 		var k: Kart = _karts[p.id]

@@ -225,7 +225,8 @@ func _update_start() -> void:
 	var missing := _missing_players()
 	_selection.text = "%d de %d elegidos" % [ids.size(), _cards.size()]
 	if missing > 0:
-		_start.text = "Esperando %d jugador%s…" % [missing, "" if missing == 1 else "es"]
+		# Si no viene nadie más, bajar "¿Cuántos juegan?" (◀) habilita el botón.
+		_start.text = "Falta%s %d jugador%s · o bajá la cantidad" % ["" if missing == 1 else "n", missing, "" if missing == 1 else "es"]
 	elif ids.is_empty():
 		_start.text = "Elegí al menos un juego"
 	else:

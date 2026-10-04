@@ -94,11 +94,11 @@ static func get_info() -> Dictionary:
 	return {
 		"id": "sumo",
 		"title": "Empujones",
-		"description": "Embestí a los demás para tirarlos de la isla. La isla se achica: el último en pie gana.",
+		"description": "Mové tu mascota y embestí a los demás para tirarlos de la isla. La isla se achica: el último en pie gana.",
 		"min_players": 2,
 		"max_players": 4,
 		"layout": Protocol.LAYOUT_JOYSTICK,
-		"layout_data": {},
+		"layout_data": {"hint": "Embestí para tirarlos de la isla"},
 		"accent": UiTheme.BRICKS[3],   # Verde: cada juego tiene su color (ver test_registry_optional_defaults).
 		"score_label": "puntos",
 		"help": HELP,
@@ -402,6 +402,7 @@ func _draw() -> void:
 		if not _out_time.has(p.id):
 			tags.append([p, (_pos[p.id] as Vector2) + shake + Vector2(0, FEET_OFFSET), MASCOT_SCALE, NAME_OFFSET])
 	draw_player_tags(tags)
+	draw_start_markers(tags)
 	for p in order:
 		if not _out_time.has(p.id):
 			_draw_kos(self, p, (_pos[p.id] as Vector2) + shake + Vector2(0, FEET_OFFSET + NAME_OFFSET), p.name)
