@@ -90,7 +90,7 @@ Medido con render por software (xvfb + llvmpipe: en este contenedor la TV corre 
 
 Con la app **1 minuto en el lobby** antes de arrancar (`--lobby=60`, `user://` vacío, 2 celulares, ya con Google TV y el control web integrados), solo el **primer juego** (Arena) arrancó sin terminar de hornear; los otros 12 terminaron en 0–4,7 s de intro. Por eso la guía pide dejar la app abierta en el lobby mientras se unen. En el podio: atlas de mascotas 38,6 MB (presupuesto 40 MB), tableros 2.5D 7,9 MB.
 
-Con caché siguen arrancando en 2D los que estrenan **poses de mascota** (que viven en memoria y se hornean de nuevo en cada arranque de la app). Ninguno se congela: la intro sigue su cuenta y el juego arranca a tiempo; durante unos segundos se ven algunas mascotas 2D y alguna pose aparece un cuadro tarde. En el Xiaomi (GPU real, CPU más lenta que esta) hay que medirlo: es la tarea del jueves (§7.1).
+Con caché seguían arrancando en 2D los que estrenan **poses de mascota** (hasta el 04/10 vivían en memoria y se horneaban de nuevo en cada arranque; ahora quedan en disco con el resto de la mascota: riesgo 5). Ninguno se congela: la intro sigue su cuenta y el juego arranca a tiempo; durante unos segundos se ven algunas mascotas 2D y alguna pose aparece un cuadro tarde. En el Xiaomi (GPU real, CPU más lenta que esta) hay que medirlo: es la tarea del jueves (§7.1).
 
 ## 5. Sesión larga
 
@@ -104,7 +104,7 @@ Con caché siguen arrancando en 2D los que estrenan **poses de mascota** (que vi
 | Podio 3 (27 min) | 219 MB | 3 363 | 385 | 0 | 267 MB |
 | Podio 4 (36 min) | 219 MB | 3 419 | 385 | 0 | 267 MB |
 
-Crece durante la primera competencia (cada juego nuevo hornea su tablero y sus poses) y después **queda plano**: sin fugas de nodos ni de objetos. Las texturas incluyen el atlas de mascotas (presupuesto 40 MB), el tablero 2.5D del juego en curso, la sala 3D y el render. ~270 MB de texturas y ~220 MB de RAM es mucho para un aparato de 2 GB: no hay crecimiento, pero conviene mirarlo en el Xiaomi (riesgo 6).
+Crece durante la primera competencia (cada juego nuevo hornea su tablero y sus poses) y después **queda plano**: sin fugas de nodos ni de objetos. Las texturas incluyen el atlas de mascotas (presupuesto 40 MB), el tablero 2.5D del juego en curso, la sala 3D y el render. ~270 MB de texturas y ~220 MB de RAM era mucho para un aparato de 2 GB; con el perfil "TV de poca memoria" (04/10, automático en el stick) baja a ~80 MB de texturas y ~105 MB de RAM (riesgo 6). Igual conviene mirarlo en el Xiaomi.
 
 ## 6. Riesgos conocidos (no se arreglaron)
 
