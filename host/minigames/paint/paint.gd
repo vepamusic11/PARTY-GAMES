@@ -115,11 +115,11 @@ static func get_info() -> Dictionary:
 	return {
 		"id": "paint",
 		"title": "Pintar el piso",
-		"description": "Pisá las baldosas para pintarlas de tu color y robale las suyas a los demás. Gana quien pinte más.",
+		"description": "Caminá por las baldosas para pintarlas de tu color y robale las suyas a los demás. Gana quien pinte más.",
 		"min_players": 1,
 		"max_players": 4,
 		"layout": Protocol.LAYOUT_JOYSTICK,
-		"layout_data": {},
+		"layout_data": {"hint": "Caminá para pintar las baldosas"},
 		"accent": UiTheme.BRICKS[6],
 		"score_label": "baldosas",
 	}
@@ -379,9 +379,11 @@ func _draw() -> void:
 	for p in order:
 		_draw_player(p, best)
 	# Globitos 1P–4P y nombres encima de todas las mascotas.
-	draw_player_tags(order.map(func(p: Dictionary) -> Array:
+	var tags: Array = order.map(func(p: Dictionary) -> Array:
 		var d := _depth(_pos[p.id])
-		return [p, _screen(_pos[p.id]), MASCOT_SCALE * d, NAME_OFFSET * d]))
+		return [p, _screen(_pos[p.id]), MASCOT_SCALE * d, NAME_OFFSET * d])
+	draw_player_tags(tags)
+	draw_start_markers(tags)
 	draw_hud(_tiles, clock_text(_time_left), "clock")
 	# "¡Tiempo!" lo muestra el cartel de los efectos (_time_up_fx).
 	if _state != State.TIME_UP:

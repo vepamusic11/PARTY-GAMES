@@ -65,7 +65,7 @@ static func get_info() -> Dictionary:
 		"min_players": 2,
 		"max_players": 2,
 		"layout": Protocol.LAYOUT_SLIDER_H,
-		"layout_data": {},
+		"layout_data": {"hint": "Deslizá el dedo: tu paleta lo sigue"},
 		"accent": Color("#2EC4D6"),
 		"score_label": "puntos",
 	}

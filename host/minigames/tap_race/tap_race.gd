@@ -76,11 +76,11 @@ static func get_info() -> Dictionary:
 	return {
 		"id": "tap_race",
 		"title": "Carrera de toques",
-		"description": "Tocá el botón lo más rápido que puedas. Primero en llegar a la meta gana.",
+		"description": "Después del ¡YA!, tocá el botón lo más rápido que puedas. El primero en llegar a la meta gana.",
 		"min_players": 1,
 		"max_players": 4,
 		"layout": Protocol.LAYOUT_ONE_BUTTON,
-		"layout_data": {"label": "¡TOCÁ!"},
+		"layout_data": {"label": "¡TOCÁ!", "hint": "Después del ¡YA!, tocá a toda velocidad"},
 		"accent": Color("#FF9F2E"),
 		"score_label": "toques",
 	}
@@ -191,6 +191,8 @@ func _draw() -> void:
 			UiTheme.text_on(p.color), tag.end.x - 16.0 - (tag.position.x + 68.0))
 	if not tags.is_empty():
 		draw_player_tags(tags)
+	# Sin marcador de salida: los carriles van apilados y el cartel [1P | nombre]
+	# de cada uno ya dice cuál es cuál.
 	var center := "Meta: %d" % TAPS_TO_WIN
 	draw_hud(_taps, center, "flag")
 	draw_countdown(_countdown)

@@ -183,11 +183,11 @@ static func get_info() -> Dictionary:
 	return {
 		"id": "hurdles",
 		"title": "Carrera de obstáculos",
-		"description": "Tu mascota corre sola: tocá para saltar vallas y pozos, y mantené para saltar más alto. Tropezar frena. ¡Primero en la meta gana!",
+		"description": "Tu mascota corre sola: tocá para saltar vallas y pozos (mantené: salta más alto). Tropezar frena. ¡El primero en la meta gana!",
 		"min_players": 1,
 		"max_players": 4,
 		"layout": Protocol.LAYOUT_ONE_BUTTON,
-		"layout_data": {"label": "¡SALTÁ!"},
+		"layout_data": {"label": "¡SALTÁ!", "hint": "Tocá para saltar; mantené: más alto"},
 		"accent": UiTheme.ACCENT_HURDLES,
 		"score_label": "metros",
 	}
@@ -620,7 +620,7 @@ func _draw() -> void:
 		marks.circle(c, 9.5 * d, p.color, 16)
 		marks.circle(c + Vector2(-3, -3) * d, 3.0 * d, Color(1, 1, 1, 0.6), 8)
 	marks.flush(self)
-	draw_player_tags(tags)
+	draw_player_tags(tags)  # Sin marcador de salida: carriles apilados, cada uno con su cartel [1P | nombre].
 	draw_hud(meters(), clock_text(DURATION_SEC - _elapsed), "clock")
 	if _countdown > 0.0:
 		draw_text_centered("%d" % ceili(_countdown), SCREEN / 2.0, 260, UiTheme.PAPER, 22)

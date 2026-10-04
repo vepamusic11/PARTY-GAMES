@@ -24,7 +24,7 @@ static func get_info() -> Dictionary:
 		"min_players": 1,
 		"max_players": 4,
 		"layout": Protocol.LAYOUT_JOYSTICK,   # uno de Protocol.LAYOUTS
-		"layout_data": {},
+		"layout_data": {"hint": "Movete: salí de las sombras"},  # instrucción que ve el celular (≤ 48 caracteres)
 		"accent": UiTheme.BRICKS[0],      # opcional: color de la tarjeta en el lobby
 		"score_label": "segundos",        # opcional: "12 segundos" en el resumen
 	}
@@ -52,10 +52,15 @@ func _draw() -> void:
 	draw_play_field(Rect2(160, 140, 1600, 860))       # piso con marco de bloques
 	for p in players:
 		PlayerAvatar.draw_mascot(self, _pos[p.id], 0.8, p.color, p.slot)
-	# Globito 1P–4P sobre cada mascota y nombre abajo (todos juntos: menos draw calls).
-	draw_player_tags(players.map(func(p: Dictionary) -> Array: return [p, _pos[p.id], 0.8]))
+	# Globito 1P–4P sobre cada mascota y nombre abajo (todos juntos: menos draw calls),
+	# y en los primeros segundos la flecha "¿cuál soy yo?" con el nombre en grande.
+	var tags: Array = players.map(func(p: Dictionary) -> Array: return [p, _pos[p.id], 0.8])
+	draw_player_tags(tags)
+	draw_start_markers(tags)
 	draw_hud(_survived, clock_text(_time_left))     # marcador: [1P mascota 12] [reloj 0:28] ...
 ```
+
+**Textos para primerizos** (lo verifica `test_game_texts_for_first_timers`): la intro "¿Cómo se juega?" muestra como mucho **3 pasos**, uno por oración de `description`, así que son de 1 a 3 oraciones cortas y la primera dice **qué hacer** (el verbo: "Corré hacia la derecha…", "Tocá…"). `layout_data.hint` es la instrucción que el celular muestra arriba del control durante todo el juego (≤ 48 caracteres, texto plano; sin ella el celular pone una frase genérica del control) y, en los juegos de un botón, `label` es lo que dice el botón (≤ 12). Si el juego se decide en los primeros segundos (una cámara que avanza, algo que cae), dale al que recién entiende un período de gracia: ver `grace_sec` en `scroller.gd`.
 
 Todo el dibujo sale del sistema visual (`UiTheme`): sin colores sueltos. Ver `.claude/skills/diseno-tv/`.
 El arte común de los juegos (escenario desenfocado, tablero con volumen, marcador con mascotas, globito
