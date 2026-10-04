@@ -23,7 +23,7 @@ Todo integrado en la rama el 03/10 (suite 3261+ ok, CI verde):
 | **Instalar sin PC** | La CI publica cada APK que pasa los tests en `https://github.com/vepamusic11/PARTY-GAMES/releases/download/prueba/party-game.apk` (pre-release `prueba`, autorizado por el dueño). En la TV: app **Downloader** + código **`1669675`** (aftv.news/1669675) ([BUILD.md](BUILD.md)). El APK pesa ~178 MB (libs sin comprimir por Gradle). |
 | **Partida real** | `tools/playtest.gd`: 13 juegos, 2–3 personas, demora de red, TV lenta a 30 fps, sesión de 36 min con memoria plana. 3 errores de red arreglados (celular bloqueado = fantasma, reabrir la app recupera el lugar por apodo, envíos con el socket cerrándose). Guía y planilla: [PRUEBA_REAL.md](PRUEBA_REAL.md). |
 
-**Falta (el dueño, antes del viernes):** instalar en el Xiaomi TV Stick, abrir y mandar una foto del lobby (que el QR tenga la IP de la Wi-Fi), probar el QR con un iPhone y un Android, y medir si el stick va fluido. Con el perfil "TV de poca memoria" (se activa solo en Android con ≤ 3 GB, [ADR 0023](adr/0023-tv-de-poca-memoria.md)) la sesión larga baja a ~105 MB de RAM y ~80 MB de texturas (antes ~220/~265 MB); el stick tiene 2 GB. **El primer arranque hornea las mascotas (dejar el lobby abierto 1–2 min); desde el segundo quedan en disco y el lobby está listo en ~1 s.**
+**Falta (el dueño, antes del viernes):** instalar en el Xiaomi TV Stick, abrir y mandar una foto del lobby (que el QR tenga la IP de la Wi-Fi), probar el QR con un iPhone y un Android (y que la pantalla no se apague sola esperando en el lobby), y medir si el stick va fluido. Con el perfil "TV de poca memoria" (se activa solo en Android con ≤ 3 GB, [ADR 0023](adr/0023-tv-de-poca-memoria.md)) la sesión larga baja a ~105 MB de RAM y ~80 MB de texturas (antes ~220/~265 MB); el stick tiene 2 GB. **El primer arranque hornea las mascotas (dejar el lobby abierto 1–2 min); desde el segundo quedan en disco y el lobby está listo en ~1 s.**
 
 **Plan A para la TV:** el Xiaomi TV Stick 4K (Google TV) con el APK. **Plan B:** una PC por HDMI con `jugar_en_tv.bat`.
 
@@ -40,13 +40,18 @@ Todo integrado en la rama el 03/10 (suite 3261+ ok, CI verde):
 
 ## 2. Trabajo en curso
 
-No hay agentes trabajando. Los tres del 04/10 están integrados (suite 3418 ok) y la CI publica el APK en el mismo código de Downloader (`1669675`):
+No hay agentes trabajando. Los tres del 04/10 están integrados (suite 3428 ok, control web 100 % en `web_e2e`) y la CI publica el APK en el mismo código de Downloader (`1669675`):
 
 | Frente | Resultado |
 |---|---|
 | **Rendimiento del stick** ([ADR 0023](adr/0023-tv-de-poca-memoria.md), [PERFORMANCE.md](PERFORMANCE.md)) | Caché en disco de las mascotas horneadas (`user://mascot_cache/`): lobby listo en 0,8 s en vez de 10,5 s desde el segundo arranque. Perfil "TV de poca memoria" (automático en Android ≤ ~3,25 GB o sin dato de RAM; forzar con `-- --low-memory` / `--no-low-memory`): texturas ~265 → ~80 MB, RAM ~220 → ~105 MB. `MiniGame.request_redraw()`: un dibujo por cuadro; p95 de CPU en Karts 9,95 → 5,40 ms. |
 | **Claridad para primerizos** ([PRUEBA_REAL.md §8](PRUEBA_REAL.md)) | Instrucción del juego en el celular (`hint`), flecha con el nombre de cada jugador al arrancar, cuenta 3-2-1 en Arena, arranque amable y bot propio en ¡Que no te deje la cámara!, resumen de ronda de 12 s. |
 | **Control web en celulares reales** ([ADR 0022](adr/0022-control-web.md), [PRUEBA_REAL.md §6](PRUEBA_REAL.md)) | Reconexión robusta (ping cada 1 s, sin reintentos si otra pestaña tomó el lugar), mensajes claros, arreglos para Safari y pantallas chicas, prueba en condiciones feas (`node tools/web_chaos.mjs`). El aviso de un celular bloqueado ya no cuenta 30 s. |
+
+**Pruebas sobre lo integrado (04/10):**
+- `tools/playtest.gd --scenario=room --humans=3 --lag=80-250 --max-fps=30 --low-memory` (como en el stick): 12 juegos, 0 problemas, podio con 101 MB de RAM y 80 MB de texturas.
+- **Arreglado: la pantalla del celular se apagaba sola con el control web.** Wake Lock solo existe con https/localhost y el QR abre `http://<IP>`; ahora un video mudo e invisible en bucle la mantiene encendida (NoSleep.js, MIT, `web/keepawake.js`). `node tools/web_e2e.mjs` entra por la IP de la red y lo verifica.
+- **Arreglado: en Arena una estrella podía nacer encima de una mascota** (punto servido; ~1 de cada 300 partidas; era la falla intermitente de `test_bot_driver_only_moves_bots`).
 
 **Decisión pendiente del dueño:** un iPhone bloqueado más de 30 s pierde su lugar (si iOS corta la conexión). Se puede alargar `RECONNECT_GRACE_MS` a ~2 min (cambio chico en `host/network/host_server.gd`).
 
