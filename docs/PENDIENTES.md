@@ -20,10 +20,10 @@ Todo integrado en la rama el 03/10 (suite 3261+ ok, CI verde):
 |---|---|
 | **Control web servido por la TV** ([ADR 0022](adr/0022-control-web.md)) | QR en el lobby (`http://<IP>:47770/<código>`): los invitados juegan desde el navegador, Android **y iPhone**, sin instalar nada. Probado con Chromium real (`node tools/web_e2e.mjs`): 24/24. **Sin probar con un iPhone real.** |
 | **Google TV** ([ADR 0021](adr/0021-google-tv.md)) | Abre directo como TV, OpenGL ES 3 en Android, 1080p con salida 4K, banner y fila de apps (APK con Gradle en la CI, verificado con `aapt2`). **Sin probar en el Xiaomi TV Stick real.** |
-| **Instalar sin PC** | La CI publica cada APK que pasa los tests en `https://github.com/vepamusic11/PARTY-GAMES/releases/download/prueba/party-game.apk` (pre-release `prueba`, autorizado por el dueño). En la TV: app **Downloader** + código de números de go.aftvnews.com ([BUILD.md](BUILD.md)). El APK pesa ~178 MB (libs sin comprimir por Gradle). |
+| **Instalar sin PC** | La CI publica cada APK que pasa los tests en `https://github.com/vepamusic11/PARTY-GAMES/releases/download/prueba/party-game.apk` (pre-release `prueba`, autorizado por el dueño). En la TV: app **Downloader** + código **`1669675`** (aftv.news/1669675) ([BUILD.md](BUILD.md)). El APK pesa ~178 MB (libs sin comprimir por Gradle). |
 | **Partida real** | `tools/playtest.gd`: 13 juegos, 2–3 personas, demora de red, TV lenta a 30 fps, sesión de 36 min con memoria plana. 3 errores de red arreglados (celular bloqueado = fantasma, reabrir la app recupera el lugar por apodo, envíos con el socket cerrándose). Guía y planilla: [PRUEBA_REAL.md](PRUEBA_REAL.md). |
 
-**Falta (el dueño, antes del viernes):** crear el código de Downloader, instalar en el Xiaomi TV Stick, abrir y mandar una foto del lobby (que el QR tenga la IP de la Wi-Fi), probar el QR con un iPhone y un Android, y medir si el stick va fluido (memoria: ~220 MB de RAM y ~270 MB de texturas en la PC; el stick tiene 2 GB).
+**Falta (el dueño, antes del viernes):** instalar en el Xiaomi TV Stick, abrir y mandar una foto del lobby (que el QR tenga la IP de la Wi-Fi), probar el QR con un iPhone y un Android, y medir si el stick va fluido (memoria: ~220 MB de RAM y ~270 MB de texturas en la PC; el stick tiene 2 GB).
 
 **Plan A para la TV:** el Xiaomi TV Stick 4K (Google TV) con el APK. **Plan B:** una PC por HDMI con `jugar_en_tv.bat`.
 

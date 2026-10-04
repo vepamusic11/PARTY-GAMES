@@ -60,7 +60,7 @@ La CI publica cada APK que pasa los tests en un *pre-release* de GitHub con una 
 3. Abrí Downloader y escribí la dirección (o su **código de números**, abajo) → **Go** → **Instalar** → **Abrir**.
 4. Para actualizar: lo mismo; la dirección siempre baja la última versión. Si dice que el paquete entra en conflicto, desinstalá la anterior primero (ver *Actualizar a una versión nueva*).
 
-**Código de solo números:** en **https://go.aftvnews.com** pegá la dirección de arriba y te da un código (ej. `12345`) para escribir en Downloader en vez de la dirección. Como la dirección no cambia, el código sirve para todas las versiones.
+**Código de Downloader: `1669675`** (creado por el dueño el 03/10 en go.aftvnews.com; también sirve `aftv.news/1669675` en cualquier navegador). Apunta a la dirección de arriba, que no cambia, así que sirve para todas las versiones. Si alguna vez hiciera falta otro: en **https://go.aftvnews.com** se pega la dirección y da un código nuevo.
 
 ### Si algo falla en la TV
 
