@@ -228,7 +228,7 @@ Pregunta: ¿alguien que nunca vio el juego entiende **en 5 segundos** qué hacer
 
 ### 8.3 Duración y ritmo con 2–3 personas
 
-Medido con `tools/playtest.gd --scenario=room` (celulares por la red; el resumen se deja correr solo): ver las duraciones por juego en §4. Con los tiempos nuevos, una competencia de 8 juegos suma ~5–6 min de juego + 8 × (~6 s de intro + ~1 s de barrido + ~12 s de resumen) ≈ **8–10 min**; las dos competencias sugeridas en §7.3 entran en ~20 min. Con 2 personas el bot ya corre en ¡Que no te deje la cámara! (antes: 2 bots, 5 s y 0 m; ahora 2 bots "Normal" duran 17–50 s, media 22 s, y 60 m).
+Medido con `tools/playtest.gd --scenario=room` (celulares por la red; el resumen se deja correr solo): ver las duraciones por juego en §4. Con los tiempos nuevos, una competencia de 8 juegos suma ~5–6 min de juego + 8 × (~6 s de intro + ~1 s de barrido + ~12 s de resumen) ≈ **8–10 min**; las dos competencias sugeridas en §7.3 entran en ~20 min. Con 2 personas el bot ya corre en ¡Que no te deje la cámara! (antes: 2 bots, 5 s y 0 m; ahora 2 bots "Normal" duran 11–50 s, media ~25 s, y 60 m; 3 bots, media 35 s). Con celulares por la red (`--scenario=room --games=scroller,arena`): 2 personas, cámara 11,2 s y Arena 34,6 s; 3 personas, cámara 17,3 s; sin problemas ni errores del motor.
 
 ### 8.4 Qué mirar el viernes sobre la claridad
 
