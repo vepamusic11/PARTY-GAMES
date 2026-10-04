@@ -405,6 +405,33 @@ Mascotas con las proporciones de la maqueta y plástico "jugoso" (dos uniforms m
 - **Horneado de las mascotas**: el modelo tiene las mismas piezas (más grandes, no más): mismo tiempo de horneado (~0,13 s por jugador para 10 poses de lobby, `Mascot3DBaker.last_report`).
 - **Dioramas**: 660×260 en vez de 648×240 (+8 % de píxeles, ~25 KB por juego en WebP); siguen siendo una textura por tarjeta, sin 3D en la TV.
 
+### Un dibujo por cuadro (04/10)
+
+Los juegos pedían `queue_redraw()` en `_physics_process`, y Godot dibuja lo pedido al final de **cada paso de física**. Con la TV a menos de 60 fps hay dos o más pasos por cuadro (física a paso fijo, [PRUEBA_REAL.md §4](PRUEBA_REAL.md)): el juego se dibujaba entero en cada paso y solo se veía el último. Ahora piden `MiniGame.request_redraw()` (o `request_redraw(capa)`) y `MiniGame._process` hace un solo `queue_redraw()` por cuadro, con el estado del último paso: **igual en pantalla**, la mitad de CPU de dibujo cuando la TV va a 30 fps. Medido con un envoltorio que separa lógica y dibujo (xvfb, 4 jugadores): un dibujo de Karts cuesta ~2,2 ms y su lógica ~0,2 ms; de Pool, ~2,1 y ~0,1.
+
+`tools/benchmark.gd --only=<juegos>`, la punta sin el cambio (`993e7d3`) y con el cambio, una corrida de cada uno con el candado de Godot tomado (xvfb + llvmpipe: los juegos van a ~30 fps, o sea 2 pasos por cuadro, como en una TV lenta):
+
+| Escena | Scripts prom. (ms) | Scripts p95 (ms) | Draw calls |
+|---|---:|---:|---:|
+| arena | 2,65 → **1,81** | 3,73 → **2,31** | 31 → 30 |
+| pingpong | 1,47 → **1,34** | 1,90 → **1,78** | 34 → 34 |
+| tap_race | 1,91 → **1,60** | 2,44 → **2,11** | 30 → 29 |
+| stop_clock | 2,09 → **1,32** | 3,23 → **1,90** | 63 → 62 |
+| dodge | 3,07 → **2,38** | 4,40 → **3,13** | 39 → 33 |
+| paint | 3,10 → **2,08** | 4,33 → **2,75** | 47 → 48 |
+| sumo | 3,73 → **2,15** | 4,65 → **2,67** | 103 → 101 |
+| sumo_tarde | 4,25 → **2,31** | 6,06 → **2,98** | 92 → 94 |
+| **karts** | 6,44 → **3,69** | **9,95 → 5,40** | 39 → 40 |
+| scroller | 3,93 → **2,23** | 5,62 → **2,98** | 72 → 73 |
+| memory | 3,29 → **1,92** | 4,53 → **2,34** | 40 → 44 |
+| quickdraw | 3,22 → **1,84** | 4,28 → **2,29** | 40 → 38 |
+| **pool** | 5,66 → **3,40** | **8,04 → 4,77** | 32 → 32 |
+| **hurdles** | 5,76 → **2,97** | 7,85 → **3,71** | 36 → 35 |
+
+- Karts y Pool eran los únicos por encima de los 8 ms de p95 (en la corrida completa de esa misma tarde también Carrera de obstáculos, 8,18): ahora todos quedan en ≤ 5,4 ms. Menús, lobby y celular no cambian (no son `MiniGame`).
+- Las pantallas fuera de los juegos (intro, resumen, podio) ya redibujaban solo al cambiar.
+- Con el perfil de poca memoria (`--low-memory`) el CPU por cuadro es el mismo: Scripts p95 2,50 (paint) · 2,31 (sumo) · 5,62 (karts) · 3,29 ms (scroller) en una corrida aparte.
+
 ## Qué se cambió y por qué
 
 ### 1. Capas estáticas que se dibujan una sola vez
@@ -504,7 +531,7 @@ Reglas prácticas al dibujar:
 ## Próximos pasos posibles
 
 - **Empujones mientras se achica la isla**: el anillo recortado y el borde se redibujan en cada frame. Se podría redibujar por saltos (cada pocos px de radio), pero se vería distinto: se dejó exacto.
-- **Redibujar en `_process` en vez de `_physics_process`**: si la TV no llega a 60 fps, hay dos pasos de física por frame y los juegos se dibujan dos veces. Mover el `queue_redraw()` a `_process` evita ese trabajo extra justo cuando más falta hace.
+- ~~**Redibujar en `_process` en vez de `_physics_process`**~~: hecho el 04/10 (`MiniGame.request_redraw`, ver [Un dibujo por cuadro](#un-dibujo-por-cuadro-0410)).
 - **Mascotas como nodos**: en los juegos las mascotas se redibujan en cada frame aunque solo cambie su posición. Ahora que son sprites horneados (ADR 0012) cada una cuesta poco, pero como nodos hijos con `position` no haría falta ni eso.
 - **Horneado en la TV real:** medir en una Google TV cuánto tarda el render de 3 mascotas por cuadro (`Mascot3DBaker.POSES_PER_FRAME`) y ajustar ese número (1 si traba, más si sobra).
 - Medir en el aparato real (Google TV) con el profiler remoto de Godot y el monitor de `Performance`, y ajustar estos presupuestos con esos números.
@@ -559,6 +586,8 @@ Censo de una competencia completa (2 celulares + 2 bots, 12 juegos) sobre la pun
 | Letras | 23 → 123 MB | 7–10 MB (29–32 tamaños) |
 | Atlas de mascotas | 40 MB | 23–28 MB |
 | Dioramas y logo en los juegos | 11,4 MB | 0 |
+
+Se ve igual: capturas de `tools/capture_screens.gd` antes (sin el perfil) y después con `--low-memory` en [poca_memoria_comparacion.png](img/poca_memoria_comparacion.png) (intro, Karts, podio; solo cambia lo que depende del tiempo o del azar, igual que entre dos corridas de la misma punta). Sin el perfil, las capturas de la punta con y sin este cambio difieren entre sí lo mismo que dos corridas de la misma punta (código de sala, QR, momento de la animación).
 
 `--scenario=long --minutes=11 --low-memory`, 2 celulares + 2 bots, dos competencias seguidas (24 rondas, 19,5 min): sin problemas ni errores del motor, memoria plana (103,0 → 105,3 MB de RAM y 80,7 → 79,6 MB de texturas entre el podio 1 y el 2), tiempos entre cuadros iguales a los de la corrida sin el perfil (xvfb). Objetivo orientativo cumplido: < 150 MB de texturas y < 200 MB de RAM.
 

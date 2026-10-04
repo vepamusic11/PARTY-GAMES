@@ -45,7 +45,7 @@ func _physics_process(delta: float) -> void:
 	# ... mover, hacer caer bloques, detectar choques ...
 	# Al terminar, UNA sola vez (los que siguen en pie ganan):
 	# finish({"winners": en_pie, "scores": _survived, "summary": "Último en pie gana"})
-	queue_redraw()
+	request_redraw()  # Un dibujo por cuadro aunque la TV lenta haga 2 pasos de física (no queue_redraw acá).
 
 func _draw() -> void:
 	draw_sky()                                        # fondo común
