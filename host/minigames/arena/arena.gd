@@ -17,6 +17,11 @@ const SPEED := 620.0
 const RADIUS := 36.0
 const STAR_RADIUS := 22.0
 const STAR_COUNT := 5
+## Una estrella nueva no nace a menos de esto de ninguna mascota: si naciera
+## encima, alguien se lleva un punto sin moverse (o, en la cuenta regresiva,
+## la tiene servida al "¡YA!"). Pasaba en ~1 de cada 300 partidas.
+const STAR_CLEAR_PX := 150.0
+const STAR_TRIES := 12
 const ARENA := Rect2(160, 140, 1600, 860)
 const CELL := 80.0                ## Baldosas del tablero (solo dibujo).
 const MASCOT_SCALE := 0.8
@@ -154,9 +159,21 @@ func _star_grow(i: int) -> float:
 
 func _random_star() -> Vector2:
 	var margin := 60.0
-	return Vector2(
-		_rng.randf_range(ARENA.position.x + margin, ARENA.end.x - margin),
-		_rng.randf_range(ARENA.position.y + margin, ARENA.end.y - margin))
+	var star := Vector2.ZERO
+	for i in STAR_TRIES:  # Con 4 mascotas casi siempre sale al primer intento.
+		star = Vector2(
+			_rng.randf_range(ARENA.position.x + margin, ARENA.end.x - margin),
+			_rng.randf_range(ARENA.position.y + margin, ARENA.end.y - margin))
+		if _clear_of_players(star):
+			break
+	return star
+
+
+func _clear_of_players(star: Vector2) -> bool:
+	for pid: int in _pos:
+		if (_pos[pid] as Vector2).distance_to(star) < STAR_CLEAR_PX:
+			return false
+	return true
 
 
 func _draw() -> void:

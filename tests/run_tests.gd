@@ -3449,6 +3449,23 @@ func test_bot_driver_only_moves_bots() -> void:
 	game.free()
 
 
+## Arena: ninguna estrella nace encima de una mascota (sería un punto sin
+## moverse; en la cuenta regresiva, servido al "¡YA!"). Antes pasaba en ~1 de
+## cada 300 partidas y hacía fallar a veces test_bot_driver_only_moves_bots.
+func test_arena_stars_not_on_players() -> void:
+	var bad := 0
+	for n in 200:
+		var game: Variant = MiniGameRegistry.create("arena")
+		game.process_mode = Node.PROCESS_MODE_DISABLED
+		root.add_child(game)
+		game.setup(BotMatch.bot_players(4))
+		for st: Vector2 in game._stars:
+			if not game._clear_of_players(st):
+				bad += 1
+		game.free()
+	check(bad == 0, "200 partidas de 4: ninguna estrella inicial a menos de %d px de una mascota (%d)" % [int(load("res://host/minigames/arena/arena.gd").STAR_CLEAR_PX), bad])
+
+
 ## Lobby con bots: sumar desde la tarjeta del lugar (menú con el D-pad),
 ## cambiar la dificultad, quitarlo; las personas tienen prioridad (lugar y
 ## color); los bots no reciben nada por la red.
@@ -6310,6 +6327,11 @@ func test_web_server_serves_files() -> void:
 	var csp := str(r.headers.get("content-security-policy", ""))
 	check(csp.contains("default-src 'none'") and csp.contains("connect-src ws://127.0.0.1:12345") and csp.contains("script-src 'self'"),
 		"CSP: solo la TV y el WebSocket a la misma IP y puerto (%s)" % csp)
+	check(csp.contains("media-src data:") and not csp.contains("media-src *"),
+		"CSP: video solo embebido (el de pantalla encendida, web/keepawake.js)")
+	r = await _http(port, "/keepawake.js")
+	check(r.code == 200 and (r.body as PackedByteArray).get_string_from_utf8().contains("PG_KEEPAWAKE_MEDIA"),
+		"GET /keepawake.js: los videos de pantalla encendida")
 	check(int(r.headers.get("content-length", 0)) == (r.body as PackedByteArray).size(), "Content-Length correcto")
 	r = await _http(port, "/K7QX")
 	check(r.code == 200 and (r.body as PackedByteArray).get_string_from_utf8().contains("<!doctype html>"), "la ruta del QR sirve la página")
