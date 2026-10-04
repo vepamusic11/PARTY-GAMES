@@ -1,6 +1,6 @@
 # Pendientes para retomar
 
-Estado al **03/10/2026** (rama `claude/laughing-ramanujan-tfi3ps`, [PR #1](https://github.com/vepamusic11/PARTY-GAMES/pull/1)). Lo hecho está en el PR y en [PLAN.md](PLAN.md); acá va solo **lo que falta**, ordenado para retomar sin buscar.
+Estado al **04/10/2026** (rama `claude/laughing-ramanujan-tfi3ps`, [PR #1](https://github.com/vepamusic11/PARTY-GAMES/pull/1)). Lo hecho está en el PR y en [PLAN.md](PLAN.md); acá va solo **lo que falta**, ordenado para retomar sin buscar.
 
 ## Cómo retomar (5 minutos)
 
@@ -23,7 +23,7 @@ Todo integrado en la rama el 03/10 (suite 3261+ ok, CI verde):
 | **Instalar sin PC** | La CI publica cada APK que pasa los tests en `https://github.com/vepamusic11/PARTY-GAMES/releases/download/prueba/party-game.apk` (pre-release `prueba`, autorizado por el dueño). En la TV: app **Downloader** + código **`1669675`** (aftv.news/1669675) ([BUILD.md](BUILD.md)). El APK pesa ~178 MB (libs sin comprimir por Gradle). |
 | **Partida real** | `tools/playtest.gd`: 13 juegos, 2–3 personas, demora de red, TV lenta a 30 fps, sesión de 36 min con memoria plana. 3 errores de red arreglados (celular bloqueado = fantasma, reabrir la app recupera el lugar por apodo, envíos con el socket cerrándose). Guía y planilla: [PRUEBA_REAL.md](PRUEBA_REAL.md). |
 
-**Falta (el dueño, antes del viernes):** instalar en el Xiaomi TV Stick, abrir y mandar una foto del lobby (que el QR tenga la IP de la Wi-Fi), probar el QR con un iPhone y un Android, y medir si el stick va fluido (memoria: ~220 MB de RAM y ~270 MB de texturas en la PC; el stick tiene 2 GB).
+**Falta (el dueño, antes del viernes):** instalar en el Xiaomi TV Stick, abrir y mandar una foto del lobby (que el QR tenga la IP de la Wi-Fi), probar el QR con un iPhone y un Android, y medir si el stick va fluido. Con el perfil "TV de poca memoria" (se activa solo en Android con ≤ 3 GB, [ADR 0023](adr/0023-tv-de-poca-memoria.md)) la sesión larga baja a ~105 MB de RAM y ~80 MB de texturas (antes ~220/~265 MB); el stick tiene 2 GB. **El primer arranque hornea las mascotas (dejar el lobby abierto 1–2 min); desde el segundo quedan en disco y el lobby está listo en ~1 s.**
 
 **Plan A para la TV:** el Xiaomi TV Stick 4K (Google TV) con el APK. **Plan B:** una PC por HDMI con `jugar_en_tv.bat`.
 
@@ -40,11 +40,17 @@ Todo integrado en la rama el 03/10 (suite 3261+ ok, CI verde):
 
 ## 2. Trabajo en curso
 
-Todo lo del 03/10 (control web, Google TV, auditoría de partida real) está integrado. Desde el 04/10 trabajan tres agentes (cada uno en su worktree; al terminar se integran, se prueban y la CI publica el APK nuevo en el mismo código de Downloader):
+No hay agentes trabajando. Los tres del 04/10 están integrados (suite 3418 ok) y la CI publica el APK en el mismo código de Downloader (`1669675`):
 
-1. **Rendimiento para el Xiaomi TV Stick:** caché en disco del horneado de mascotas, menos memoria de texturas (perfil automático "TV de poca memoria"), CPU por cuadro dentro del presupuesto.
-2. **Claridad para primerizos:** cada juego se entiende en 5 s y es divertido con 2–3 personas (intros, hints del celular, "¡Que no te deje la cámara!" con 2 jugadores, ritmo de la competencia).
-3. **Control web en celulares reales:** auditoría para Safari de iPhone, red mala, segundo plano, pantallas chicas, mensajes claros para el invitado.
+| Frente | Resultado |
+|---|---|
+| **Rendimiento del stick** ([ADR 0023](adr/0023-tv-de-poca-memoria.md), [PERFORMANCE.md](PERFORMANCE.md)) | Caché en disco de las mascotas horneadas (`user://mascot_cache/`): lobby listo en 0,8 s en vez de 10,5 s desde el segundo arranque. Perfil "TV de poca memoria" (automático en Android ≤ ~3,25 GB o sin dato de RAM; forzar con `-- --low-memory` / `--no-low-memory`): texturas ~265 → ~80 MB, RAM ~220 → ~105 MB. `MiniGame.request_redraw()`: un dibujo por cuadro; p95 de CPU en Karts 9,95 → 5,40 ms. |
+| **Claridad para primerizos** ([PRUEBA_REAL.md §8](PRUEBA_REAL.md)) | Instrucción del juego en el celular (`hint`), flecha con el nombre de cada jugador al arrancar, cuenta 3-2-1 en Arena, arranque amable y bot propio en ¡Que no te deje la cámara!, resumen de ronda de 12 s. |
+| **Control web en celulares reales** ([ADR 0022](adr/0022-control-web.md), [PRUEBA_REAL.md §6](PRUEBA_REAL.md)) | Reconexión robusta (ping cada 1 s, sin reintentos si otra pestaña tomó el lugar), mensajes claros, arreglos para Safari y pantallas chicas, prueba en condiciones feas (`node tools/web_chaos.mjs`). El aviso de un celular bloqueado ya no cuenta 30 s. |
+
+**Decisión pendiente del dueño:** un iPhone bloqueado más de 30 s pierde su lugar (si iOS corta la conexión). Se puede alargar `RECONNECT_GRACE_MS` a ~2 min (cambio chico en `host/network/host_server.gd`).
+
+**Juegos sin bot propio** (con bots se juegan peor, no afecta a la prueba con personas): Memoria de colores, Desenfunde, Pool, Karts, Carrera de obstáculos.
 
 **Para la próxima sesión (sugerido, en este orden):**
 1. **Empujones en 2.5D** (receta `sumo` con sala y agua; la isla proyectada en 2D) y **Desenfunde** con fachadas 3D del pueblo; con eso no queda ningún juego plano ([ADR 0019](adr/0019-tablero-25d-horneado.md)).
