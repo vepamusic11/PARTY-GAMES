@@ -10,7 +10,7 @@ Guía completa con ejemplo: `docs/ADDING_A_MINIGAME.md`. Esta skill es el checkl
 ## Pasos
 
 1. **Carpeta y script** `host/minigames/<id>/<id>.gd` que `extends MiniGame`.
-2. **`get_info()`** con: `id` (único, minúsculas), `title`, `description` (se lee en la intro "¿Cómo se juega?": una o dos frases), `min_players`, `max_players`, `layout` (uno de `Protocol.LAYOUTS`), `layout_data`, y los opcionales recomendados:
+2. **`get_info()`** con: `id` (único, minúsculas), `title`, `description` (se lee en la intro "¿Cómo se juega?": de 1 a 3 oraciones cortas, la primera con el verbo de lo que hay que hacer), `min_players`, `max_players`, `layout` (uno de `Protocol.LAYOUTS`), `layout_data` (siempre con `hint`: la instrucción que el celular muestra sobre el control, ≤ 48 caracteres; en un botón, también `label`), y los opcionales recomendados:
    - `accent`: color de la tarjeta en el lobby (tomar uno de `UiTheme.BRICKS`).
    - `score_label`: unidad del puntaje en el resumen de ronda ("estrellas", "goles"…).
 3. **Registrar** el script en `MiniGameRegistry.GAMES` (`host/minigames/registry.gd`).
@@ -19,7 +19,7 @@ Guía completa con ejemplo: `docs/ADDING_A_MINIGAME.md`. Esta skill es el checkl
 4. **Terminar una sola vez** con `finish(result_from_scores(puntajes, "resumen"))` o con `winners` explícitos si "gana el primero en llegar". El modo competencia convierte puestos en puntos (100/70/50/30): el juego solo reporta su puntaje propio.
 5. **Dibujar con el sistema visual**, no con colores sueltos:
    - `draw_sky()` y `draw_play_field(rect)` para el fondo.
-   - `PlayerAvatar.draw_mascot(self, pies, escala, p.color, PlayerAvatar.style_of(p))` para los jugadores y después `draw_player_tags([[p, pies, escala], …])` (globito 1P–4P y nombre).
+   - `PlayerAvatar.draw_mascot(self, pies, escala, p.color, PlayerAvatar.style_of(p))` para los jugadores y después `draw_player_tags(tags)` (globito 1P–4P y nombre) y `draw_start_markers(tags)` (flecha "¿cuál soy yo?" con el nombre en grande en los primeros segundos), con `tags = [[p, pies, escala], …]`.
    - `draw_hud(puntajes, texto_central, ícono)` arriba (reloj con `clock_text(seg)`; ícono "clock", "flag" o "star").
    - Arte común (tablero, brillo, figuras en lote): `GameArt` (`host/minigames/game_art.gd`, ADR 0009).
    - Tablero en perspectiva como la maqueta (opcional): `draw_board_25d(board_view())` y el dibujo proyectado con `BoardView25D` (ADR 0019; guía en `docs/ADDING_A_MINIGAME.md`, "Tablero 2.5D horneado"). Sin render cae solo en el tablero plano.
@@ -33,7 +33,8 @@ Guía completa con ejemplo: `docs/ADDING_A_MINIGAME.md`. Esta skill es el checkl
 
 ## Verificar
 
-- `godot --headless --path . -s res://tests/run_tests.gd` (los tests genéricos cubren el juego nuevo automáticamente; `test_games_have_thumbnails` falla si falta la miniatura).
+- `godot --headless --path . -s res://tests/run_tests.gd` (los tests genéricos cubren el juego nuevo automáticamente; `test_games_have_thumbnails` falla si falta la miniatura y `test_game_texts_for_first_timers` si la descripción tiene más de 3 oraciones o falta el `hint`).
+- Si el juego elimina en los primeros segundos: probalo con `tools/simulate.gd -- --games=<id> --players=2` y con `tools/playtest.gd --humans=2`; un primerizo tarda 3–5 s en entender qué hacer (ver "Claridad por juego" en `docs/PRUEBA_REAL.md`).
 - Skill `verificar-visual` para ver cómo se ve en la TV.
 - Rendimiento: `tools/benchmark.gd -- --only=<id>` (con xvfb) y comparar con los presupuestos de `docs/PERFORMANCE.md`.
 - Si el juego necesita un control nuevo (ej. dos botones): es un cambio de protocolo → ver reglas en `CLAUDE.md` y `docs/PROTOCOL.md`.

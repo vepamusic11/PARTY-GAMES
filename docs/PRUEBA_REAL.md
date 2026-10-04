@@ -114,7 +114,7 @@ Crece durante la primera competencia (cada juego nuevo hornea su tablero y sus p
 5. **Horneado de las mascotas 3D en cada arranque.** Las mascotas se hornean en memoria cada vez que se abre la app (tableros, piezas y música quedan en disco). En una TV lenta los primeros juegos pueden arrancar con la mascota 2D unos segundos (§4). Se ve distinto pero no se traba. Dejar la app abierta en el lobby 1–2 minutos antes de empezar.
 6. **Memoria.** En la sesión larga (render por software) se estabiliza en ~220 MB de RAM y ~270 MB de texturas después de la primera competencia (§5). No crece, pero para un aparato de ~2 GB es bastante: mirar si la TV cierra la app sola (vuelve al inicio de Google TV) después de varias competencias. Con OpenGL ES en la Mali puede ser distinto: medirlo ahí.
 7. **Pestaña en segundo plano más de 5 min** (control web): Chrome espacia los timers a 1 por minuto, la TV lo marca desconectado y vuelve al abrir la pestaña. Es lo esperado: nadie juega con la pestaña escondida.
-8. **Juegos que con jugadores perdidos terminan enseguida.** En ¡Que no te deje la cámara! quien no avanza hacia la derecha queda afuera en ~2 s, y con 2 jugadores el juego termina en ~5 s. Es la regla, pero si la gente no entiende la intro dura un suspiro: anotarlo. Empujones de a 2 también puede durar 5 s o 65 s.
+8. **Juegos que con jugadores perdidos terminan enseguida.** En ¡Que no te deje la cámara! quien no avanzaba hacia la derecha quedaba afuera en ~2 s, y con 2 jugadores el juego terminaba en ~5 s. **Arreglado el 04/10** (§8): la cámara arranca despacito 3–5 s (más con menos jugadores), las mascotas salen más adentro, la TV dice "¡Corré a la derecha!" y el celular también; quien no se mueve dura ~5–6 s. Además había otra causa: **no tenía bot** (el bot base movía el joystick en círculos y lo dejaba la cámara a los 2 s): con 1 persona + 1 bot el juego duraba 5 s. Ahora tiene bot. Empujones de a 2 sigue pudiendo durar 5 s o 65 s: es el juego.
 9. **Mismo apodo.** Dos personas pueden llamarse igual; se distinguen por 1P–4P y el color. Si uno de los dos se desconecta y un tercero entra con ese apodo desde la **app** (sin token), se queda con su lugar (§3.2). En una fiesta no debería pasar.
 10. **No probado con aparatos reales:** Wi-Fi real (2,4 GHz, router con "aislamiento de clientes"), multitáctil en celulares reales, sonido y vibración, 60 fps reales en la GPU Mali, tiempo real de horneado en el Xiaomi.
 
@@ -141,7 +141,7 @@ TV: **Xiaomi TV Stick 4K (2.ª gen.) con Google TV** (CPU ARM chica de 4 núcleo
 
 ### 7.3 Orden sugerido (~20 minutos, 2–3 personas)
 
-En el lobby, cada juego se marca o desmarca con OK. Con "Orden: lista" se juegan en el orden de la lista. Cada juego suma ~6 s de intro y ~15 s de resumen (se puede pasar con OK).
+En el lobby, cada juego se marca o desmarca con OK. Con "Orden: lista" se juegan en el orden de la lista. Cada juego suma ~6 s de intro (1,5 s si todos tocaron "¡Listo!") y ~12 s de resumen (se puede pasar con OK). Una competencia de 8 juegos con 2–3 personas dura **8–10 min** (§8.3).
 
 **Competencia 1, para aprender (~9 min), Ayudas: No:** Arena de estrellas → *Ping Pong (solo si son 2)* → Carrera de toques → Reloj exacto → Esquivar → Pintar el piso → Empujones → Karts de mascotas → Desenfunde. Arranca con joystick libre (Arena) y un botón (Carrera de toques), y deja un juego largo (Karts) cerca del final. Termina con un duelo corto.
 
@@ -171,7 +171,7 @@ Con 2 personas, en la competencia 2 se puede sumar **1 bot Normal** (lobby: OK s
 - **Ganas:** risas, quejas, "¡otra!", aburrimiento; si 20 min fue poco o mucho.
 - **Técnico:** ¿se calienta el stick? batería de los celulares al final; ¿la TV cerró la app sola?
 
-### 7.6 Planilla
+### 7.6 Planilla (ver también §8.4, qué mirar de la claridad)
 
 Fecha: ____  Personas: ____  Celulares (marca/modelo, ¿web o app?): ________________  Wi-Fi: ________
 
@@ -192,3 +192,47 @@ Unirse (min): ____  Desconexiones (quién, cuándo, ¿volvió solo?): __________
 
 Favorito: ________  Para sacar: ________  ¿Jugarían otra vez? ____  Lo que más confundió: ____________________
 
+
+## 8. Claridad por juego (revisión del 04/10 para primerizos)
+
+Pregunta: ¿alguien que nunca vio el juego entiende **en 5 segundos** qué hacer y cuál es su mascota, y es divertido de a 2–3? Se revisó cada juego con capturas reales (`tools/capture_screens.gd` con xvfb: la intro de la TV, el celular y el primer segundo de juego), con bots (`tools/simulate.gd --players=2`) y con celulares por la red (`tools/playtest.gd --scenario=room --humans=2` y `--humans=3`).
+
+**Lo que ve un primerizo, en orden:** (1) la intro "¿Cómo se juega?": título, hasta 3 pasos sacados de la descripción (uno por oración), la foto del juego con el celular y el control dibujado, y su tarjeta que pasa a "¡Listo!" al tocar el celular; (2) en el celular, el control del juego con **una instrucción arriba** (`hint`); (3) al arrancar, la cuenta "3, 2, 1, ¡YA!" y, nuevo, una **flecha grande de su color con su nombre** que rebota sobre su mascota los primeros 3,6 s (`MiniGame.draw_start_markers`).
+
+### 8.1 Qué se cambió en general
+
+- **Instrucción propia por juego en el celular.** Todos los juegos con joystick mostraban la misma frase ("Mové tu mascota con el joystick"), que en Karts, Pool loco o Memoria no dice nada. Ahora cada juego manda su `hint` (≤ 48 caracteres, ya previsto en [PROTOCOL.md](PROTOCOL.md): sin cambio de protocolo ni de `web/`). Test: `test_game_texts_for_first_timers`.
+- **Flecha "¿cuál soy yo?"** al empezar, en los 12 juegos con mascota en la cancha (en Reloj exacto cada uno tiene su panel con nombre; en Ping Pong, su lado). Barata: dos textos por jugador durante 3,6 s, nada después.
+- **Arena de estrellas tiene cuenta regresiva** (3, 2, 1, ¡YA!) como los demás: era el único que arrancaba moviéndose y es el primer juego sugerido; sin la cuenta nadie encontraba su mascota antes de perder 3 segundos de juego.
+- **Descripciones**: la primera oración es siempre el verbo de lo que hay que hacer; máximo 3 oraciones (la intro no muestra más: en Carrera de obstáculos "¡Primero en la meta gana!" era la 4.ª y no se veía).
+- **Resumen de ronda: 12 s** en vez de 15 (el revelado con 2–3 personas dura ~2 s; OK siempre adelanta).
+- **Lobby**: el botón grande decía "Esperando 1 jugador…" si "¿Cuántos juegan?" quedaba más alto que la gente que vino; ahora dice "Falta 1 jugador · o bajá la cantidad".
+
+### 8.2 Tabla
+
+| Juego | Objetivo en una frase | Control | Problema detectado | Cambio hecho |
+|---|---|---|---|---|
+| Arena de estrellas | Juntar más estrellas que los demás en 30 s | Joystick | Arrancaba moviéndose, sin "3, 2, 1"; mascotas chicas en las esquinas: primeros segundos para encontrarse | Cuenta regresiva de 3 s; flecha con el nombre; celular: "Movete y juntá las estrellas" |
+| Ping Pong | Primero a 5 puntos | Deslizar | Claro (la paleta sigue el dedo). Nombres a un costado de la mesa, no sobre la paleta | Celular: "Deslizá el dedo: tu paleta lo sigue" |
+| Carrera de toques | Llegar primero a 40 toques | Un botón "¡TOCÁ!" | Claro. Lo único que confunde: tocar antes del ¡YA! no cuenta | Intro: "Después del ¡YA!, tocá…"; celular igual; flecha con el nombre |
+| Reloj exacto | Frenar en 10.00 contando de memoria | Un botón "¡STOP!" | Claro (panel con nombre por jugador). La intro no decía que se frena tocando | Intro: "Tocá para frenar tu reloj…"; celular: "Tocá cuando tu reloj llegue a 10.00" |
+| Esquivar | Último en pie bajo los bloques | Joystick | Claro; las sombras avisan | Celular: "Movete: salí de las sombras"; flecha con el nombre |
+| Pintar el piso | Pintar más baldosas | Joystick | Claro | Celular: "Caminá para pintar las baldosas"; flecha |
+| Empujones | Último arriba de la isla | Joystick | Claro. De a 2 puede durar 5 s o 65 s (es el juego: se anota) | Celular: "Embestí para tirarlos de la isla"; flecha |
+| Karts de mascotas | Primero en 3 vueltas | Joystick (solo dobla) | "El kart acelera solo, vos doblás" se entiende, pero el celular decía "Mové tu mascota" | Intro: "Tu kart acelera solo: con el joystick doblás…"; celular: "Solo doblá: izquierda y derecha"; flecha |
+| ¡Que no te deje la cámara! | Correr a la derecha sin que la cámara te deje ni chocar nada | Joystick | **La intro empezaba por la cámara, no por "corré"; quien no se movía quedaba afuera a los ~2 s (salía a 300 px del borde), y de a 2 el juego terminaba en 5 s. Sin bot: el bot base no corría** | Intro empieza "Corré hacia la derecha…"; celular: "¡Corré a la derecha! La cámara no espera"; salida 260 px más adentro; **gracia** de 3 s (4 jug.), 4 s (3) y 5 s (2) con la cámara desde 45 px/s; crucero inicial 112/126/140 px/s según sean 2/3/4; cartel "¡Corré a la derecha!" con flechas durante la gracia; **bot nuevo** (`host/bots/scroller_bot.gd`). Tests: `test_scroller_start_grace`, `test_bot_skill` |
+| Memoria de colores | Repetir la secuencia; gana quien llega más lejos | Joystick (4 direcciones) | La intro listaba las 4 figuras (largo); el tablero ya las muestra con flechas | Intro más corta ("cada dirección es una figura"); celular: "Mirá la TV y repetí: una dirección por figura"; flecha |
+| Desenfunde | Tocar primero después del ¡YA! | Un botón "¡PUM!" | Claro ("Preparados…" en el cartel); el engaño es parte de la gracia | Celular: "Tocá solo cuando la TV diga ¡YA!"; flecha |
+| Pool loco | Meter doradas (3) o la de otro (2) | Joystick: estirar y soltar | Claro; la TV ya muestra la instrucción arriba de la mesa | Celular: "Estirá para apuntar, soltá para tirar"; flecha |
+| Carrera de obstáculos | Primero en la meta saltando | Un botón "¡SALTÁ!" | La 4.ª oración ("¡Primero en la meta gana!") no se veía en la intro | Descripción en 3 oraciones; celular: "Tocá para saltar; mantené: más alto"; flecha |
+
+### 8.3 Duración y ritmo con 2–3 personas
+
+Medido con `tools/playtest.gd --scenario=room` (celulares por la red; el resumen se deja correr solo): ver las duraciones por juego en §4. Con los tiempos nuevos, una competencia de 8 juegos suma ~5–6 min de juego + 8 × (~6 s de intro + ~1 s de barrido + ~12 s de resumen) ≈ **8–10 min**; las dos competencias sugeridas en §7.3 entran en ~20 min. Con 2 personas el bot ya corre en ¡Que no te deje la cámara! (antes: 2 bots, 5 s y 0 m; ahora 2 bots "Normal" duran 17–50 s, media 22 s, y 60 m).
+
+### 8.4 Qué mirar el viernes sobre la claridad
+
+- ¿Alguien preguntó "¿cuál soy yo?" después de la flecha con el nombre? ¿La vieron?
+- ¿Leen la instrucción del celular o solo miran la TV? (si nadie la lee, la próxima vez va más grande o se saca).
+- En ¡Que no te deje la cámara!: ¿a los 5 s de gracia todos corren? ¿Alguien quedó afuera por no entender igual?
+- ¿El resumen de 12 s se hace largo o corto? ¿Quién aprieta OK?
