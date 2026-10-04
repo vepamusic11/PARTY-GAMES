@@ -281,8 +281,8 @@ func _physics_process(delta: float) -> void:
 	if is_finished():
 		return
 	step(delta)
-	_world.queue_redraw()
-	queue_redraw()
+	request_redraw(_world)
+	request_redraw()
 
 
 ## Avanza la carrera `delta` segundos en pasos fijos de DT (los tests la

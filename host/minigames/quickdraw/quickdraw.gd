@@ -240,7 +240,7 @@ func _physics_process(delta: float) -> void:
 						"summary": "Más rápido en desenfundar"})
 				else:
 					_start_round(_round + 1)
-	queue_redraw()
+	request_redraw()
 
 
 func _start_round(n: int) -> void:

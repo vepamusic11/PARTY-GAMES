@@ -177,7 +177,7 @@ func _physics_process(delta: float) -> void:
 				if not has_stopped(pid):
 					_stops[pid] = MAX_TIME
 			_start_reveal()
-	queue_redraw()
+	request_redraw()
 
 
 # --- Dibujo -------------------------------------------------------------------

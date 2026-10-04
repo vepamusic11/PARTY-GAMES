@@ -317,11 +317,11 @@ func _ground_rect(b: Dictionary) -> Rect2:
 # --- Dibujo ------------------------------------------------------------------
 
 func _redraw() -> void:
-	queue_redraw()
+	request_redraw()  # Una vez por cuadro aunque haya varios pasos de física (MiniGame).
 	if _air == null:
 		return
-	_ghost_drawer.queue_redraw()
-	_air.queue_redraw()
+	request_redraw(_ghost_drawer)
+	request_redraw(_air)
 
 
 func _draw() -> void:

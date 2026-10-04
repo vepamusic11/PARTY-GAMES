@@ -264,7 +264,7 @@ func _physics_process(delta: float) -> void:
 	if is_finished():
 		return
 	step(delta)
-	queue_redraw()
+	request_redraw()
 
 
 ## Un paso de juego. Separado de _physics_process para que los tests lo

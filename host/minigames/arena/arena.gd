@@ -93,14 +93,14 @@ func _physics_process(delta: float) -> void:
 	if in_finale():  # "¡Tiempo!": quietos, los ganadores festejan.
 		for pid: int in _pos:
 			advance_walk(pid, 0.0, delta)
-		queue_redraw()
+		request_redraw()
 		return
 	if _countdown > -GO_SEC:
 		var before := _countdown
 		_countdown -= delta
 		tick_countdown(before, _countdown)
 	if _countdown > 0.0:
-		queue_redraw()
+		request_redraw()
 		return  # Nadie se mueve hasta el "¡YA!": tiempo para encontrar tu mascota.
 	_time_left -= delta
 	# Orden al azar en cada paso: si dos tocan la misma estrella a la vez, no
@@ -123,7 +123,7 @@ func _physics_process(delta: float) -> void:
 				_star_born[i] = anim_time
 				play_sfx("point", 1.0 + 0.04 * p.x / SCREEN.x)
 				notify_player(pid, "point")
-	queue_redraw()
+	request_redraw()
 	if _time_left <= 0.0:
 		_time_left = 0.0
 		var result := result_from_scores(_score, "Más estrellas gana")

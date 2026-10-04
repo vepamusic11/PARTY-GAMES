@@ -148,7 +148,7 @@ func _physics_process(delta: float) -> void:
 		var before := _countdown
 		_countdown -= delta
 		tick_countdown(before, _countdown)
-	queue_redraw()
+	request_redraw()
 
 
 func _draw() -> void:

@@ -436,7 +436,7 @@ func _physics_process(delta: float) -> void:
 	if is_finished():
 		return
 	advance(delta)
-	queue_redraw()
+	request_redraw()
 
 
 ## Avanza el juego `delta` segundos reales en pasos fijos de FIXED_DT: a
