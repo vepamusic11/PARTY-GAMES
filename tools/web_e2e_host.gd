@@ -13,7 +13,10 @@ extends SceneTree
 ## `skip` (saltar la intro), `finish` (terminar el juego actual con un
 ## resultado inventado), `continue` (seguir desde el resumen), `lobby`,
 ## `layout NOMBRE {json}` (manda ese control a los celulares, para probar
-## cada layout sin un juego), `players` (imprime los jugadores) y `quit`.
+## cada layout sin un juego), `players` (imprime los jugadores),
+## `capacity N` ("¿Cuántos juegan?"), `state` (fase y pantalla de la TV),
+## `toasts` (imprime los avisos de la TV),
+## `close` (cierra el servidor avisando a los celulares y sale) y `quit`.
 ## Cada línea que informa empieza con `E2E ` y va a la consola y a
 ## `events.log` en --out (la salida estándar de un proceso hijo puede quedar
 ## retenida en el buffer; el archivo se vacía línea por línea); las entradas
@@ -119,6 +122,19 @@ func _run(line: String) -> void:
 				host.server.set_layout(lp[0], data)
 		"players":
 			_print_players("asked")
+		"capacity":
+			host._lobby._stepper.set_value(clampi(int(arg), 1, Protocol.MAX_PLAYERS))
+		"state":
+			_say("E2E state phase=%s intro=%s game=%s summary=%s tournament=%s" % [host.phase, host._intro.visible,
+				is_instance_valid(host._game), host._summary.visible, host.tournament != null])
+		"toasts":
+			_say("E2E toasts %s" % JSON.stringify(host._toasts.texts()))
+		"close":
+			# La TV cierra el juego "bien": avisa a los celulares (1001) y sale.
+			host.server.stop()
+			for i in 10:
+				await process_frame
+			quit(0)
 		"quit":
 			quit(0)
 		_:
