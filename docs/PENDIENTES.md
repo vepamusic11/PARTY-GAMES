@@ -40,7 +40,11 @@ Todo integrado en la rama el 03/10 (suite 3261+ ok, CI verde):
 
 ## 2. Trabajo en curso
 
-No quedó ningún agente trabajando: todo lo del 03/10 (control web, Google TV, auditoría de partida real) está integrado en la rama.
+Todo lo del 03/10 (control web, Google TV, auditoría de partida real) está integrado. Desde el 04/10 trabajan tres agentes (cada uno en su worktree; al terminar se integran, se prueban y la CI publica el APK nuevo en el mismo código de Downloader):
+
+1. **Rendimiento para el Xiaomi TV Stick:** caché en disco del horneado de mascotas, menos memoria de texturas (perfil automático "TV de poca memoria"), CPU por cuadro dentro del presupuesto.
+2. **Claridad para primerizos:** cada juego se entiende en 5 s y es divertido con 2–3 personas (intros, hints del celular, "¡Que no te deje la cámara!" con 2 jugadores, ritmo de la competencia).
+3. **Control web en celulares reales:** auditoría para Safari de iPhone, red mala, segundo plano, pantallas chicas, mensajes claros para el invitado.
 
 **Para la próxima sesión (sugerido, en este orden):**
 1. **Empujones en 2.5D** (receta `sumo` con sala y agua; la isla proyectada en 2D) y **Desenfunde** con fachadas 3D del pueblo; con eso no queda ningún juego plano ([ADR 0019](adr/0019-tablero-25d-horneado.md)).
