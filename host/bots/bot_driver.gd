@@ -23,6 +23,7 @@ const GAME_BOTS := {
 	"dodge": preload("res://host/bots/dodge_bot.gd"),
 	"paint": preload("res://host/bots/paint_bot.gd"),
 	"sumo": preload("res://host/bots/sumo_bot.gd"),
+	"scroller": preload("res://host/bots/scroller_bot.gd"),
 }
 
 var bots: Array[Bot] = []
