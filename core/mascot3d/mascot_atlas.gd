@@ -728,7 +728,7 @@ func _process(_delta: float) -> void:
 	stats.poses = int(stats.poses) + job.regions.size()
 	if job.image != null and _disk_allowed():
 		_save_queue.append({"rgba": e.color.to_rgba32(), "style": e.style, "tier": e.tier, "cell": e.cell,
-			"regions": job.regions.duplicate(), "image": job.image, "key": e.key})
+			"regions": job.regions.duplicate(), "image": job.image})
 	job.image = null
 	if memory_bytes() > budget_bytes:
 		_sweep(now)

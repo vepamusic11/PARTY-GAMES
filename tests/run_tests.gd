@@ -5524,7 +5524,7 @@ func test_mascot_atlas_disk() -> void:
 	# Lo horneado se guarda en un hilo y queda en el índice.
 	var shot := Image.create(cell.x, cell.y, false, Image.FORMAT_RGBA8)
 	MascotAtlas._save_queue.append({"rgba": red.to_rgba32(), "style": 2, "tier": tier, "cell": cell,
-		"regions": {"look_r@0": Rect2(0, 0, cell.x, cell.y)}, "image": shot, "key": 0})
+		"regions": {"look_r@0": Rect2(0, 0, cell.x, cell.y)}, "image": shot})
 	MascotAtlas.flush_disk()
 	check(MascotDiskCache.list_files().size() == 2, "lo horneado quedó en el disco")
 	MascotAtlas.clear()
