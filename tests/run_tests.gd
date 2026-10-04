@@ -5084,6 +5084,38 @@ func test_player_toasts() -> void:
 	await _free_clients()
 
 
+## Wi-Fi floja: TCP retiene la entrada durante un tirón y la entrega toda
+## junta. El tope de `input` acepta esa ráfaga (antes, con una ventana de 1 s
+## y 90 mensajes, tiraba justo los más nuevos: el dedo que se soltó) y sigue
+## frenando a quien manda de más todo el tiempo.
+func test_input_rate_limit_tolerates_wifi_bursts() -> void:
+	var server := HostServer.new()
+	var peer := HostServer._Peer.new()
+	var t := 1000
+	var dropped := 0
+	# 30 Hz normal 2 s, un tirón de 3 s (90 mensajes que llegan juntos) y sigue.
+	for i in 60:
+		t += 33
+		dropped += int(server._rate_limited(peer, t))
+	t += 3000
+	for i in 90:
+		dropped += int(server._rate_limited(peer, t))
+	for i in 60:
+		t += 33
+		dropped += int(server._rate_limited(peer, t))
+	check(dropped == 0, "la ráfaga después de un tirón de 3 s entra entera (%d descartados)" % dropped)
+	# Quien manda 300 por segundo durante 10 s: en promedio queda en el tope.
+	var flood := HostServer._Peer.new()
+	var accepted := 0
+	t = 100000
+	for i in 3000:
+		t += 3 if i % 3 != 0 else 4
+		accepted += int(not server._rate_limited(flood, t))
+	var cap := HostServer.INPUT_BURST + HostServer.INPUT_RATE_LIMIT_PER_SEC * 10 + 2
+	check(accepted <= cap and accepted >= cap - 30, "inundación: %d aceptados en 10 s (tope ~%d)" % [accepted, cap])
+	server.free()
+
+
 ## Celular bloqueado con la conexión abierta (docs/PRUEBA_REAL.md §6): su
 ## lugar no vence, así que el aviso de la TV no cuenta 30 s ni se va solo;
 ## dice "no responde — su lugar lo espera". Si después la conexión se

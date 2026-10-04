@@ -56,7 +56,7 @@ Todos los layouts nuevos que se sumen antes de publicar la app van en la **misma
 - `seq`: contador creciente (permite detectar pérdidas o desorden en el futuro).
 - `axis`: `[x, y]`, se recorta a longitud ≤ 1.
 - `btn`: máscara de bits. `1` = A (`one_button` y `joystick_ab`), `2` = B (`joystick_ab`); se pueden mandar los dos a la vez (`3`). Otros bits se descartan.
-- Límite: **90 por segundo** por jugador; el exceso se descarta.
+- Límite: **90 por segundo** por jugador en promedio, con ráfagas de hasta **240** (`HostServer.INPUT_BURST`: con la Wi-Fi floja TCP entrega juntos varios segundos de entrada); el exceso se descarta.
 
 ### `look` — cambiar color y/o estilo (solo en el lobby)
 ```json
@@ -218,4 +218,4 @@ Los bots ([ADR 0010](adr/0010-bots.md)) **no usan el protocolo**: viven en la TV
 | 1000 `bye` | El control se fue voluntariamente |
 | 1001 | El host se apagó |
 | 4000 | Rechazado/expulsado (razón = motivo) |
-| 4001 `replaced` | El mismo jugador abrió otra conexión |
+| 4001 `replaced` | El mismo jugador abrió otra conexión (otra pestaña o volvió a escanear el QR). El control que la recibe **no reintenta**: si lo hiciera, las dos conexiones se echarían una a la otra para siempre |
