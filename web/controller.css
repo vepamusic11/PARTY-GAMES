@@ -1,0 +1,289 @@
+/* Control web de PARTY-GAME (ADR 0022).
+ * Mismo sistema visual que la app del celular: los tokens de abajo son los
+ * de core/ui/ui_theme.gd (INK, PAPER, ACCENT, PHONE_DISH, fichas del
+ * código…). Si cambiás un color acá, cambialo allá también. */
+
+@font-face { font-family: "Fredoka"; font-weight: 700; font-display: swap; src: url(/fredoka-bold.woff2) format("woff2"); }
+@font-face { font-family: "Fredoka"; font-weight: 600; font-display: swap; src: url(/fredoka-semibold.woff2) format("woff2"); }
+
+:root {
+  --ink: #1D2140; --ink-soft: #565C85; --muted: #9AA0BE;
+  --paper: #FFFFFF; --paper-dim: #EAEEFB; --chip-dark: #1C1F33;
+  --accent: #FFC83D; --accent-dark: #E09A14; --success: #27B26B; --warning: #F28C28; --danger: #E5484D;
+  --sky-top: #2B9CF5; --sky-bottom: #BFE4FF;
+  --dish: #2A3163; --dish-rim: #454E8C; --key-neutral: #D5DBEA;
+  --gold: #FFC53D; --silver: #C9D1E0; --bronze: #E0955A;
+  --error-bg: #FFE9E6; --info-bg: #E4F2FF;
+  --tile0: #FFB728; --tile0-l: #FFC757; --tile0-d: #B3801C; --tile1: #3CC46B; --tile1-l: #67D18B; --tile1-d: #2A894B;
+  --tile2: #3E7BFA; --tile2-l: #6898FB; --tile2-d: #2B56AF; --tile3: #F26CB5; --tile3-l: #F58CC5; --tile3-d: #A94C7F;
+  --b1: #FFD23F; --b2: #3E7BFA; --b3: #F26CB5;
+  --shadow: rgba(18, 26, 77, 0.22);
+  --radius: 22px; --depth: 6px;
+  --player: #E24B4A; --player-dark: #9E3534; --player-ink: #1D2140; --player-top: #FBE4E4; --player-bottom: #F3B7B7;
+  --bg-top: var(--sky-top); --bg-bottom: var(--sky-bottom);
+  --safe-top: env(safe-area-inset-top, 0px); --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px); --safe-left: env(safe-area-inset-left, 0px);
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+/* text-size-adjust: Safari agranda las letras al poner el celular apaisado si no se le dice que no. */
+html, body { height: 100%; margin: 0; overflow: hidden; overscroll-behavior: none; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body {
+  font-family: "Fredoka", "Nunito", "Segoe UI", system-ui, -apple-system, sans-serif; font-weight: 600;
+  color: var(--ink); background: var(--bg-top);
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; touch-action: none;
+  position: fixed; inset: 0; width: 100%;
+}
+button, input { font: inherit; color: inherit; }
+button { cursor: pointer; }
+[hidden] { display: none !important; }
+
+/* Fondo: cielo antes de unirse; el color del jugador una vez adentro (PhoneBackdrop). */
+#bg { position: fixed; inset: 0; z-index: 0; background: linear-gradient(180deg, var(--bg-top), var(--bg-bottom)); overflow: hidden; }
+#bg::before { /* nubes/puntos suaves: patrón de cruces y puntos del celular */
+  content: ""; position: absolute; inset: -60px;
+  background-image: radial-gradient(circle, rgba(255,255,255,.55) 3px, transparent 3.5px),
+    linear-gradient(rgba(255,255,255,.45) 2px, transparent 2px), linear-gradient(90deg, rgba(255,255,255,.45) 2px, transparent 2px);
+  background-size: 120px 120px, 120px 120px, 120px 120px;
+  background-position: 0 0, 60px 54px, 54px 60px; opacity: .22;
+  -webkit-mask-image: none;
+}
+#bg.joined::before { background-image: radial-gradient(circle, rgba(0,0,0,.1) 3px, transparent 3.5px),
+  linear-gradient(rgba(0,0,0,.1) 2px, transparent 2px), linear-gradient(90deg, rgba(0,0,0,.1) 2px, transparent 2px);
+  -webkit-mask-image: linear-gradient(90deg, transparent 0 60px, #000 60px calc(100% - 60px), transparent calc(100% - 60px)); mask-image: linear-gradient(90deg, transparent 0 60px, #000 60px calc(100% - 60px), transparent calc(100% - 60px)); opacity: .9; }
+#bg.joined.dark::before { filter: invert(1); opacity: .5; }
+#bg-tag { position: absolute; right: 2vw; bottom: -6vh; font-size: 52vh; line-height: 1; font-weight: 700; color: var(--player-ink); opacity: 0; letter-spacing: -.04em; }
+#bg.joined #bg-tag { opacity: .1; }
+
+.screen { position: fixed; inset: 0; z-index: 1; }
+
+/* --- Unirse ---------------------------------------------------------------- */
+#join { overflow-y: auto; overflow-x: hidden; touch-action: pan-y; -webkit-overflow-scrolling: touch;
+  padding: calc(14px + var(--safe-top)) calc(16px + var(--safe-right)) calc(16px + var(--safe-bottom)) calc(16px + var(--safe-left)); }
+.join-grid { display: grid; grid-template-columns: 1fr; gap: 14px; max-width: 980px; margin: 0 auto; min-height: 100%; align-content: center; }
+.join-brand { text-align: center; }
+.logo { width: min(78vw, 360px); max-width: 100%; height: auto; display: block; margin: 0 auto; filter: drop-shadow(0 6px 0 rgba(29,33,64,.18)); }
+.tagline { margin: 6px 0 0; color: #fff; font-weight: 700; font-size: 17px; text-shadow: 0 2px 0 rgba(29,33,64,.35); }
+.tv-address { margin: 8px auto 0; display: inline-block; font-size: 14px; color: var(--ink); background: rgba(255,255,255,.75); border-radius: 999px; padding: 4px 14px; }
+
+.panel { background: var(--paper); border-radius: 30px; padding: 18px 20px; box-shadow: 0 10px 0 rgba(29,33,64,.12), 0 14px 24px var(--shadow); }
+.join-panel { display: flex; flex-direction: column; gap: 10px; }
+.step { display: flex; align-items: center; gap: 10px; font-size: 20px; font-weight: 700; margin-top: 4px; }
+.badge { display: inline-grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; color: #fff; font-size: 18px; font-weight: 700;
+  border: 3px solid var(--ink); box-shadow: inset 0 -5px 0 rgba(0,0,0,.18), inset 0 3px 0 rgba(255,255,255,.35); text-shadow: 0 2px 0 rgba(29,33,64,.6); }
+.b1 { background: var(--b1); } .b2 { background: var(--b2); } .b3 { background: var(--b3); }
+
+.field { position: relative; }
+.field-icon { position: absolute; left: 16px; top: 50%; width: 24px; height: 24px; transform: translateY(-50%); color: var(--ink-soft); pointer-events: none; }
+.field input {
+  width: 100%; height: 56px; border-radius: 999px; border: 3px solid var(--paper-dim); background: var(--paper-dim);
+  padding: 0 18px 0 50px; font-size: 20px; font-weight: 700; color: var(--ink); outline: none; -webkit-user-select: text; user-select: text; -webkit-appearance: none; appearance: none;
+}
+.field input:focus { border-color: var(--accent); background: #fff; }
+.field input::placeholder { color: var(--muted); font-weight: 600; }
+
+/* Fichas del código: cuatro bloques de juguete (dorado, verde, azul, rosa, como en la TV)
+ * con el input real transparente encima: tocar las fichas abre el teclado. */
+.code-tiles { position: relative; display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; width: 100%; max-width: 320px; margin: 0 auto; }
+.tile { --c: var(--tile0); --c-l: var(--tile0-l); --c-d: var(--tile0-d); display: grid; place-items: center; aspect-ratio: 74 / 86; border-radius: 16px; background: linear-gradient(180deg, var(--c-l), var(--c));
+  box-shadow: 0 0 0 3px var(--ink), 0 var(--depth) 0 0 var(--c-d), 0 var(--depth) 0 3px var(--ink), 0 12px 16px rgba(29,33,64,.16);
+  font-size: clamp(34px, 9vw, 46px); font-weight: 700; color: #fff; -webkit-text-stroke: 1.5px var(--ink); paint-order: stroke fill; text-shadow: 0 3px 0 var(--ink); transition: transform .1s; }
+.t1 { --c: var(--tile1); --c-l: var(--tile1-l); --c-d: var(--tile1-d); } .t2 { --c: var(--tile2); --c-l: var(--tile2-l); --c-d: var(--tile2-d); } .t3 { --c: var(--tile3); --c-l: var(--tile3-l); --c-d: var(--tile3-d); }
+.tile.lit { transform: translateY(2px); box-shadow: 0 0 0 3px var(--ink), 0 var(--depth) 0 0 var(--c-d), 0 var(--depth) 0 3px var(--ink), 0 0 0 8px rgba(255,200,61,.55); }
+#code { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; border: 0; padding: 0; font-size: 16px; letter-spacing: 1em; color: transparent; caret-color: transparent; background: transparent; -webkit-user-select: text; user-select: text; }
+.help { margin: 0; text-align: center; color: var(--ink-soft); font-size: 14px; }
+
+.status { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 18px; border: 3px solid var(--warning); background: var(--error-bg); font-size: 15px; line-height: 1.25; }
+.status.info { border-color: var(--b2); background: var(--info-bg); }
+.status.shake { animation: shake .3s; }
+@keyframes shake { 0%{transform:translateX(0)} 25%{transform:translateX(10px)} 50%{transform:translateX(-7px)} 75%{transform:translateX(4px)} 100%{transform:translateX(0)} }
+.status-badge { flex: none; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: var(--warning); color: #fff; font-weight: 700; border: 3px solid var(--ink); }
+.status.info .status-badge { background: var(--b2); font-size: 0; }
+.status.info .status-badge::after { content: ""; width: 10px; height: 10px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 4px rgba(255,255,255,.35); }
+
+/* Botones "de juguete": cara de color con contorno de tinta, canto oscuro abajo y brillo arriba (UiTheme.draw_toy_key). */
+.toy { --c: var(--paper); --c-dark: #B9C1D9; position: relative; border: 0; border-radius: var(--radius); background: var(--c); color: var(--ink);
+  font-weight: 700; padding: 0 18px; min-height: 48px; line-height: 1;
+  box-shadow: 0 0 0 3px var(--ink), 0 var(--depth) 0 0 var(--c-dark), 0 var(--depth) 0 3px var(--ink), 0 10px 14px rgba(29,33,64,.14);
+  transform: translateY(0); transition: transform .08s, box-shadow .08s; overflow: visible; }
+.toy::before { content: ""; position: absolute; left: 14px; right: 14px; top: 5px; height: 36%; border-radius: 999px; background: rgba(255,255,255,.28); pointer-events: none; }
+.toy:active, .toy.down { transform: translateY(4px); box-shadow: 0 0 0 3px var(--ink), 0 2px 0 0 var(--c-dark), 0 2px 0 3px var(--ink), 0 4px 8px rgba(29,33,64,.14); }
+.toy-accent { --c: var(--accent); --c-dark: var(--accent-dark); }
+.toy-big { min-height: 64px; font-size: 26px; margin-top: 6px; display: inline-flex; align-items: center; justify-content: center; gap: 12px; }
+.play-glyph { width: 0; height: 0; border-top: 11px solid transparent; border-bottom: 11px solid transparent; border-left: 18px solid var(--ink); }
+.toy-icon { width: 48px; min-height: 44px; padding: 0; display: grid; place-items: center; }
+.toy-icon svg { width: 26px; height: 26px; }
+#sound .snd-off { display: none; }
+#sound[aria-pressed="false"] .snd-waves { display: none; }
+#sound[aria-pressed="false"] .snd-off { display: block; }
+.toy-arrow { width: 64px; min-height: 60px; padding: 0; display: grid; place-items: center; --c: var(--accent); --c-dark: var(--accent-dark); }
+.arrow-left, .arrow-right { width: 0; height: 0; border-top: 14px solid transparent; border-bottom: 14px solid transparent; }
+.arrow-left { border-right: 22px solid var(--ink); } .arrow-right { border-left: 22px solid var(--ink); }
+
+/* --- Barra de arriba ---------------------------------------------------------- */
+#play { display: flex; flex-direction: column; }
+.bar { flex: none; display: flex; align-items: center; gap: 10px; min-height: 52px;
+  padding: calc(8px + var(--safe-top)) calc(10px + var(--safe-right)) 4px calc(10px + var(--safe-left)); }
+.pill { display: inline-flex; align-items: center; gap: 8px; background: var(--paper); border-radius: 999px; padding: 4px 14px 4px 6px; min-height: 46px;
+  box-shadow: 0 4px 0 rgba(29,33,64,.12), 0 6px 12px var(--shadow); }
+.me { max-width: 48%; }
+.me-face { width: 40px; height: 40px; flex: none; }
+.tag { display: inline-grid; place-items: center; min-width: 44px; height: 30px; padding: 0 8px; border-radius: 10px; background: var(--player); color: #fff; font-size: 17px; font-weight: 700;
+  -webkit-text-stroke: 1px var(--ink); paint-order: stroke fill; text-shadow: 0 1.5px 0 var(--ink); box-shadow: 0 0 0 2.5px var(--ink), 0 3px 0 0 var(--player-dark), 0 3px 0 2.5px var(--ink); margin: 0 4px 2px; }
+.me-name { font-size: 20px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 4px; }
+.hint { flex: 1 1 auto; min-width: 0; text-align: center; color: #fff; font-weight: 700; font-size: 17px; line-height: 1.15;
+  -webkit-text-stroke: 1px var(--ink); paint-order: stroke fill; text-shadow: 0 2px 0 var(--ink), 0 3px 6px rgba(29,33,64,.25);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bar-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.signal { padding: 4px 12px; gap: 6px; }
+.wifi { width: 26px; height: 26px; }
+.wifi path { fill: var(--muted); opacity: .35; }
+.signal.good .wifi path { fill: var(--success); opacity: 1; }
+.signal.slow .w1, .signal.slow .w2 { fill: var(--warning); opacity: 1; }
+.signal.bad .w1 { fill: var(--danger); opacity: 1; }
+.signal.lost .wifi path { fill: var(--danger); opacity: .35; }
+.ms { font-size: 13px; color: var(--ink-soft); min-width: 44px; text-align: right; font-variant-numeric: tabular-nums; }
+.toy-hold { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 14px 0 8px; font-size: 16px; }
+.toy-hold .power { width: 22px; height: 22px; }
+.toy-hold .ring { position: absolute; inset: -9px; width: calc(100% + 18px); height: calc(100% + 18px); pointer-events: none; opacity: 0; transition: opacity .15s; }
+.toy-hold.holding .ring { opacity: 1; }
+.ring circle { fill: none; stroke-width: 3.5; }
+.ring-track { stroke: rgba(29,33,64,.15); }
+.ring-fill { stroke: var(--danger); stroke-linecap: round; stroke-dasharray: 97.4; stroke-dashoffset: 97.4; transform: rotate(-90deg); transform-origin: 50% 50%; }
+
+/* --- Escenario: espera o control -------------------------------------------- */
+#stage { flex: 1 1 auto; position: relative; min-height: 0; }
+/* El control no se mete debajo de la muesca ni de la barra de inicio del iPhone (apaisado). */
+#pad { position: absolute; top: 0; left: var(--safe-left); right: var(--safe-right); bottom: var(--safe-bottom);
+  width: calc(100% - var(--safe-left) - var(--safe-right)); height: calc(100% - var(--safe-bottom)); touch-action: none; display: block; }
+
+/* Se cortó la conexión: tapa el control (no sirve tocarlo) con un aviso claro. */
+.net { position: absolute; inset: 0; z-index: 4; display: grid; place-items: center; background: rgba(29,33,64,.42); touch-action: none;
+  padding: 12px calc(16px + var(--safe-right)) calc(12px + var(--safe-bottom)) calc(16px + var(--safe-left)); }
+.net-card { display: flex; align-items: center; gap: 16px; max-width: min(520px, 100%); border: 3px solid var(--ink); }
+.net-text { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.net-title { font-size: 22px; font-weight: 700; line-height: 1.15; }
+.net-sub { font-size: 16px; color: var(--ink-soft); line-height: 1.25; }
+.spinner { flex: none; width: 40px; height: 40px; border-radius: 50%; border: 6px solid var(--paper-dim); border-top-color: var(--warning); animation: spin .9s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.wait { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 24px;
+  padding: 6px calc(12px + var(--safe-right)) calc(10px + var(--safe-bottom)) calc(12px + var(--safe-left)); overflow: hidden; }
+.wait-main { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; }
+.headline { margin: 0; color: #fff; font-weight: 700; font-size: 30px; -webkit-text-stroke: 1.5px var(--ink); paint-order: stroke fill; text-shadow: 0 3px 0 var(--ink), 0 5px 10px rgba(29,33,64,.3); display: flex; align-items: center; gap: 10px; }
+.tv-badge { display: inline-grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; background: var(--accent); border: 3px solid var(--ink); box-shadow: inset 0 -4px 0 rgba(0,0,0,.16); }
+.tv-badge svg { width: 24px; height: 24px; }
+.player-card { position: relative; width: min(220px, 44vw); background: linear-gradient(180deg, var(--player-top), var(--player-bottom));
+  border-radius: 26px; border: 3px solid rgba(255,255,255,.95); box-shadow: 0 8px 0 rgba(29,33,64,.12), 0 12px 20px var(--shadow); padding: 12px 10px 10px; text-align: center; }
+.player-card::before { content: ""; position: absolute; inset: 3px; border-radius: 22px; background: radial-gradient(circle at 50% 42%, rgba(255,255,255,.55), transparent 60%); pointer-events: none; }
+.card-tag { position: absolute; left: 10px; top: -10px; }
+.card-face { width: 100%; height: auto; aspect-ratio: 1; display: block; position: relative; }
+.card-name { font-size: 22px; font-weight: 700; margin-top: -4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; position: relative; }
+.card-status { font-size: 14px; font-weight: 700; color: var(--success); position: relative; }
+.card-status.warn { color: var(--warning); }
+.wait-sub { margin: 2px 0 0; font-size: 14px; font-weight: 700; color: var(--player-ink); text-align: center; }
+
+.picker { width: min(330px, 50vw); padding: 12px 14px 10px; text-align: center; }
+.picker-title { margin: 0 0 8px; font-size: 19px; display: flex; align-items: center; justify-content: center; gap: 8px; }
+.star { width: 22px; height: 22px; background: var(--gold); clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%); }
+.style-row { display: flex; align-items: center; justify-content: center; gap: 10px; }
+.style-screen { flex: 1 1 auto; min-width: 0; height: 56px; display: grid; place-items: center; border-radius: 16px; background: var(--paper-dim); border-top: 5px solid rgba(86,92,133,.25); font-size: 24px; font-weight: 700; }
+.swatches { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin: 12px auto 6px; max-width: 290px; }
+.swatch { --c: #E24B4A; --c-l: #EB8181; --c-d: #933130; position: relative; aspect-ratio: 1; border: 0; border-radius: 50%; background: radial-gradient(circle at 38% 32%, var(--c-l), var(--c) 70%);
+  box-shadow: 0 0 0 3px var(--ink), 0 4px 0 0 var(--c-d), 0 4px 0 3px var(--ink); padding: 0; min-width: 44px; }
+.swatch.selected { transform: translateY(3px); box-shadow: 0 0 0 3px var(--ink), 0 1px 0 0 var(--c-d), 0 1px 0 3px var(--ink), 0 0 0 7px var(--accent); }
+.swatch.selected::after { content: ""; position: absolute; left: 50%; top: 50%; width: 12px; height: 22px; border: solid #fff; border-width: 0 5px 5px 0; transform: translate(-50%, -62%) rotate(45deg); filter: drop-shadow(0 0 1.5px var(--ink)) drop-shadow(0 1px 0 var(--ink)); }
+.swatch.taken { opacity: .45; }
+.swatch.taken::before { content: ""; position: absolute; left: 50%; top: 50%; width: 70%; height: 5px; background: var(--ink); border-radius: 3px; transform: translate(-50%, -50%) rotate(-45deg); }
+.color-name { font-size: 16px; color: var(--ink-soft); font-weight: 700; }
+
+/* Resultado propio (resumen de ronda / podio). */
+.standing { position: relative; width: min(360px, 54vw); background: var(--paper); border: 3px solid var(--ink); border-radius: 28px; overflow: hidden;
+  box-shadow: 0 8px 0 rgba(29,33,64,.12), 0 12px 20px var(--shadow); padding: 12px 16px 14px; text-align: center; }
+.standing-band { position: absolute; left: 0; right: 0; top: 0; height: 54px; background: var(--medal-light, var(--paper-dim)); border-bottom: 3px dashed rgba(29,33,64,.15); }
+.chip { position: relative; display: inline-block; background: var(--chip-dark); color: #fff; border-radius: 999px; padding: 6px 16px; font-size: 15px; font-weight: 700; }
+.standing-cheer { position: relative; justify-content: center; font-size: 22px; margin: 8px 0 4px; }
+.standing-row { position: relative; display: flex; align-items: center; justify-content: center; gap: 14px; }
+.medal { width: 86px; height: 86px; border-radius: 50%; display: grid; place-items: center; background: radial-gradient(circle at 40% 35%, #fff6, transparent 60%), var(--medal, var(--paper-dim));
+  border: 3px solid var(--ink); box-shadow: 0 5px 0 rgba(29,33,64,.25), inset 0 -6px 0 rgba(0,0,0,.14); font-size: 30px; font-weight: 700; color: #fff; -webkit-text-stroke: 1px var(--ink); paint-order: stroke fill; text-shadow: 0 2px 0 var(--ink); position: relative; z-index: 0; }
+.medal::before { content: ""; position: absolute; top: -16px; left: 50%; width: 28px; height: 26px; transform: translateX(-50%); background: linear-gradient(90deg, var(--danger) 50%, #fff 50%); border: 2.5px solid var(--ink); border-radius: 4px 4px 0 0; z-index: -1; }
+.medal.rays { animation: pop .45s cubic-bezier(.2,1.6,.4,1); }
+@keyframes pop { from { transform: scale(.2); } to { transform: scale(1); } }
+.standing-main { font-size: 46px; color: var(--accent); justify-content: center; }
+.standing-main.gold { color: var(--gold); }
+.standing-main.small { font-size: 30px; }
+.standing-total { font-size: 18px; font-weight: 700; }
+
+/* Aviso corto arriba al centro. */
+.toast { position: fixed; left: 50%; top: calc(66px + var(--safe-top)); transform: translateX(-50%); z-index: 5; background: var(--chip-dark); color: #fff;
+  border-radius: 999px; padding: 10px 22px; font-size: 16px; font-weight: 700; white-space: nowrap; max-width: 92vw; overflow: hidden; text-overflow: ellipsis; box-shadow: 0 8px 18px rgba(0,0,0,.25); transition: opacity .3s; }
+.toast.fade { opacity: 0; }
+
+/* --- Apaisado (como la app): dos columnas al unirse, todo en una fila. ----- */
+@media (orientation: landscape) and (min-width: 560px) {
+  .join-grid { grid-template-columns: 0.9fr 1.1fr; align-items: center; gap: 24px; }
+  .logo { width: min(40vw, 340px); }
+  .join-panel { padding: 16px 22px; }
+  .code-tiles { max-width: 300px; margin: 0; }
+  .help { text-align: left; }
+  .tagline { font-size: 18px; }
+}
+@media (max-height: 420px) {
+  .join-panel { gap: 6px; padding: 12px 20px; }
+  .field input { height: 48px; font-size: 18px; }
+  .tile { font-size: 32px; border-radius: 13px; }
+  .code-tiles { max-width: 240px; gap: 8px; }
+  .step { font-size: 17px; margin-top: 0; }
+  .badge { width: 28px; height: 28px; font-size: 15px; }
+  .toy-big { min-height: 54px; font-size: 22px; margin-top: 2px; }
+  .headline { font-size: 24px; }
+  .player-card { width: min(170px, 40vw); padding: 8px 8px 6px; }
+  .card-name { font-size: 18px; }
+  .picker { padding: 8px 12px 6px; }
+  .picker-title { font-size: 16px; margin-bottom: 4px; }
+  .style-screen { height: 46px; font-size: 20px; }
+  .toy-arrow { width: 56px; min-height: 50px; }
+  .swatches { gap: 7px; margin: 8px auto 4px; max-width: 250px; }
+  .swatch { min-width: 38px; }
+  .standing { padding: 8px 14px 10px; }
+  .standing-main { font-size: 38px; }
+}
+/* Vertical: la espera en columna (tarjeta arriba, selector abajo). */
+@media (orientation: portrait) {
+  .wait { flex-direction: column; gap: 10px; overflow-y: auto; touch-action: pan-y; justify-content: flex-start; padding-top: 6px; }
+  .headline { font-size: 26px; }
+  .player-card { width: min(150px, 42vw); padding: 8px 8px 6px; }
+  .card-name { font-size: 18px; }
+  .picker, .standing { width: min(360px, 94vw); }
+  .picker { padding: 10px 12px 8px; }
+  .picker-title { font-size: 17px; margin-bottom: 6px; }
+  .style-screen { height: 48px; font-size: 21px; }
+  .toy-arrow { width: 58px; min-height: 52px; }
+  .swatches { gap: 8px; margin: 10px auto 4px; max-width: 270px; }
+  .me { max-width: 56%; }
+  .hint { display: none; }
+  .bar { flex-wrap: wrap; }
+  .hint.portrait-row { display: block; flex-basis: 100%; order: 9; white-space: normal; font-size: 15px; }
+}
+/* Celular angosto (iPhone SE vertical, o cualquiera con el zoom de página/texto
+ * alto): la barra entra en una fila. Se van los milisegundos y la palabra
+ * "Salir" (queda el ícono de apagar; los avisos hablan del "botón de apagar")
+ * y el apodo se recorta. Apaisado muy bajo: solo se van los milisegundos. */
+@media (max-width: 480px) {
+  .bar { gap: 6px; }
+  .me { flex: 1 1 0; min-width: 0; max-width: none; padding-right: 10px; }
+  .bar-right { flex: none; gap: 6px; }
+  .ms { display: none; }
+  .signal { padding: 4px 10px; }
+  .toy-hold { padding: 0 11px; }
+  .toy-hold > span { display: none; }
+}
+@media (max-height: 300px) { .ms { display: none; } .signal { padding: 4px 10px; } }
+@media (max-width: 300px) {
+  .me-face { display: none; }
+  .me { padding-left: 4px; }
+  .me-name { font-size: 17px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .status.shake, .medal.rays { animation: none; }
+  .spinner { animation-duration: 3s; }
+}

@@ -5,8 +5,11 @@ extends Node
 ## "aislamiento de clientes"), la lista queda vacía y el usuario puede
 ## escribir la IP a mano (ver controller_main.gd).
 ##
-## Android: algunos equipos filtran broadcast con la pantalla apagada o sin
-## "multicast lock". Ver docs/BUILD.md.
+## Android: muchos celulares descartan los paquetes broadcast de la Wi-Fi
+## (para ahorrar batería) si la app no tiene tomado un *multicast lock*.
+## En Godot, `set_broadcast_enabled(true)` lo toma en Android (y lo suelta al
+## cerrar); necesita el permiso CHANGE_WIFI_MULTICAST_STATE del preset de
+## exportación. En PC no cambia nada. Ver docs/BUILD.md.
 
 signal hosts_changed(hosts: Array[Dictionary])
 
@@ -18,6 +21,7 @@ var _listening := false
 
 
 func start() -> Error:
+	_udp.set_broadcast_enabled(true)  # Android: toma el multicast lock (ver arriba).
 	var err := _udp.bind(Protocol.DISCOVERY_PORT, "0.0.0.0")
 	_listening = err == OK
 	return err

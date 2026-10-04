@@ -8,10 +8,19 @@ extends RefCounted
 ## acá, actualizá ese documento y subí VERSION si el cambio no es compatible.
 
 # --- Versionado y red -------------------------------------------------------
-const VERSION := 1
+## 2: layout "joystick_ab" (joystick + botones A y B). Un control v1 no sabe
+## dibujarlo y quedaría en "Mirá la TV" sin poder jugar: por eso la TV
+## rechaza a los v1 con "bad_version" ("Actualizá ambas apps"). Ver ADR 0014.
+const VERSION := 2
 const GAME_ID := "party-games"
 const WS_PORT := 47777
 const DISCOVERY_PORT := 47778
+## Control web (ADR 0022): la TV sirve por HTTP una página que habla este
+## mismo protocolo desde el navegador del celular. Puerto propio, por debajo
+## del WebSocket y sus reintentos (47777–47781) y del UDP (47778). Si está
+## ocupado se prueban los siguientes (HTTP_PORT_ATTEMPTS), que tampoco chocan.
+const HTTP_PORT := 47770
+const HTTP_PORT_ATTEMPTS := 5
 
 # --- Límites de seguridad -----------------------------------------------------
 const MAX_MESSAGE_BYTES := 512
@@ -22,12 +31,18 @@ const ROOM_CODE_LENGTH := 4
 ## 32 caracteres sin ambiguos (sin I, O, 0, 1). Al ser 32 = 256/8, elegir con
 ## un byte aleatorio módulo 32 no introduce sesgo estadístico.
 const ROOM_CODE_ALPHABET := "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+## Topes del mensaje informativo "standing" (ver parse_standing).
+const MAX_ROUNDS := 99
+const MAX_STANDING_POINTS := 100000
 
 # --- Tipos de mensaje: control -> host ---------------------------------------
 const T_JOIN := "join"
 const T_INPUT := "input"
 const T_PING := "ping"
 const T_LEAVE := "leave"
+## Cambiar la apariencia (color y estilo de mascota) desde el lobby. Opcional
+## y compatible: solo se acepta en la fase lobby (ver parse_look).
+const T_LOOK := "look"
 
 # --- Tipos de mensaje: host -> control ---------------------------------------
 const T_WELCOME := "welcome"
@@ -35,6 +50,16 @@ const T_REJECT := "reject"
 const T_LAYOUT := "layout"
 const T_PHASE := "phase"
 const T_PONG := "pong"
+## Resultado propio (puesto y puntos) durante el resumen y el podio. Es solo
+## informativo y compatible con controles viejos (ignoran tipos desconocidos).
+const T_STANDING := "standing"
+## Aviso de vibración/sonido para UN jugador (sumaste, te eliminaron…). Solo
+## informativo y compatible: "kind" tiene que ser uno de FEEDBACK_KINDS.
+const T_FEEDBACK := "feedback"
+const FEEDBACK_KINDS: Array[String] = ["point", "hit", "win", "lose", "go", "count", "tap"]
+## Apariencia confirmada por la TV (color, estilo y colores ocupados por
+## otros). Solo informativo y compatible: los controles viejos lo ignoran.
+const T_APPEARANCE := "appearance"
 
 # --- Descubrimiento en red local (UDP broadcast) ------------------------------
 const T_ANNOUNCE := "announce"
@@ -53,7 +78,11 @@ const LAYOUT_WAIT := "wait"             ## Sin juego activo: pantalla de espera.
 const LAYOUT_JOYSTICK := "joystick"     ## axis = dirección (-1..1, -1..1).
 const LAYOUT_SLIDER_H := "slider_h"     ## axis.x = posición absoluta (-1..1).
 const LAYOUT_ONE_BUTTON := "one_button" ## btn & BTN_A = botón presionado.
-const LAYOUTS: Array[String] = [LAYOUT_WAIT, LAYOUT_JOYSTICK, LAYOUT_SLIDER_H, LAYOUT_ONE_BUTTON]
+## Joystick + botones A y B, como un control de consola: axis = dirección
+## (-1..1, -1..1); btn & BTN_A y btn & BTN_B = botones presionados (los dos
+## a la vez se pueden). data opcional: {"a": "Patear", "b": "Saltar"}.
+const LAYOUT_JOYSTICK_AB := "joystick_ab"
+const LAYOUTS: Array[String] = [LAYOUT_WAIT, LAYOUT_JOYSTICK, LAYOUT_SLIDER_H, LAYOUT_ONE_BUTTON, LAYOUT_JOYSTICK_AB]
 
 # --- Fases de la sesión -------------------------------------------------------
 const PHASE_LOBBY := "lobby"
@@ -61,17 +90,34 @@ const PHASE_PLAYING := "playing"
 const PHASE_RESULTS := "results"
 
 # --- Botones (máscara de bits) -----------------------------------------------
-const BTN_A := 1
-const BTN_B := 2
+const BTN_A := 1  ## one_button y joystick_ab.
+const BTN_B := 2  ## joystick_ab.
 const BTN_MASK := BTN_A | BTN_B
 
-## Colores de jugador (1..4). Alto contraste sobre fondo oscuro.
+## Colores de jugador por defecto (1P..4P). Son los 4 primeros de
+## MASCOT_COLORS: un control que no pide color recibe el de su lugar.
 const PLAYER_COLORS: Array[Color] = [
 	Color("#E24B4A"), # rojo
 	Color("#378ADD"), # azul
-	Color("#EF9F27"), # amarillo
-	Color("#1D9E75"), # verde
+	Color("#F5B82C"), # amarillo dorado (maqueta)
+	Color("#45C35A"), # verde pasto (maqueta)
 ]
+
+## Paleta de mascotas que se puede elegir desde el celular (índice = lo que
+## viaja en "join"/"look"). No se reordena: un celular guarda el índice.
+## Blanco y negro se leen bien porque la mascota siempre lleva contorno de
+## tinta y PlayerAvatar aclara las luces de los colores oscuros.
+const MASCOT_COLORS: Array[Color] = [
+	Color("#E24B4A"), Color("#378ADD"), Color("#F5B82C"), Color("#45C35A"),
+	Color("#8B5CF6"), Color("#FF6FB5"), Color("#2EC4D6"), Color("#F5F7FB"),
+	Color("#2B2D3A"), Color("#16171D"),
+]
+const MASCOT_COLOR_NAMES: Array[String] = [
+	"Rojo", "Azul", "Amarillo", "Verde", "Violeta", "Rosa", "Celeste", "Blanco", "Grafito", "Negro",
+]
+## Cantidad de estilos de mascota (= PlayerAvatar.STYLE_NAMES.size(); lo
+## verifica un test). Protocol no depende de la UI, por eso va el número.
+const MASCOT_STYLES := 7
 
 
 ## Serializa un mensaje agregando versión y tipo.
@@ -123,6 +169,31 @@ static func is_valid_room_code(code: Variant) -> bool:
 ## Normaliza lo que el usuario tipea como código: mayúsculas y sin espacios.
 static func normalize_room_code(raw: String) -> String:
 	return raw.strip_edges().to_upper().replace(" ", "")
+
+
+## Enlace del QR del lobby para el control web (ADR 0022):
+##   http://192.168.1.34:47770/K7QX
+## El código va en la ruta y no en una consulta (`?r=…`): sin `?` ni `=` el
+## enlace es más corto y entra en un QR de versión 3 (29 módulos de lado,
+## más grande y fácil de escanear desde el sillón). El puerto real del
+## WebSocket no viaja en el enlace: la TV lo inyecta en la página al
+## servirla (WebControllerServer). Lo que viaja es solo lo que ya se ve en
+## la TV: estar frente a ella = ver el código.
+static func web_join_url(ip: String, http_port: int, code: String) -> String:
+	return "http://%s:%d/%s" % [ip, http_port, code]
+
+
+## Interpreta la ruta de un enlace web_join_url. Devuelve "" si no es una
+## ruta de unirse válida (el servidor la trata como 404) o el código de sala
+## normalizado ("K7QX"). Acepta minúsculas (algunos lectores de QR o
+## teclados las cambian) y nada más: ni `..`, ni barras extra, ni caracteres
+## fuera del alfabeto del código.
+static func parse_web_join_path(path: String) -> String:
+	var parts := path.trim_prefix("/").trim_suffix("/").split("/")
+	if parts.size() != 1:
+		return ""
+	var room := parts[0].to_upper()
+	return room if is_valid_room_code(room) else ""
 
 
 ## Token de sesión: permite reconectarse al mismo lugar sin volver a unirse.
@@ -180,8 +251,107 @@ static func parse_input(msg: Dictionary) -> Dictionary:
 	}
 
 
+## Valida y normaliza un mensaje "standing" (host -> control). El control
+## tampoco confía a ciegas: tipos incorrectos, NaN o campos faltantes
+## devuelven {}; los números fuera de rango se recortan.
+## Resultado: { "round", "total_rounds", "place", "points", "total", "rank",
+##   "players": int, "final": bool }
+## place = puesto en esta ronda (0 = sin puesto: no la jugó o es el podio
+## final); rank = puesto en la tabla general.
+static func parse_standing(msg: Dictionary) -> Dictionary:
+	var limits := {
+		"round": [0, MAX_ROUNDS],
+		"total_rounds": [0, MAX_ROUNDS],
+		"place": [0, MAX_PLAYERS],
+		"points": [0, MAX_STANDING_POINTS],
+		"total": [0, MAX_STANDING_POINTS],
+		"rank": [1, MAX_PLAYERS],
+		"players": [1, MAX_PLAYERS],
+	}
+	var out := {}
+	for key: String in limits:
+		var value: Variant = msg.get(key)
+		if not _is_number(value) or not is_finite(float(value)):
+			return {}
+		# Se recorta como float antes de convertir: int() de 1e300 no es confiable.
+		out[key] = int(clampf(float(value), limits[key][0], limits[key][1]))
+	if typeof(msg.get("final")) != TYPE_BOOL:
+		return {}
+	out["final"] = msg["final"]
+	# Coherencia mínima: "Ronda 3/2" o "vas 4° de 2" no tienen sentido.
+	out["total_rounds"] = maxi(out.total_rounds, out.round)
+	out["players"] = maxi(out.players, maxi(out.rank, out.place))
+	return out
+
+
+## Valida un mensaje "feedback". Devuelve el tipo o "" si es inválido.
+static func parse_feedback(msg: Dictionary) -> String:
+	var kind: Variant = msg.get("kind")
+	if typeof(kind) != TYPE_STRING or not (kind as String) in FEEDBACK_KINDS:
+		return ""
+	return kind
+
+
 static func player_color(slot: int) -> Color:
 	return PLAYER_COLORS[clampi(slot, 0, PLAYER_COLORS.size() - 1)]
+
+
+## Color de la paleta por índice (se recorta al rango: nunca falla).
+static func mascot_color(index: int) -> Color:
+	return MASCOT_COLORS[clampi(index, 0, MASCOT_COLORS.size() - 1)]
+
+
+## Índice de color válido (0..MASCOT_COLORS.size()-1) o -1 si no lo es.
+## Acepta enteros y floats sin decimales (JSON trae los números como float);
+## strings, bools, NaN, 1.5 o fuera de rango dan -1.
+static func parse_color_index(value: Variant) -> int:
+	return _parse_index(value, MASCOT_COLORS.size())
+
+
+## Índice de estilo de mascota válido (0..MASCOT_STYLES-1) o -1.
+static func parse_style_index(value: Variant) -> int:
+	return _parse_index(value, MASCOT_STYLES)
+
+
+## Apariencia pedida en "join" o "look": solo los campos válidos.
+## Resultado: {} (nada válido), {"color": int}, {"style": int} o ambos.
+## Lo inválido se descarta en silencio: nunca rechaza ni lanza errores.
+static func parse_look(msg: Dictionary) -> Dictionary:
+	var out := {}
+	var color := parse_color_index(msg.get("color"))
+	if color >= 0:
+		out["color"] = color
+	var style := parse_style_index(msg.get("style"))
+	if style >= 0:
+		out["style"] = style
+	return out
+
+
+## Valida un mensaje "appearance" (host -> control). {} si es inválido.
+## Resultado: {"color": int, "style": int, "taken": Array[int]} (taken:
+## colores que usan otros jugadores; se ignoran los inválidos y repetidos).
+static func parse_appearance(msg: Dictionary) -> Dictionary:
+	var color := parse_color_index(msg.get("color"))
+	var style := parse_style_index(msg.get("style"))
+	if color < 0 or style < 0:
+		return {}
+	var taken: Array[int] = []
+	var raw: Variant = msg.get("taken", [])
+	if typeof(raw) == TYPE_ARRAY:
+		for v: Variant in (raw as Array).slice(0, MASCOT_COLORS.size()):
+			var i := parse_color_index(v)
+			if i >= 0 and i != color and not i in taken:
+				taken.append(i)
+	return {"color": color, "style": style, "taken": taken}
+
+
+static func _parse_index(value: Variant, count: int) -> int:
+	if not _is_number(value):
+		return -1
+	var f := float(value)
+	if not is_finite(f) or f != floorf(f) or f < 0.0 or f >= count:
+		return -1
+	return int(f)
 
 
 static func _is_number(value: Variant) -> bool:

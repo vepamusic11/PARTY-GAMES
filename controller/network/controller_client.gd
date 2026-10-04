@@ -11,6 +11,14 @@ signal reconnected()
 signal gave_up()                ## No se pudo reconectar: volver a la pantalla inicial.
 signal layout_changed(layout: String, data: Dictionary)
 signal phase_changed(phase: String)
+## Resultado propio del resumen de ronda o del podio, ya validado con
+## Protocol.parse_standing (ver docs/PROTOCOL.md). Solo informativo.
+signal standing_received(data: Dictionary)
+## Aviso de vibración/sonido para este jugador (ver Protocol.T_FEEDBACK).
+signal feedback_received(kind: String)
+## La TV confirmó la apariencia de este jugador (ver Protocol.parse_appearance).
+## player_info ya tiene "color", "color_index", "style" y "taken" al día.
+signal appearance_changed()
 
 enum State { IDLE, CONNECTING, JOINED, RECONNECTING, LEAVING }
 
@@ -34,12 +42,16 @@ var _attempt := 0
 var _next_attempt_ms := 0
 var _connect_started_ms := 0
 var _join_sent := false
+## Apariencia pedida (Protocol.parse_look): se manda en "join" si hay algo.
+var _look: Dictionary = {}
 
 
-func join(ip: String, port: int, room: String, player_name: String) -> Error:
+## look (opcional): {"color": índice, "style": índice}. Lo inválido se descarta.
+func join(ip: String, port: int, room: String, player_name: String, look: Dictionary = {}) -> Error:
 	_url = "ws://%s:%d" % [ip, port]
 	_room = Protocol.normalize_room_code(room)
 	_name = Protocol.sanitize_name(player_name)
+	_look = Protocol.parse_look(look)
 	_token = ""
 	_attempt = 0
 	return _open(State.CONNECTING)
@@ -58,7 +70,8 @@ func leave() -> void:
 
 
 func send_input(axis: Vector2, buttons: int) -> void:
-	if state != State.JOINED:
+	# JOINED pero con el socket ya cortado (todavía no lo vio poll()): no mandar.
+	if state != State.JOINED or _ws.get_ready_state() != WebSocketPeer.STATE_OPEN:
 		return
 	_seq += 1
 	_ws.send_text(Protocol.encode(Protocol.T_INPUT, {
@@ -66,6 +79,16 @@ func send_input(axis: Vector2, buttons: int) -> void:
 		"axis": [snappedf(axis.x, 0.001), snappedf(axis.y, 0.001)],
 		"btn": buttons,
 	}))
+
+
+## Pide cambiar color y/o estilo (solo tiene efecto en el lobby). La TV
+## confirma con "appearance"; si el color está ocupado, conserva el anterior.
+func send_look(color_index: int, style: int) -> void:
+	var look := Protocol.parse_look({"color": color_index, "style": style})
+	_look = look  # Si se reconecta a una sala nueva, pide lo último elegido.
+	if state != State.JOINED or look.is_empty() or _ws.get_ready_state() != WebSocketPeer.STATE_OPEN:
+		return
+	_ws.send_text(Protocol.encode(Protocol.T_LOOK, look))
 
 
 func _process(_delta: float) -> void:
@@ -125,6 +148,7 @@ func _send_join() -> void:
 	var payload := {"room": _room, "name": _name}
 	if not _token.is_empty():
 		payload["token"] = _token
+	payload.merge(_look)  # Campos opcionales "color" y "style".
 	_ws.send_text(Protocol.encode(Protocol.T_JOIN, payload))
 
 
@@ -136,10 +160,15 @@ func _handle(raw: String) -> void:
 		Protocol.T_WELCOME:
 			var was_reconnecting := state == State.RECONNECTING
 			_token = str(msg.get("token", ""))
+			var player_id := int(msg.get("playerId", 0)) if typeof(msg.get("playerId")) in [TYPE_INT, TYPE_FLOAT] else 0
 			player_info = {
-				"id": int(msg.get("playerId", 0)),
+				"id": player_id,
 				"name": str(msg.get("name", _name)),
 				"color": Color.from_string(str(msg.get("color", "")), Color.WHITE),
+				# Una TV vieja no manda estos campos: -1 = "el de mi lugar".
+				"color_index": Protocol.parse_color_index(msg.get("colorIndex")),
+				"style": Protocol.parse_style_index(msg.get("style")),
+				"taken": [] as Array[int],
 			}
 			state = State.JOINED
 			_attempt = 0
@@ -158,6 +187,22 @@ func _handle(raw: String) -> void:
 			layout_changed.emit(layout, data if typeof(data) == TYPE_DICTIONARY else {})
 		Protocol.T_PHASE:
 			phase_changed.emit(str(msg.get("phase", "")))
+		Protocol.T_FEEDBACK:
+			var kind := Protocol.parse_feedback(msg)
+			if not kind.is_empty():
+				feedback_received.emit(kind)
+		Protocol.T_APPEARANCE:
+			var look := Protocol.parse_appearance(msg)
+			if not look.is_empty() and not player_info.is_empty():
+				player_info["color_index"] = look.color
+				player_info["color"] = Protocol.mascot_color(look.color)
+				player_info["style"] = look.style
+				player_info["taken"] = look.taken
+				appearance_changed.emit()
+		Protocol.T_STANDING:
+			var standing := Protocol.parse_standing(msg)
+			if not standing.is_empty():
+				standing_received.emit(standing)
 		Protocol.T_PONG:
 			var sent: Variant = msg.get("t")
 			if typeof(sent) in [TYPE_INT, TYPE_FLOAT]:
