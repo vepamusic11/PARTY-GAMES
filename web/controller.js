@@ -53,7 +53,8 @@
     one_button: "Tocá el botón cuando la TV te diga",
     joystick_ab: "Movete con el joystick y usá A y B",
   };
-  const LEAVE_HINT = "Mantené apretado «Salir» para irte";
+  // El botón de salir es el ícono de apagar (en celulares angostos, sin la palabra "Salir").
+  const LEAVE_HINT = "Mantené apretado el botón de apagar para irte";
   // Textos para el invitado cuando algo falla: sin jerga, qué pasó y qué hacer.
   const MSG = {
     bad_room: "Ese código no es el de la TV. Fijate las 4 fichas de colores en la pantalla.",
@@ -583,7 +584,7 @@
     onBack() {
       if (!this.backArmed) return;
       this.backArmed = false;
-      if (!el.play.hidden) this.toast("Para irte, mantené apretado «Salir»");
+      if (!el.play.hidden) this.toast("Para irte, mantené apretado el botón de apagar");
     },
     savedLook() { const look = {}; const c = parseColorIndex(store.get("color", -1)), s = parseStyleIndex(store.get("style", -1)); if (c >= 0) look.color = c; if (s >= 0) look.style = s; return look; },
     setCode(code) { el.code.value = code; this.paintTiles(); },

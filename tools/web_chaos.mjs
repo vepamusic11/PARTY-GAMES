@@ -265,7 +265,7 @@ try {
   await C.page.goBack({ timeout: 3000 }).catch(() => null);
   await sleep(400);
   ok((await pg(C.page, () => window.__pg && window.__pg.state)) === "joined", "el primer «Atrás» no saca del juego");
-  ok(await C.page.locator("#toast").evaluate((e) => !e.hidden && e.textContent.includes("Salir")).catch(() => false), "y avisa «Para irte, mantené apretado «Salir»»");
+  ok(await C.page.locator("#toast").evaluate((e) => !e.hidden && e.textContent.includes("botón de apagar")).catch(() => false), "y avisa «Para irte, mantené apretado el botón de apagar»");
   await shot(C.page, "atras_aviso");
   await C.page.goBack({ timeout: 5000 }).catch(() => null);
   await sleep(1500);

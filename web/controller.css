@@ -264,10 +264,11 @@ button { cursor: pointer; }
   .bar { flex-wrap: wrap; }
   .hint.portrait-row { display: block; flex-basis: 100%; order: 9; white-space: normal; font-size: 15px; }
 }
-/* Celular angosto (iPhone SE, o cualquiera con el zoom de página/texto alto): la
- * barra entra en una fila. Se van los milisegundos y la palabra "Salir" (queda
- * el ícono de apagar; mantenerlo apretado sigue igual) y el apodo se recorta. */
-@media (max-width: 440px), (max-height: 300px) {
+/* Celular angosto (iPhone SE vertical, o cualquiera con el zoom de página/texto
+ * alto): la barra entra en una fila. Se van los milisegundos y la palabra
+ * "Salir" (queda el ícono de apagar; los avisos hablan del "botón de apagar")
+ * y el apodo se recorta. Apaisado muy bajo: solo se van los milisegundos. */
+@media (max-width: 480px) {
   .bar { gap: 6px; }
   .me { flex: 1 1 0; min-width: 0; max-width: none; padding-right: 10px; }
   .bar-right { flex: none; gap: 6px; }
@@ -276,6 +277,7 @@ button { cursor: pointer; }
   .toy-hold { padding: 0 11px; }
   .toy-hold > span { display: none; }
 }
+@media (max-height: 300px) { .ms { display: none; } .signal { padding: 4px 10px; } }
 @media (max-width: 300px) {
   .me-face { display: none; }
   .me { padding-left: 4px; }
